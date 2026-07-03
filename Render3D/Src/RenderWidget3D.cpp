@@ -14,7 +14,7 @@
 RenderWidget3D::RenderWidget3D(QWidget* parent)
     : QOpenGLWidget(parent)
 {
-    qDebug() << "[RenderWidget3D] Constructor called";
+    qDebug() << "[RenderWidget3D] Constructor";
     setFocusPolicy(Qt::StrongFocus);
     setMouseTracking(true);
 

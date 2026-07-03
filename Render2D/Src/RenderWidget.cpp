@@ -1,4 +1,4 @@
-﻿#include "Render2D/RenderWidget.h"
+#include "Render2D/RenderWidget.h"
 #include "ShaderDef.h"
 #include "ShaderManager.h"
 #include "Log/SyLogger.h"
@@ -38,13 +38,13 @@ void RenderWidget::init()
 
 RenderWidget::~RenderWidget()
 {
-    // 关键：不再继承 QOpenGLFunctions_4_5_Core，
-    // 避免在 context 已失效时 XGLFunctions 基类析构触发 ASSERT。
+    // 关键：使用独立的 XGLFunctions 指针对象而非继承，
+    // 避免在 context 已失效时析构触发 ASSERT。
     //
     // QOpenGLShaderProgram 的 unique_ptr 自动析构是安全的：
     // - 如果 context 有效，shader program 对象会调用 glDeleteProgram
     // - 如果 context 已失效，Qt 内部会跳过 GL 调用
-    // - m_glFuncs 是 context-owned 指针，不需要我们 delete
+    // - m_glFuncs 由我们自己管理，在 releaseGLResources() 中 delete
 }
 
 void RenderWidget::releaseGLResources()
@@ -112,6 +112,9 @@ void RenderWidget::releaseGLResources()
 
     m_sceneConsumer.cleanup();
 
+    delete m_glFuncs;
+    m_glFuncs = nullptr;
+
     m_glResourcesReleased = true;
     qDebug() << "[RenderWidget] releaseGLResources() EXIT (context kept current), all GL resources released";
 }
@@ -122,8 +125,8 @@ void RenderWidget::initializeGL()
         << "isValid =" << isValid()
         << "context =" << context();
 
-    m_glFuncs = context()->versionFunctions<XGLFunctions>();
-    if (!m_glFuncs)
+    m_glFuncs = new XGLFunctions();
+    if (!m_glFuncs->initializeOpenGLFunctions())
     {
         SY_CRITICALF("[RenderWidget] Could not initialize OpenGL %d.%d functions",
             TARGET_GL_VERSION_MAJOR, TARGET_GL_VERSION_MINOR);
@@ -675,13 +678,9 @@ void RenderWidget::paintUiTexts()
             continue;
         }
 
-        // 字体（使用像素大小 + DPI 缩放，保证 4K/高 DPI 屏幕上文字大小合适）
+        // 字体（使用点大小，确保与全局字体设置一致）
         QFont font = painter.font();
-        const qreal dpr = devicePixelRatio();
-        // fontSize 是逻辑像素字号，乘以 dpr 得到物理像素字号
-        const int minPhysSize = 10;
-        const int scaledSize = std::max(minPhysSize, int(qreal(item->fontSize) * dpr));
-        font.setPixelSize(scaledSize);
+        font.setPointSize(std::max(8, int(item->fontSize)));
         painter.setFont(font);
 
         // 文字颜色
@@ -1158,7 +1157,7 @@ void RenderWidget::setPreviewPoints(const Render::Vec2f* points, size_t count)
             m_linePoints.push_back(Render::Vec2f(points[i][0], points[i][1]));
         }
     }
-    qDebug() << "[RenderWidget] setPreviewPoints count =" << count;
+    // qDebug() << "[RenderWidget] setPreviewPoints count =" << count;
     updateLineBuffer();
     update();
 }

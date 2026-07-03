@@ -6,7 +6,6 @@
 /// Render 层的 RenderPacket3D/RenderWorld3D 数据包。
 /// 此转换器属于 Engine 层，是分层架构的桥梁。
 
-#include "Engine/EngineAPI.h"
 #include "Render3D/RenderPacket3D.h"
 #include <memory>
 

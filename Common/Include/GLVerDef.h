@@ -4,7 +4,7 @@
 #if defined(__APPLE__)
 #define USE_OPENGL_4_1 1
 #elif defined(_WIN32) || defined(__linux__)
-#define USE_OPENGL_4_6 1
+#define USE_OPENGL_4_5 1
 #else
     // 其他平台默认使用 OpenGL 3.3
 #define USE_OPENGL_3_3 1

@@ -1,42 +1,41 @@
-﻿cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.20)
 
+# --- 模块元信息 ---
 set(LIB_NAME "Render3D")
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../CMake/Utils.cmake")
-    include("${CMAKE_CURRENT_SOURCE_DIR}/../../CMake/Utils.cmake")
-endif()
+set(LIB_FOLDER "Render")
+set(LIB_DESCRIPTION "Render 3D Library")
+set(LIB_EXPORT_MACRO "RENDER_EXPORTS")
 
-file(GLOB_RECURSE RENDER_SOURCES CONFIGURE_DEPENDS
+# --- 版本（按模块独立）---
+set(VERSION_MAJOR 1)
+set(VERSION_MINOR 0)
+set(VERSION_PATCH 0)
+set(PROJECT_VERSION "${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH}")
+
+# --- 路径 ---
+if(NOT SANYI_ROOT)
+    get_filename_component(SANYI_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)
+endif()
+include("${SANYI_ROOT}/CMake/SanYiPaths.cmake")
+include("${SANYI_ROOT}/CMake/Utils.cmake")
+
+# --- 源文件 ---
+file(GLOB_RECURSE LIB_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/Src/*.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/Src/*.cxx"
     "${CMAKE_CURRENT_SOURCE_DIR}/Src/*.cc"
     "${CMAKE_CURRENT_SOURCE_DIR}/Src/*.c"
 )
-
-file(GLOB_RECURSE RENDER_HEADERS CONFIGURE_DEPENDS
+file(GLOB_RECURSE LIB_HEADERS CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/Include/*.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/Include/*.hpp"
 )
+list(FILTER LIB_SOURCES EXCLUDE REGEX "${SANYI_SOURCE_EXCLUDE_REGEX}")
+list(FILTER LIB_HEADERS EXCLUDE REGEX "${SANYI_HEADER_EXCLUDE_REGEX}")
+list(LENGTH LIB_SOURCES LIB_SOURCES_COUNT)
+list(LENGTH LIB_HEADERS LIB_HEADERS_COUNT)
 
-add_library(${LIB_NAME} SHARED
-    ${RENDER_SOURCES}
-    ${RENDER_HEADERS}
-)
-
-source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES ${RENDER_SOURCES} ${RENDER_HEADERS})
-
-target_include_directories(${LIB_NAME}
-    PUBLIC
-        "${CMAKE_CURRENT_SOURCE_DIR}/Include"
-        "${CMAKE_CURRENT_SOURCE_DIR}/Include/Render3D"
-    PRIVATE
-        "${CMAKE_SOURCE_DIR}/Render/Common/Include"
-        "${CMAKE_SOURCE_DIR}/Render/Common/Include/Render"
-        "${CMAKE_SOURCE_DIR}/Engine/Common/Include"
-        "${CMAKE_SOURCE_DIR}/Engine/Engine3D/Include"
-)
-
-target_compile_features(${LIB_NAME} PUBLIC cxx_std_17)
-
+# --- 第三方依赖 (Qt 版本分支) ---
 list(INSERT CMAKE_PREFIX_PATH 0 "${Qt_INSTALL_DIR}")
 
 if(QT_VERSION_MAJOR STREQUAL "6")
@@ -47,13 +46,44 @@ else()
     set(QT_LIBRARIES Qt5::Core Qt5::Gui Qt5::Widgets Qt5::OpenGL)
 endif()
 
+# --- 目标定义 ---
+add_library(${LIB_NAME} SHARED
+    ${LIB_SOURCES}
+    ${LIB_HEADERS}
+)
+source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES ${LIB_SOURCES} ${LIB_HEADERS})
+
+target_include_directories(${LIB_NAME}
+    PUBLIC
+        "${CMAKE_CURRENT_SOURCE_DIR}/Include"
+        "${CMAKE_CURRENT_SOURCE_DIR}/Include/Render3D"
+    PRIVATE
+        "${SANYI_RENDER_COMMON_DIR}/Include"
+        "${SANYI_RENDER_COMMON_DIR}/Include/Render"
+        "${SANYI_ENGINE_COMMON_DIR}/Include"
+        "${SANYI_ENGINE_3D_DIR}/Include"
+)
+
+target_compile_features(${LIB_NAME} PUBLIC cxx_std_17)
+target_compile_definitions(${LIB_NAME} PRIVATE ${LIB_EXPORT_MACRO})
+
+# --- 目标属性 ---
 set_target_properties(${LIB_NAME} PROPERTIES
     AUTOMOC ON
     AUTOUIC ON
     AUTORCC ON
-    FOLDER "Render"
+    FOLDER "${LIB_FOLDER}"
+    DEBUG_POSTFIX "_d"
 )
 
+# --- 编译选项 ---
+if(MSVC)
+    target_compile_options(${LIB_NAME} PRIVATE /utf-8 /FS)
+else()
+    target_compile_options(${LIB_NAME} PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+
+# --- 链接 ---
 target_link_libraries(${LIB_NAME}
     PUBLIC
         Utility
@@ -63,35 +93,13 @@ target_link_libraries(${LIB_NAME}
         ${QT_LIBRARIES}
 )
 
-target_compile_definitions(${LIB_NAME} PRIVATE RENDER_EXPORTS)
+# --- 版本信息 ---
+sanyi_add_version_info(${LIB_NAME} "${LIB_NAME}" "${LIB_DESCRIPTION}")
 
-if(MSVC)
-    target_compile_options(${LIB_NAME} PRIVATE /utf-8 /FS)
-endif()
-
-set(LIB_VERSION_MAJOR 1)
-set(LIB_VERSION_MINOR 0)
-set(LIB_VERSION_PATCH 0)
-set(LIB_VERSION "${LIB_VERSION_MAJOR}.${LIB_VERSION_MINOR}.${LIB_VERSION_PATCH}")
-
-set_target_properties(${LIB_NAME} PROPERTIES VERSION ${LIB_VERSION})
-
-string(TOUPPER ${LIB_NAME} _VER_PREFIX)
-target_compile_definitions(${LIB_NAME} PUBLIC
-    ${_VER_PREFIX}_VERSION_MAJOR=${LIB_VERSION_MAJOR}
-    ${_VER_PREFIX}_VERSION_MINOR=${LIB_VERSION_MINOR}
-    ${_VER_PREFIX}_VERSION_PATCH=${LIB_VERSION_PATCH}
-    ${_VER_PREFIX}_VERSION_STRING="${LIB_VERSION}"
-)
-
-sanyi_add_version_info(${LIB_NAME} "${LIB_NAME}" "Render 3D Library")
-
+# --- 构建信息 ---
 message(STATUS "[${LIB_NAME}]")
-message(STATUS "  Library: ${LIB_NAME}")
-message(STATUS "  Version: ${LIB_VERSION}")
+message(STATUS "  Version: ${PROJECT_VERSION}")
+# message(STATUS "  Sources: ${LIB_SOURCES_COUNT}  Headers: ${LIB_HEADERS_COUNT}")
 message(STATUS "  Platform: ${CMAKE_SYSTEM_NAME}(${CMAKE_SYSTEM_PROCESSOR})")
 message(STATUS "  Build Type: ${CMAKE_BUILD_TYPE}")
-message(STATUS "  C++ Standard: ${CMAKE_CXX_STANDARD}")
-
-message(STATUS "")
 message(STATUS "----------------------------------------")
