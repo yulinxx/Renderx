@@ -1,7 +1,7 @@
 #pragma once
 
 #include "render/render_types.h"
-#include "../rhi/rhi_device.h"
+#include "rhi/rhi_device.h"
 #include <vector>
 #include <cstdint>
 #include <algorithm>

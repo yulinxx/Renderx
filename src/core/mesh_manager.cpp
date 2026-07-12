@@ -1,5 +1,5 @@
 #include "mesh_manager.h"
-#include "../shader/shaders.h"
+#include "shader/shaders.h"
 #include <cstring>
 #include <algorithm>
 #include <cmath>

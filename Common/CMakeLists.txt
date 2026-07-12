@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.20)
+﻿cmake_minimum_required(VERSION 4.3)
 
 # --- 模块元信息 ---
 set(LIB_NAME "RenderCommon")
@@ -38,13 +38,8 @@ list(LENGTH LIB_HEADERS LIB_HEADERS_COUNT)
 # --- 第三方依赖 (Qt 版本分支) ---
 list(INSERT CMAKE_PREFIX_PATH 0 "${Qt_INSTALL_DIR}")
 
-if(QT_VERSION_MAJOR STREQUAL "6")
-    find_package(Qt6 COMPONENTS Core Gui Widgets OpenGL OpenGLWidgets REQUIRED)
+find_package(Qt6 COMPONENTS Core Gui Widgets OpenGL OpenGLWidgets REQUIRED)
     set(QT_LIBRARIES Qt6::Core Qt6::Gui Qt6::Widgets Qt6::OpenGL Qt6::OpenGLWidgets)
-else()
-    find_package(Qt5 COMPONENTS Core Gui Widgets OpenGL REQUIRED)
-    set(QT_LIBRARIES Qt5::Core Qt5::Gui Qt5::Widgets Qt5::OpenGL)
-endif()
 
 # --- 目标定义 ---
 add_library(${LIB_NAME} SHARED
@@ -69,7 +64,7 @@ target_compile_definitions(${LIB_NAME} PRIVATE ${LIB_EXPORT_MACRO})
 # --- 目标属性 ---
 set_target_properties(${LIB_NAME} PROPERTIES
     AUTOMOC ON
-    AUTOUIC ON
+    AUTOUIC OFF
     AUTORCC ON
     FOLDER "${LIB_FOLDER}"
     DEBUG_POSTFIX "_d"

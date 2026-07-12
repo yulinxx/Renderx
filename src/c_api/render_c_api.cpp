@@ -1,13 +1,13 @@
 #include "render/render.h"
 #include "render/render_types.h"
-#include "../core/render_world.h"
-#include "../core/batch_queue.h"
-#include "../core/overlay_queue.h"
-#include "../core/mesh_manager.h"
-#include "../core/text_atlas.h"
-#include "../core/scene_env.h"
-#include "../rhi/rhi_device.h"
-#include "../rhi/rhi_gl.h"
+#include "core/render_world.h"
+#include "core/batch_queue.h"
+#include "core/overlay_queue.h"
+#include "core/mesh_manager.h"
+#include "core/text_atlas.h"
+#include "core/scene_env.h"
+#include "rhi/rhi_device.h"
+#include "rhi/rhi_gl.h"
 
 #include <cstring>
 #include <cassert>

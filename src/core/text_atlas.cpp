@@ -1,5 +1,5 @@
 #include "text_atlas.h"
-#include "../shader/shaders.h"
+#include "shader/shaders.h"
 
 #include <stb_truetype.h>
 #include <cstring>

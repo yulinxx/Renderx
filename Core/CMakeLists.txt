@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.20)
+﻿cmake_minimum_required(VERSION 4.3)
 
 set(TARGET_NAME RenderCore)
 
@@ -48,20 +48,12 @@ target_link_libraries(${TARGET_NAME} PUBLIC
 )
 
 # 链接Qt（用于Qt集成）
-if(QT_VERSION_MAJOR STREQUAL "6")
-    find_package(Qt6 COMPONENTS OpenGL OpenGLWidgets Widgets REQUIRED)
-    target_link_libraries(${TARGET_NAME} PUBLIC
-        Qt6::OpenGL
-        Qt6::OpenGLWidgets
-        Qt6::Widgets
-    )
-else()
-    find_package(Qt5 COMPONENTS OpenGL Widgets REQUIRED)
-    target_link_libraries(${TARGET_NAME} PUBLIC
-        Qt5::OpenGL
-        Qt5::Widgets
-    )
-endif()
+find_package(Qt6 COMPONENTS OpenGL OpenGLWidgets Widgets REQUIRED)
+target_link_libraries(${TARGET_NAME} PUBLIC
+    Qt6::OpenGL
+    Qt6::OpenGLWidgets
+    Qt6::Widgets
+)
 
 # C++20
 target_compile_features(${TARGET_NAME} PRIVATE cxx_std_20)

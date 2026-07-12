@@ -1,5 +1,5 @@
 #include "rhi_gl.h"
-#include "../platform/gl_loader.h"
+#include "platform/gl_loader.h"
 
 #include <cstdio>
 #include <cstring>

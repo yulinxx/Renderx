@@ -1,5 +1,5 @@
 #include "scene_env.h"
-#include "../shader/shaders.h"
+#include "shader/shaders.h"
 #include <cstring>
 #include <algorithm>
 

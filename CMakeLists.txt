@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.20)
+﻿cmake_minimum_required(VERSION 4.3)
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/../Config.txt)
 
@@ -19,7 +19,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 if(MSVC)
     add_compile_options(/W4 /utf-8)
     add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
-    add_compile_options(/wd4251)
+    # add_compile_options(/wd4251)
     add_compile_options(/wd4244)
 else()
     add_compile_options(-Wall -Wextra -Wpedantic)
@@ -58,11 +58,7 @@ set(RENDER_SOURCES
 
 # ==================== Find Packages ====================
 
-if(QT_VERSION_MAJOR EQUAL 6)
-    find_package(Qt6 COMPONENTS Core Gui Widgets OpenGL OpenGLWidgets REQUIRED)
-else()
-    find_package(Qt5 5.15 COMPONENTS Core Gui Widgets OpenGL REQUIRED)
-endif()
+find_package(Qt6 COMPONENTS Core Gui Widgets OpenGL OpenGLWidgets REQUIRED)
 
 find_package(Stb QUIET)
 
@@ -90,7 +86,7 @@ target_include_directories(${PROJECT_NAME}
 
 set_target_properties(${PROJECT_NAME} PROPERTIES
     AUTOMOC ON
-    AUTOUIC ON
+    AUTOUIC OFF
     AUTORCC ON
 )
 
@@ -111,24 +107,14 @@ elseif(DEFINED VCPKG_DIR AND EXISTS "${VCPKG_DIR}/installed/x64-windows/include"
         "${VCPKG_DIR}/installed/x64-windows/include")
 endif()
 
-if(QT_VERSION_MAJOR EQUAL 6)
-    target_link_libraries(${PROJECT_NAME}
-        PRIVATE
-            Qt6::Core
-            Qt6::Gui
-            Qt6::Widgets
-            Qt6::OpenGL
-            Qt6::OpenGLWidgets
-    )
-else()
-    target_link_libraries(${PROJECT_NAME}
-        PRIVATE
-            Qt5::Core
-            Qt5::Gui
-            Qt5::Widgets
-            Qt5::OpenGL
-    )
-endif()
+target_link_libraries(${PROJECT_NAME}
+    PRIVATE
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Widgets
+        Qt6::OpenGL
+        Qt6::OpenGLWidgets
+)
 
 # ==================== Install ====================
 
