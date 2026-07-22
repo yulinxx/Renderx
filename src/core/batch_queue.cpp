@@ -2,237 +2,371 @@
 #include "render_world.h"
 #include <cstring>
 #include <algorithm>
+#include "Log/SyLogger.h"
 
-namespace render {
-namespace core {
+namespace render
+{
+    namespace core
+    {
+        void BatchQueue::initialize(rhi::IDevice* device)
+        {
+            m_device = device;
+            m_indirectCmds.reserve(512);
+            m_batches.reserve(PRIMITIVE_TYPE_COUNT);
+            m_dirtyRanges.reserve(64);
+            buildPipelines(device);
 
-void BatchQueue::initialize(rhi::IDevice* device) {
-    m_device = device;
-    m_mergedVertices.reserve(4096);
-    m_indirectCmds.reserve(512);
-    m_batches.reserve(PRIMITIVE_TYPE_COUNT);
-    buildPipelines(device);
-}
-
-void BatchQueue::shutdown() {
-    m_mergedVertices.clear();
-    m_indirectCmds.clear();
-    m_batches.clear();
-
-    if (m_vertexBuffer != rhi::NullHandle) {
-        m_device->destroyBuffer(m_vertexBuffer);
-        m_vertexBuffer = rhi::NullHandle;
-    }
-    if (m_indirectBuffer != rhi::NullHandle) {
-        m_device->destroyBuffer(m_indirectBuffer);
-        m_indirectBuffer = rhi::NullHandle;
-    }
-    for (uint32_t i = 0; i < PRIMITIVE_TYPE_COUNT; ++i) {
-        if (m_pipelines[i] != rhi::NullHandle) {
-            m_device->destroyPipeline(m_pipelines[i]);
-            m_pipelines[i] = rhi::NullHandle;
+            rhi::BufferDesc vbDesc;
+            vbDesc.size = 1024 * 1024 * sizeof(VertexP3C3);
+            vbDesc.usage = rhi::BufferUsage::Vertex;
+            vbDesc.memory = rhi::MemoryType::GPU_CPU_Coherent;
+            vbDesc.debugName = "BatchQueue_VertexBuffer";
+            m_vertexBuffer = device->createBuffer(vbDesc);
+            m_vertexBufferCapacity = 1024 * 1024;
         }
-    }
 
-    m_vertexBufferCapacity = 0;
-    m_indirectBufferCapacity = 0;
-    m_device = nullptr;
-}
+        void BatchQueue::shutdown()
+        {
+            m_indirectCmds.clear();
+            m_batches.clear();
+            m_dirtyRanges.clear();
+            m_lastVisibleIndices.clear();
 
-void BatchQueue::submit(const uint32_t* visibleIndices, uint32_t count,
-                        const RenderWorld& world) {
-    m_mergedVertices.clear();
-    m_indirectCmds.clear();
-    m_batches.clear();
+            if (m_indirectBuffer != rhi::NullHandle)
+            {
+                m_device->destroyBuffer(m_indirectBuffer);
+                m_indirectBuffer = rhi::NullHandle;
+            }
+            if (m_vertexBuffer != rhi::NullHandle)
+            {
+                m_device->destroyBuffer(m_vertexBuffer);
+                m_vertexBuffer = rhi::NullHandle;
+            }
+            for (uint32_t i = 0; i < PRIMITIVE_TYPE_COUNT; ++i)
+            {
+                if (m_pipelines[i] != rhi::NullHandle)
+                {
+                    m_device->destroyPipeline(m_pipelines[i]);
+                    m_pipelines[i] = rhi::NullHandle;
+                }
+            }
 
-    if (count == 0) {
-        m_dirty = true;
-        return;
-    }
-
-    struct SortEntry {
-        uint32_t visibleIdx;
-        uint16_t primitiveType;
-        uint16_t materialIndex;
-    };
-
-    std::vector<SortEntry> sorted(count);
-    const auto* entries = world.getEntityEntries();
-
-    for (uint32_t i = 0; i < count; ++i) {
-        uint32_t idx = visibleIndices[i];
-        sorted[i].visibleIdx   = idx;
-        sorted[i].primitiveType  = entries[idx].primitiveType;
-        sorted[i].materialIndex  = entries[idx].materialIndex;
-    }
-
-    std::sort(sorted.begin(), sorted.end(),
-              [](const SortEntry& a, const SortEntry& b) {
-                  if (a.primitiveType != b.primitiveType)
-                      return a.primitiveType < b.primitiveType;
-                  return a.materialIndex < b.materialIndex;
-              });
-
-    const VertexP3C3* worldVerts = world.getVertexData();
-    const auto* materials = world.getMaterials();
-
-    PrimitiveType currentType = static_cast<PrimitiveType>(sorted[0].primitiveType);
-    uint16_t currentMaterial = sorted[0].materialIndex;
-    uint32_t batchFirstVertex = 0;
-    uint32_t batchFirstIndirect = 0;
-    uint32_t batchIndirectCount = 0;
-
-    auto flushBatch = [&]() {
-        if (batchIndirectCount > 0) {
-            Batch b;
-            b.type          = currentType;
-            b.firstVertex   = batchFirstVertex;
-            b.vertexCount   = static_cast<uint32_t>(m_mergedVertices.size()) - batchFirstVertex;
-            b.firstIndirect = batchFirstIndirect;
-            b.indirectCount = batchIndirectCount;
-            b.lineWidth     = materials[currentMaterial].desc.lineWidth;
-            m_batches.push_back(b);
+            m_indirectBufferCapacity = 0;
+            m_vertexBufferCapacity = 0;
+            m_dirty = false;
+            m_viewChanged = false;
+            m_lastVisibleCount = 0;
+            m_lastGeneration = 0;
+            m_device = nullptr;
         }
-    };
 
-    for (uint32_t i = 0; i < count; ++i) {
-        uint32_t idx = sorted[i].visibleIdx;
-        PrimitiveType type = static_cast<PrimitiveType>(sorted[i].primitiveType);
-        uint16_t matIdx = sorted[i].materialIndex;
+        void BatchQueue::submit(const uint32_t* visibleIndices, uint32_t count,
+            const RenderWorld& world)
+        {
+            if (count == 0)
+            {
+                m_indirectCmds.clear();
+                m_batches.clear();
+                m_lastVisibleCount = 0;
+                m_lastVisibleIndices.clear();
+                m_dirty = true;
+                return;
+            }
 
-        if (type != currentType) {
+            bool needsRebuild = m_lastVisibleCount != count;
+
+            if (!needsRebuild && count == m_lastVisibleIndices.size())
+            {
+                for (uint32_t i = 0; i < count; i++)
+                {
+                    if (visibleIndices[i] != m_lastVisibleIndices[i])
+                    {
+                        needsRebuild = true;
+                        break;
+                    }
+                }
+            }
+
+            uint32_t currentGen = world.getGeneration();
+            if (currentGen != m_lastGeneration)
+            {
+                needsRebuild = true;
+                m_lastGeneration = currentGen;
+            }
+
+            if (!needsRebuild)
+            {
+                m_dirtyRanges.clear();
+                const auto* entries = world.getEntityEntries();
+                for (uint32_t i = 0; i < count; i++)
+                {
+                    uint32_t denseIdx = m_lastVisibleIndices[i];
+                    if (entries[denseIdx].dirty)
+                    {
+                        m_dirtyRanges.push_back({ i, 1 });
+                    }
+                }
+                if (!m_dirtyRanges.empty())
+                {
+                    m_dirty = true;
+                    mergeDirtyRanges();
+                }
+                return;
+            }
+
+            m_dirtyRanges.clear();
+            m_indirectCmds.clear();
+            m_batches.clear();
+
+            struct SortEntry
+            {
+                uint32_t visibleIdx;
+                uint16_t primitiveType;
+                uint16_t materialIndex;
+            };
+
+            std::vector<SortEntry> sorted(count);
+            const auto* entries = world.getEntityEntries();
+
+            for (uint32_t i = 0; i < count; ++i)
+            {
+                uint32_t idx = visibleIndices[i];
+                sorted[i].visibleIdx = idx;
+                sorted[i].primitiveType = entries[idx].primitiveType;
+                sorted[i].materialIndex = entries[idx].materialIndex;
+            }
+
+            std::sort(sorted.begin(), sorted.end(),
+                [](const SortEntry& a, const SortEntry& b) {
+                    if (a.primitiveType != b.primitiveType)
+                        return a.primitiveType < b.primitiveType;
+                    return a.materialIndex < b.materialIndex;
+                });
+
+            const auto* materials = world.getMaterials();
+
+            if (count == 0)
+            {
+                m_dirty = true;
+                return;
+            }
+
+            PrimitiveType currentType = static_cast<PrimitiveType>(sorted[0].primitiveType);
+            uint16_t currentMaterial = sorted[0].materialIndex;
+            uint32_t batchFirstIndirect = 0;
+            uint32_t batchIndirectCount = 0;
+
+            auto flushBatch = [&]() {
+                if (batchIndirectCount > 0)
+                {
+                    Batch b;
+                    b.type = currentType;
+                    b.firstIndirect = batchFirstIndirect;
+                    b.indirectCount = batchIndirectCount;
+                    if (currentMaterial < world.getMaterialCount())
+                    {
+                        b.lineWidth = materials[currentMaterial].desc.lineWidth;
+                    }
+                    else
+                    {
+                        b.lineWidth = 1.0f;
+                    }
+                    b.materialIndex = currentMaterial;
+                    m_batches.push_back(b);
+                }
+                };
+
+            for (uint32_t i = 0; i < count; ++i)
+            {
+                uint32_t idx = sorted[i].visibleIdx;
+                PrimitiveType type = static_cast<PrimitiveType>(sorted[i].primitiveType);
+                uint16_t matIdx = sorted[i].materialIndex;
+
+                if (type != currentType)
+                {
+                    flushBatch();
+                    currentType = type;
+                    currentMaterial = matIdx;
+                    batchFirstIndirect = static_cast<uint32_t>(m_indirectCmds.size());
+                    batchIndirectCount = 0;
+                }
+                else if (matIdx != currentMaterial)
+                {
+                    flushBatch();
+                    currentMaterial = matIdx;
+                    batchFirstIndirect = static_cast<uint32_t>(m_indirectCmds.size());
+                    batchIndirectCount = 0;
+                }
+
+                const auto& e = entries[idx];
+                DrawIndirectCmd cmd;
+                cmd.vertexCount = e.vertexCount;
+                cmd.instanceCount = 1;
+                cmd.firstVertex = e.vertexOffset;
+                cmd.baseInstance = 0;
+                m_indirectCmds.push_back(cmd);
+                batchIndirectCount++;
+            }
+
             flushBatch();
-            currentType = type;
-            currentMaterial = matIdx;
-            batchFirstVertex = static_cast<uint32_t>(m_mergedVertices.size());
-            batchFirstIndirect = static_cast<uint32_t>(m_indirectCmds.size());
-            batchIndirectCount = 0;
-        } else if (matIdx != currentMaterial) {
-            flushBatch();
-            currentMaterial = matIdx;
-            batchFirstVertex = static_cast<uint32_t>(m_mergedVertices.size());
-            batchFirstIndirect = static_cast<uint32_t>(m_indirectCmds.size());
-            batchIndirectCount = 0;
+
+            m_lastVisibleCount = count;
+            m_lastVisibleIndices.resize(count);
+            std::memcpy(m_lastVisibleIndices.data(), visibleIndices, count * sizeof(uint32_t));
+            m_dirty = true;
         }
 
-        const auto& e = entries[idx];
-        DrawIndirectCmd cmd;
-        cmd.vertexCount  = e.vertexCount;
-        cmd.instanceCount = 1;
-        cmd.firstVertex  = static_cast<uint32_t>(m_mergedVertices.size());
-        cmd.baseInstance  = 0;
-        m_indirectCmds.push_back(cmd);
+        void BatchQueue::render(rhi::IDevice* device, const float viewMatrix[9], const RenderWorld& world)
+        {
+            if (m_batches.empty())
+                return;
 
-        m_mergedVertices.insert(m_mergedVertices.end(),
-                                worldVerts + e.vertexOffset,
-                                worldVerts + e.vertexOffset + e.vertexCount);
-        batchIndirectCount++;
-    }
+            ensureIndirectCapacity(static_cast<uint32_t>(m_indirectCmds.size()));
 
-    flushBatch();
-    m_dirty = true;
-}
+            uint32_t totalVertices = world.getTotalVertexCount();
 
-void BatchQueue::render(rhi::IDevice* device) {
-    if (m_mergedVertices.empty() && m_indirectCmds.empty())
-        return;
+            if (totalVertices > m_vertexBufferCapacity)
+            {
+                SY_WARNF("BatchQueue::render: vertex buffer too small (%u < %u), expanding",
+                    m_vertexBufferCapacity, totalVertices);
+                if (m_vertexBuffer != rhi::NullHandle)
+                    device->destroyBuffer(m_vertexBuffer);
 
-    ensureVertexCapacity(static_cast<uint32_t>(m_mergedVertices.size()));
-    ensureIndirectCapacity(static_cast<uint32_t>(m_indirectCmds.size()));
+                uint32_t newCap = m_vertexBufferCapacity;
+                if (newCap == 0) newCap = 1024 * 1024;
+                while (newCap < totalVertices) newCap *= 2;
 
-    device->uploadBuffer(m_vertexBuffer, 0,
-                         m_mergedVertices.size() * sizeof(VertexP3C3),
-                         m_mergedVertices.data());
-    device->uploadBuffer(m_indirectBuffer, 0,
-                         m_indirectCmds.size() * sizeof(DrawIndirectCmd),
-                         m_indirectCmds.data());
+                rhi::BufferDesc desc;
+                desc.size = newCap * sizeof(VertexP3C3);
+                desc.usage = rhi::BufferUsage::Vertex;
+                desc.memory = rhi::MemoryType::GPU_CPU_Coherent;
+                desc.debugName = "BatchQueue_VertexBuffer";
+                m_vertexBuffer = device->createBuffer(desc);
+                m_vertexBufferCapacity = newCap;
+            }
 
-    for (const Batch& batch : m_batches) {
-        device->bindPipeline(m_pipelines[static_cast<uint32_t>(batch.type)]);
-        device->bindVertexBuffer(0, m_vertexBuffer,
-                                 batch.firstVertex * sizeof(VertexP3C3));
-        device->setLineWidth(batch.lineWidth);
-        device->drawIndirect(m_indirectBuffer,
-                             batch.firstIndirect * sizeof(DrawIndirectCmd),
-                             batch.indirectCount,
-                             sizeof(DrawIndirectCmd));
-    }
+            device->uploadBuffer(m_vertexBuffer, 0,
+                totalVertices * sizeof(VertexP3C3),
+                world.getVertexData());
 
-    m_dirty = false;
-}
+            if (m_dirty)
+            {
+                if (m_dirtyRanges.empty())
+                {
+                    device->uploadBuffer(m_indirectBuffer, 0,
+                        m_indirectCmds.size() * sizeof(DrawIndirectCmd),
+                        m_indirectCmds.data());
+                }
+                else
+                {
+                    for (const auto& range : m_dirtyRanges)
+                    {
+                        uint64_t offset = range.offset * sizeof(DrawIndirectCmd);
+                        uint64_t size = range.size * sizeof(DrawIndirectCmd);
+                        device->uploadBuffer(m_indirectBuffer, offset, size,
+                            m_indirectCmds.data() + range.offset);
+                    }
+                }
+                m_dirty = false;
+            }
 
-void BatchQueue::ensureVertexCapacity(uint32_t vertexCount) {
-    if (vertexCount <= m_vertexBufferCapacity)
-        return;
+            device->bindVertexBuffer(0, m_vertexBuffer, 0);
 
-    uint32_t newCap = m_vertexBufferCapacity;
-    if (newCap == 0) newCap = 4096;
-    while (newCap < vertexCount) newCap *= 2;
+            for (const Batch& batch : m_batches)
+            {
+                device->bindPipeline(m_pipelines[static_cast<uint32_t>(batch.type)]);
+                device->setUniformMatrix3("uViewMatrix", viewMatrix);
+                device->setLineWidth(batch.lineWidth);
+                device->drawIndirect(m_indirectBuffer,
+                    batch.firstIndirect * sizeof(DrawIndirectCmd),
+                    batch.indirectCount,
+                    sizeof(DrawIndirectCmd));
+            }
+        }
 
-    if (m_vertexBuffer != rhi::NullHandle)
-        m_device->destroyBuffer(m_vertexBuffer);
+        void BatchQueue::ensureIndirectCapacity(uint32_t cmdCount)
+        {
+            if (cmdCount <= m_indirectBufferCapacity)
+                return;
 
-    rhi::BufferDesc desc;
-    desc.size       = newCap * sizeof(VertexP3C3);
-    desc.usage      = rhi::BufferUsage::Vertex;
-    desc.memory     = rhi::MemoryType::GPU_Only;
-    desc.debugName  = "BatchQueue_VB";
+            uint32_t newCap = m_indirectBufferCapacity;
+            if (newCap == 0) newCap = 512;
+            while (newCap < cmdCount) newCap *= 2;
 
-    m_vertexBuffer = m_device->createBuffer(desc);
-    m_vertexBufferCapacity = newCap;
-}
+            if (m_indirectBuffer != rhi::NullHandle)
+                m_device->destroyBuffer(m_indirectBuffer);
 
-void BatchQueue::ensureIndirectCapacity(uint32_t cmdCount) {
-    if (cmdCount <= m_indirectBufferCapacity)
-        return;
+            rhi::BufferDesc desc;
+            desc.size = newCap * sizeof(DrawIndirectCmd);
+            desc.usage = rhi::BufferUsage::Indirect;
+            desc.memory = rhi::MemoryType::GPU_CPU_Coherent;
+            desc.debugName = "BatchQueue_Indirect";
 
-    uint32_t newCap = m_indirectBufferCapacity;
-    if (newCap == 0) newCap = 512;
-    while (newCap < cmdCount) newCap *= 2;
+            m_indirectBuffer = m_device->createBuffer(desc);
+            m_indirectBufferCapacity = newCap;
+        }
 
-    if (m_indirectBuffer != rhi::NullHandle)
-        m_device->destroyBuffer(m_indirectBuffer);
+        void BatchQueue::buildPipelines(rhi::IDevice* device)
+        {
+            static const char* kVertexShader = "passthrough_vert";
+            static const char* kFragmentShader = "passthrough_frag";
 
-    rhi::BufferDesc desc;
-    desc.size       = newCap * sizeof(DrawIndirectCmd);
-    desc.usage      = rhi::BufferUsage::Indirect;
-    desc.memory     = rhi::MemoryType::GPU_Only;
-    desc.debugName  = "BatchQueue_Indirect";
+            rhi::PrimitiveTopology topoMap[PRIMITIVE_TYPE_COUNT] = {
+                rhi::PrimitiveTopology::PointList,
+                rhi::PrimitiveTopology::LineList,
+                rhi::PrimitiveTopology::LineStrip,
+                rhi::PrimitiveTopology::LineLoop,
+                rhi::PrimitiveTopology::TriangleList,
+                rhi::PrimitiveTopology::TriangleStrip,
+                rhi::PrimitiveTopology::TriangleFan,
+            };
 
-    m_indirectBuffer = m_device->createBuffer(desc);
-    m_indirectBufferCapacity = newCap;
-}
+            for (uint32_t i = 0; i < PRIMITIVE_TYPE_COUNT; ++i)
+            {
+                rhi::PipelineDesc desc;
+                desc.topology = topoMap[i];
+                desc.vertexShader = kVertexShader;
+                desc.fragmentShader = kFragmentShader;
+                desc.computeShader = nullptr;
+                desc.vertexFormat = rhi::VertexFormat::P3C3;
+                desc.depthTest = false;
+                desc.depthWrite = false;
+                desc.blendEnable = true;
+                desc.srcBlend = rhi::BlendFactor::SrcAlpha;
+                desc.dstBlend = rhi::BlendFactor::OneMinusSrcAlpha;
+                desc.depthFunc = rhi::CompareFunc::Always;
 
-void BatchQueue::buildPipelines(rhi::IDevice* device) {
-    static const char* kVertexShader = "passthrough_vert";
-    static const char* kFragmentShader = "passthrough_frag";
+                m_pipelines[i] = device->createPipeline(desc);
+            }
+        }
 
-    rhi::PrimitiveTopology topoMap[PRIMITIVE_TYPE_COUNT] = {
-        rhi::PrimitiveTopology::PointList,
-        rhi::PrimitiveTopology::LineList,
-        rhi::PrimitiveTopology::LineStrip,
-        rhi::PrimitiveTopology::LineLoop,
-        rhi::PrimitiveTopology::TriangleList,
-        rhi::PrimitiveTopology::TriangleStrip,
-        rhi::PrimitiveTopology::TriangleFan,
-    };
+        void BatchQueue::mergeDirtyRanges()
+        {
+            if (m_dirtyRanges.size() <= 1)
+                return;
 
-    for (uint32_t i = 0; i < PRIMITIVE_TYPE_COUNT; ++i) {
-        rhi::PipelineDesc desc;
-        desc.topology       = topoMap[i];
-        desc.vertexShader   = kVertexShader;
-        desc.fragmentShader = kFragmentShader;
-        desc.computeShader  = nullptr;
-        desc.depthTest      = false;
-        desc.depthWrite     = false;
-        desc.blendEnable    = true;
-        desc.srcBlend       = rhi::BlendFactor::SrcAlpha;
-        desc.dstBlend       = rhi::BlendFactor::OneMinusSrcAlpha;
-        desc.depthFunc      = rhi::CompareFunc::Always;
+            std::sort(m_dirtyRanges.begin(), m_dirtyRanges.end(),
+                [](const DirtyRange& a, const DirtyRange& b) {
+                    return a.offset < b.offset;
+                });
 
-        m_pipelines[i] = device->createPipeline(desc);
-    }
-}
+            std::vector<DirtyRange> merged;
+            merged.push_back(m_dirtyRanges[0]);
 
-} // namespace core
+            for (size_t i = 1; i < m_dirtyRanges.size(); ++i)
+            {
+                DirtyRange& last = merged.back();
+                if (m_dirtyRanges[i].offset <= last.offset + last.size)
+                {
+                    last.size = std::max(last.size, m_dirtyRanges[i].offset + m_dirtyRanges[i].size - last.offset);
+                }
+                else
+                {
+                    merged.push_back(m_dirtyRanges[i]);
+                }
+            }
+
+            m_dirtyRanges.swap(merged);
+        }
+    } // namespace core
 } // namespace render

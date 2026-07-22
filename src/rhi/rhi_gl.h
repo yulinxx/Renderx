@@ -1,8 +1,24 @@
+/**
+ * @file rhi_gl.h
+ * @brief OpenGL 渲染设备实现
+ * 
+ * GLDevice 是 IDevice 接口的 OpenGL 实现，提供了基于 OpenGL 4.6 的图形渲染能力。
+ * 主要功能包括：
+ * - 缓冲区管理（顶点缓冲、索引缓冲、间接命令缓冲）
+ * - 纹理管理（2D纹理上传和绑定）
+ * - 图形管线管理（着色器编译、程序链接、管线状态设置）
+ * - 绘制命令执行（立即绘制、间接绘制、实例化绘制）
+ * - 渲染状态管理（深度测试、混合、清除颜色等）
+ * 
+ * 使用 gl_loader 动态加载 OpenGL 函数指针，确保跨平台兼容性。
+ */
 #pragma once
 #include "rhi_device.h"
 #include "../platform/gl_loader.h"
 
 #include <vector>
+#include <unordered_map>
+#include <string>
 
 namespace render::rhi {
 
@@ -17,12 +33,15 @@ struct GLBufferEntry {
 struct GLPipelineEntry {
     uint32_t program = 0;
     PrimitiveTopology topology = PrimitiveTopology::TriangleList;
+    VertexFormat vertexFormat = VertexFormat::P3C3;
     bool depthTest   = false;
     bool depthWrite  = false;
     bool blendEnable = false;
     BlendFactor srcBlend = BlendFactor::One;
     BlendFactor dstBlend = BlendFactor::Zero;
     CompareFunc depthFunc = CompareFunc::Less;
+    
+    std::unordered_map<std::string, int32_t> uniformLocations;
 };
 
 struct GLTextureEntry {
@@ -66,6 +85,13 @@ public:
     void setViewport(const Viewport&) override;
     void setScissor(const Scissor&) override;
     void setLineWidth(float width) override;
+    
+    void setUniformMatrix3(const char* name, const float* data) override;
+    void setUniformMatrix4(const char* name, const float* data) override;
+    void setUniformFloat(const char* name, float value) override;
+    void setUniformVec2(const char* name, const float* data) override;
+    void setUniformVec3(const char* name, const float* data) override;
+    void setUniformVec4(const char* name, const float* data) override;
 
     void draw(uint32_t vertexCount, uint32_t instanceCount, uint32_t firstVertex, uint32_t firstInstance) override;
     void drawIndexed(uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, int32_t vertexOffset, uint32_t firstInstance) override;
@@ -89,6 +115,9 @@ private:
     uint32_t formatToGLInternal(Format fmt) const;
     uint32_t formatToGLFormat(Format fmt) const;
     uint32_t formatToGLType(Format fmt) const;
+    uint32_t getFormatBytesPerPixel(Format fmt) const;
+    
+    void configureVertexAttribs(GLFuncs* g, PrimitiveTopology topo, VertexFormat fmt);
 
     BufferHandle   allocBufferHandle();
     TextureHandle  allocTextureHandle();

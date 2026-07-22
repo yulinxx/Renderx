@@ -326,6 +326,10 @@ typedef void   (RENDER_GLAPI *PFNGLUNIFORMMATRIX3FVPROC)(GLint location, GLsizei
 typedef void   (RENDER_GLAPI *PFNGLUNIFORMMATRIX4FVPROC)(GLint location, GLsizei count, GLboolean transpose, const GLfloat* value);
 typedef void   (RENDER_GLAPI *PFNGLUNIFORM1UIPROC)(GLint location, GLuint v0);
 typedef void   (RENDER_GLAPI *PFNGLUNIFORM2UIPROC)(GLint location, GLuint v0, GLuint v1);
+typedef void   (RENDER_GLAPI *PFNGLUNIFORM1FVPROC)(GLint location, GLsizei count, const GLfloat* value);
+typedef void   (RENDER_GLAPI *PFNGLUNIFORM2FVPROC)(GLint location, GLsizei count, const GLfloat* value);
+typedef void   (RENDER_GLAPI *PFNGLUNIFORM3FVPROC)(GLint location, GLsizei count, const GLfloat* value);
+typedef void   (RENDER_GLAPI *PFNGLUNIFORM4FVPROC)(GLint location, GLsizei count, const GLfloat* value);
 
 typedef void   (RENDER_GLAPI *PFNGLGENTEXTURESPROC)(GLsizei n, GLuint* textures);
 typedef void   (RENDER_GLAPI *PFNGLDELETETEXTURESPROC)(GLsizei n, const GLuint* textures);
@@ -451,6 +455,10 @@ struct GLFuncs {
     PFNGLUNIFORMMATRIX4FVPROC        UniformMatrix4fv;
     PFNGLUNIFORM1UIPROC              Uniform1ui;
     PFNGLUNIFORM2UIPROC              Uniform2ui;
+    PFNGLUNIFORM1FVPROC              Uniform1fv;
+    PFNGLUNIFORM2FVPROC              Uniform2fv;
+    PFNGLUNIFORM3FVPROC              Uniform3fv;
+    PFNGLUNIFORM4FVPROC              Uniform4fv;
 
     PFNGLGENTEXTURESPROC             GenTextures;
     PFNGLDELETETEXTURESPROC          DeleteTextures;
