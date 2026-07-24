@@ -96,6 +96,9 @@ namespace render
 
             if (!needsRebuild)
             {
+                // SY_INFOF("BatchQueue::submit: no rebuild needed (lastCount=%u, count=%u, lastGen=%u, curGen=%u)",
+                //     m_lastVisibleCount, count, m_lastGeneration, world.getGeneration());
+
                 m_dirtyRanges.clear();
                 const auto* entries = world.getEntityEntries();
                 for (uint32_t i = 0; i < count; i++)
@@ -117,6 +120,8 @@ namespace render
             m_dirtyRanges.clear();
             m_indirectCmds.clear();
             m_batches.clear();
+
+            // SY_INFOF("BatchQueue::submit: REBUILD path, count=%u, entries=%zu", count, world.getEntityCount());
 
             struct SortEntry
             {
@@ -210,6 +215,9 @@ namespace render
 
             flushBatch();
 
+            // SY_INFOF("BatchQueue::submit: count=%u, indirectCmds=%zu, batches=%zu, dirty=%d",
+            //     count, m_indirectCmds.size(), m_batches.size(), m_dirty ? 1 : 0);
+
             m_lastVisibleCount = count;
             m_lastVisibleIndices.resize(count);
             std::memcpy(m_lastVisibleIndices.data(), visibleIndices, count * sizeof(uint32_t));
@@ -219,7 +227,10 @@ namespace render
         void BatchQueue::render(rhi::IDevice* device, const float viewMatrix[9], const RenderWorld& world)
         {
             if (m_batches.empty())
+            {
+                SY_WARNF("BatchQueue::render: m_batches is EMPTY, skipping render");
                 return;
+            }
 
             ensureIndirectCapacity(static_cast<uint32_t>(m_indirectCmds.size()));
 
@@ -274,6 +285,9 @@ namespace render
 
             for (const Batch& batch : m_batches)
             {
+                // SY_INFOF("BatchQueue::render: batch type=%u, firstIndirect=%u, count=%u, lineWidth=%.2f",
+                //     static_cast<uint32_t>(batch.type), batch.firstIndirect, batch.indirectCount, batch.lineWidth);
+
                 device->bindPipeline(m_pipelines[static_cast<uint32_t>(batch.type)]);
                 device->setUniformMatrix3("uViewMatrix", viewMatrix);
                 device->setLineWidth(batch.lineWidth);

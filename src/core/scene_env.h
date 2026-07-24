@@ -55,7 +55,7 @@ public:
                      const uint32_t* layerColors, const float* lineWidths);
 
     /**
-     * @brief 设置场景环境几何数据（完整版本，支持像素坐标）
+     * @brief 设置场景环境几何数据（完整版本，支持像素坐标和深度排序）
      * 
      * @param vertices 顶点数据
      * @param vertexCount 顶点数量
@@ -64,11 +64,14 @@ public:
      * @param layerColors 各层的颜色数组（RGBA格式，每个通道8位）
      * @param lineWidths 各层的线宽数组
      * @param pixelFlags 各层是否使用像素坐标的标志数组
+     * @param triangleFlags 各层是否作为三角形渲染的标志数组
+     * @param zDepths 各层的深度值数组，用于排序渲染顺序
      */
     void setGeometryEx(const VertexP3C3* vertices, uint32_t vertexCount,
                        const uint32_t* layerOffsets, uint32_t layerCount,
                        const uint32_t* layerColors, const float* lineWidths,
-                       const bool* pixelFlags);
+                       const bool* pixelFlags, const bool* triangleFlags,
+                       const float* zDepths);
 
     /**
      * @brief 渲染场景环境（简化版本）
@@ -101,6 +104,7 @@ private:
             uint32_t vertexCount;   ///< 顶点数量
             float    color[4];      ///< 渲染颜色 RGBA
             float    lineWidth;     ///< 线宽（像素）
+            float    zDepth;        ///< 深度值，用于排序渲染顺序
             bool     asTriangles;   ///< 是否作为三角形渲染（否则作为线渲染）
             bool     usePixelCoords;///< 是否使用像素坐标（否则使用世界坐标）
         };

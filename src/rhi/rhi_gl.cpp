@@ -26,20 +26,6 @@ namespace render::rhi
         m_width = width;
         m_height = height;
 
-#ifdef _WIN32
-        auto getProcAddr = [](const char* name) -> void* {
-            return (void*)wglGetProcAddress(name);
-            };
-#elif defined(__linux__)
-        auto getProcAddr = [](const char* name) -> void* {
-            return (void*)glXGetProcAddress((const GLubyte*)name);
-            };
-#elif defined(__APPLE__)
-        auto getProcAddr = [](const char* name) -> void* {
-            return nullptr;
-            };
-#endif
-
         if (!gl_loader_init(nullptr))
         {
             std::fprintf(stderr, "[RHI_GL] gl_loader_init failed\n");
@@ -570,9 +556,17 @@ namespace render::rhi
         if (!entry.glName) return;
 
         auto* g = gl();
+        // 根据当前管线的顶点格式计算跨度，避免 stride=0 被误算为单个属性大小
+        GLsizei stride = 0;
+        if (m_currentPipeline != NullHandle)
+        {
+            VertexFormat fmt = m_pipelines[size_t(m_currentPipeline - 1)].vertexFormat;
+            stride = static_cast<GLsizei>(vertexFormatStride(fmt));
+        }
+
         if (g->VertexArrayVertexBuffer)
         {
-            g->VertexArrayVertexBuffer(m_vao, slot, entry.glName, (GLintptr)offset, 0);
+            g->VertexArrayVertexBuffer(m_vao, slot, entry.glName, (GLintptr)offset, stride);
         }
         else
         {
@@ -1060,6 +1054,19 @@ namespace render::rhi
             case Format::R8:      return 1;
         }
         return 4;
+    }
+
+    uint32_t GLDevice::vertexFormatStride(VertexFormat fmt) const
+    {
+        switch (fmt)
+        {
+            case VertexFormat::P3C3:   return 6 * sizeof(float); // pos(3) + col(3) = 24
+            case VertexFormat::P3C4:   return 7 * sizeof(float); // pos(3) + col(4) = 28
+            case VertexFormat::P3N3:   return 6 * sizeof(float); // pos(3) + nor(3) = 24
+            case VertexFormat::P3T2:   return 5 * sizeof(float); // pos(3) + uv(2) = 20
+            case VertexFormat::P3T2C4: return 9 * sizeof(float); // pos(3) + uv(2) + col(4) = 36
+        }
+        return 0;
     }
 
     void GLDevice::configureVertexAttribs(GLFuncs* g, PrimitiveTopology topo, VertexFormat fmt)

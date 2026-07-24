@@ -116,7 +116,9 @@ private:
     uint32_t formatToGLFormat(Format fmt) const;
     uint32_t formatToGLType(Format fmt) const;
     uint32_t getFormatBytesPerPixel(Format fmt) const;
-    
+    // 计算顶点格式的跨度（字节数）
+    uint32_t vertexFormatStride(VertexFormat fmt) const;
+
     void configureVertexAttribs(GLFuncs* g, PrimitiveTopology topo, VertexFormat fmt);
 
     BufferHandle   allocBufferHandle();

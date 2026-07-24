@@ -246,6 +246,17 @@ RENDER_API void renderSetView3D(RenderDevice* dev, const float viewMatrix[16],
 RENDER_API void renderSetViewMode(RenderDevice* dev, ViewMode mode);
 
 /**
+ * @brief 设置清屏颜色
+ * 
+ * @param dev 渲染设备
+ * @param r 红色分量（0~1）
+ * @param g 绿色分量（0~1）
+ * @param b 蓝色分量（0~1）
+ * @param a 透明度分量（0~1）
+ */
+RENDER_API void renderSetClearColor(RenderDevice* dev, float r, float g, float b, float a);
+
+/**
  * @brief 设置覆盖层数据
  * 
  * @param dev 渲染设备
@@ -351,7 +362,8 @@ RENDER_API void renderSetSceneEnv(RenderDevice* dev, const VertexP3C3* vertices,
 RENDER_API void renderSetSceneEnvEx(RenderDevice* dev, const VertexP3C3* vertices,
                                     uint32_t vertexCount, const uint32_t* layerOffsets,
                                     uint32_t layerCount, const uint32_t* layerColors,
-                                    const float* layerWidths, const bool* pixelFlags);
+                                    const float* layerWidths, const bool* pixelFlags,
+                                    const bool* triangleFlags, const float* zDepths);
 
 /**
  * @brief 设置位图图像（用于显示图片覆盖层）

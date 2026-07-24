@@ -55,6 +55,9 @@ namespace render
         /// 视图模式（2D/3D）
         ViewMode             viewMode = ViewMode::Mode2D;
 
+        /// 清屏颜色（由 renderSetClearColor 设置）
+        float                clearColor[4] = { 0.94f, 0.94f, 0.94f, 1.0f };
+
         /// 2D 视图描述
         ViewDesc2D           view2D = {};
         /// 3D 视图描述
@@ -451,6 +454,19 @@ extern "C" {
         }
     }
 
+    RENDER_API void renderSetClearColor(RenderDevice* dev, float r, float g, float b, float a)
+    {
+        if (!dev) return;
+        dev->clearColor[0] = r;
+        dev->clearColor[1] = g;
+        dev->clearColor[2] = b;
+        dev->clearColor[3] = a;
+        if (dev->rhiDevice)
+        {
+            dev->rhiDevice->setClearColor(r, g, b, a);
+        }
+    }
+
     /**
      * @brief 设置叠加层数据
      *
@@ -581,11 +597,12 @@ extern "C" {
     RENDER_API void renderSetSceneEnvEx(RenderDevice* dev, const VertexP3C3* vertices,
         uint32_t vertexCount, const uint32_t* layerOffsets,
         uint32_t layerCount, const uint32_t* layerColors,
-        const float* layerWidths, const bool* pixelFlags)
+        const float* layerWidths, const bool* pixelFlags,
+        const bool* triangleFlags, const float* zDepths)
     {
         if (!dev) return;
         dev->sceneEnv.setGeometryEx(vertices, vertexCount, layerOffsets, layerCount,
-            layerColors, layerWidths, pixelFlags);
+            layerColors, layerWidths, pixelFlags, triangleFlags, zDepths);
     }
 
     /**
@@ -637,7 +654,7 @@ extern "C" {
 
         if (dev->viewMode == ViewMode::Mode2D)
         {
-            rhi->setClearColor(1.0f, 0.98f, 0.86f, 1.0f);
+            rhi->setClearColor(dev->clearColor[0], dev->clearColor[1], dev->clearColor[2], dev->clearColor[3]);
             rhi->enableDepthTest(false);
         }
         else
@@ -669,6 +686,13 @@ extern "C" {
                 for (uint32_t i = 0; i < maxVisible; ++i)
                     dev->visibleIndices[i] = i;
             }
+
+            SY_INFOF("R2D:e=%u v=%u s=%.4f tx=%.2f ty=%.2f vp=%.0fx%.0f",
+                maxVisible, visibleCount,
+                dev->view2D.viewMatrix[0],
+                dev->view2D.viewMatrix[6],
+                dev->view2D.viewMatrix[7],
+                dev->view2D.viewWidth, dev->view2D.viewHeight);
 
             dev->sceneEnv.render(rhi, dev->view2D.viewMatrix,
                 static_cast<uint32_t>(dev->view2D.viewWidth),
@@ -784,6 +808,7 @@ extern "C" {
             SY_ERROR("renderBeginScene: dev is null");
             return;
         }
+        SY_INFOF("renderBeginScene: clearing world2D (had %u entities)", dev->world2D.getEntityCount());
         dev->world2D.clearAllEntities();
         dev->pendingTextItems.clear();
         s_entityIdCounter = 1;
@@ -949,6 +974,7 @@ extern "C" {
     RENDER_API void renderEndScene(RenderDevice* dev)
     {
         if (!dev) return;
+        SY_INFOF("renderEndScene: world2D now has %u entities", dev->world2D.getEntityCount());
     }
 
     /**
@@ -965,6 +991,16 @@ extern "C" {
         {
             SY_ERROR("renderEmitPolyline: dev or polyline is null");
             return;
+        }
+
+        static uint32_t s_emitCount = 0;
+        if (s_emitCount < 3)
+        {
+            SY_INFOF("renderEmitPolyline[%u]: points=%u, closed=%d, firstPt=(%.2f,%.2f), color=(%.2f,%.2f,%.2f)",
+                s_emitCount, polyline->pointCount, polyline->closed ? 1 : 0,
+                polyline->points[0].x, polyline->points[0].y,
+                polyline->color[0], polyline->color[1], polyline->color[2]);
+            s_emitCount++;
         }
 
         std::vector<render::VertexP3C3> vertices;

@@ -36,7 +36,11 @@ namespace render::core
             desc.depthFunc = rhi::CompareFunc::Always;
             m_linePipeline = device->createPipeline(desc);
             if (m_linePipeline == rhi::NullHandle)
+            {
+                SY_ERROR("SceneEnv::initialize: line pipeline creation failed");
                 return false;
+            }
+            SY_INFOF("SceneEnv::initialize: line pipeline created, handle=%u", m_linePipeline);
         }
 
         {
@@ -54,9 +58,14 @@ namespace render::core
             desc.depthFunc = rhi::CompareFunc::Always;
             m_trianglePipeline = device->createPipeline(desc);
             if (m_trianglePipeline == rhi::NullHandle)
+            {
+                SY_ERROR("SceneEnv::initialize: triangle pipeline creation failed");
                 return false;
+            }
+            SY_INFOF("SceneEnv::initialize: triangle pipeline created, handle=%u", m_trianglePipeline);
         }
 
+        SY_INFOF("SceneEnv::initialize: vertex buffer=%u", m_vertexBuffer);
         return true;
     }
 
@@ -92,13 +101,14 @@ namespace render::core
         const uint32_t* layerColors, const float* lineWidths)
     {
         setGeometryEx(vertices, vertexCount, layerOffsets, layerCount,
-            layerColors, lineWidths, nullptr);
+            layerColors, lineWidths, nullptr, nullptr, nullptr);
     }
 
     void SceneEnv::setGeometryEx(const VertexP3C3* vertices, uint32_t vertexCount,
         const uint32_t* layerOffsets, uint32_t layerCount,
         const uint32_t* layerColors, const float* lineWidths,
-        const bool* pixelFlags)
+        const bool* pixelFlags, const bool* triangleFlags,
+        const float* zDepths)
     {
         m_vertices.assign(vertices, vertices + vertexCount);
 
@@ -118,7 +128,8 @@ namespace render::core
             layer.color[3] = static_cast<float>((col >> 24) & 0xFF) / 255.0f;
 
             layer.lineWidth = lineWidths[i];
-            layer.asTriangles = (layer.vertexCount % 3 == 0) && (layer.vertexCount > 0);
+            layer.zDepth = zDepths ? zDepths[i] : 0.0f;
+            layer.asTriangles = triangleFlags ? triangleFlags[i] : ((layer.vertexCount % 3 == 0) && (layer.vertexCount > 0));
             layer.usePixelCoords = pixelFlags ? pixelFlags[i] : false;
         }
 
@@ -131,44 +142,74 @@ namespace render::core
     }
 
     void SceneEnv::render(rhi::IDevice* device, const float viewMatrix[9],
-                      uint32_t viewportWidth, uint32_t viewportHeight)
-{
-    if (m_layers.empty())
-        return;
+        uint32_t viewportWidth, uint32_t viewportHeight)
+    {
+        // SY_TRACEF("SceneEnv::render: layers=%zu, vertices=%zu, dirty=%d, viewport=%ux%u",
+        //     m_layers.size(), m_vertices.size(), m_dirty ? 1 : 0, viewportWidth, viewportHeight);
 
-    if (m_dirty) {
-        if (!m_vertices.empty()) {
-            device->uploadBuffer(m_vertexBuffer, 0,
-                                 m_vertices.size() * sizeof(VertexP3C3),
-                                 m_vertices.data());
+        if (m_layers.empty())
+            return;
+
+        if (m_dirty)
+        {
+            if (!m_vertices.empty())
+            {
+                // SY_TRACEF("SceneEnv::render: uploading %zu vertices to GPU", m_vertices.size());
+                device->uploadBuffer(m_vertexBuffer, 0,
+                    m_vertices.size() * sizeof(VertexP3C3),
+                    m_vertices.data());
+            }
+            m_dirty = false;
         }
-        m_dirty = false;
+
+        float pixelMatrix[9] = {
+            2.0f / float(viewportWidth), 0.0f, 0.0f,
+            0.0f, -2.0f / float(viewportHeight), 0.0f,
+            -1.0f, 1.0f, 1.0f
+        };
+
+        std::vector<size_t> layerIndices(m_layers.size());
+        for (size_t i = 0; i < m_layers.size(); ++i)
+            layerIndices[i] = i;
+
+        std::sort(layerIndices.begin(), layerIndices.end(),
+            [this](size_t a, size_t b) {
+                const EnvLayer& la = m_layers[a];
+                const EnvLayer& lb = m_layers[b];
+                return la.zDepth < lb.zDepth;
+            });
+
+        for (size_t idx : layerIndices)
+        {
+            const auto& layer = m_layers[idx];
+            if (layer.vertexCount == 0)
+                continue;
+
+            rhi::PipelineHandle pipe = layer.asTriangles ? m_trianglePipeline : m_linePipeline;
+            
+            if (pipe == rhi::NullHandle)
+            {
+                SY_ERRORF("SceneEnv::render: layer[%zu] pipeline is NullHandle!", idx);
+                continue;
+            }
+            
+            if (m_vertexBuffer == rhi::NullHandle)
+            {
+                SY_ERROR("SceneEnv::render: vertex buffer is NullHandle!");
+                continue;
+            }
+
+            // SY_TRACEF("SceneEnv::render: drawing layer[%zu], %u vertices, pipe=%u", 
+            //           idx, layer.vertexCount, pipe);
+
+            device->bindPipeline(pipe);
+
+            const float* matrix = layer.usePixelCoords ? pixelMatrix : viewMatrix;
+            device->setUniformMatrix3("uViewMatrix", matrix);
+
+            device->bindVertexBuffer(0, m_vertexBuffer, layer.firstVertex * sizeof(VertexP3C3));
+            device->setLineWidth(layer.lineWidth);
+            device->draw(layer.vertexCount, 1, 0, 0);
+        }
     }
-
-    float pixelMatrix[9] = {
-        2.0f / float(viewportWidth), 0.0f, -1.0f,
-        0.0f, -2.0f / float(viewportHeight), 1.0f,
-        0.0f, 0.0f, 1.0f
-    };
-
-    for (size_t i = 0; i < m_layers.size(); ++i) {
-        const auto& layer = m_layers[i];
-        if (layer.vertexCount == 0)
-            continue;
-
-        // SY_DEBUGF("SceneEnv::render: layer[%zu]: %u vertices, color=(%.2f,%.2f,%.2f,%.2f), lineWidth=%.2f, pixelCoords=%d, triangles=%d",
-        //           i, layer.vertexCount, layer.color[0], layer.color[1], layer.color[2], layer.color[3],
-        //           layer.lineWidth, layer.usePixelCoords ? 1 : 0, layer.asTriangles ? 1 : 0);
-
-        rhi::PipelineHandle pipe = layer.asTriangles ? m_trianglePipeline : m_linePipeline;
-        device->bindPipeline(pipe);
-        
-        const float* matrix = layer.usePixelCoords ? pixelMatrix : viewMatrix;
-        device->setUniformMatrix3("uViewMatrix", matrix);
-        
-        device->bindVertexBuffer(0, m_vertexBuffer, layer.firstVertex * sizeof(VertexP3C3));
-        device->setLineWidth(layer.lineWidth);
-        device->draw(layer.vertexCount, 1, 0, 0);
-    }
-}
 }
