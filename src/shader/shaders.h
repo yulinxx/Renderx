@@ -37,10 +37,12 @@ extern const char* MESH_3D_INSTANCED_VERT;
 extern const char* TEXT_SDF_VERT;
 /// SDF文本渲染片段着色器
 extern const char* TEXT_SDF_FRAG;
-/// 3D高亮渲染顶点着色器
+/// 高亮渲染顶点着色器
 extern const char* HIGHLIGHT_3D_VERT;
-/// 3D高亮渲染片段着色器
+/// 高亮渲染片段着色器
 extern const char* HIGHLIGHT_3D_FRAG;
+/// GPU 剔除计算着色器
+extern const char* CULLING_COMP;
 
 /**
  * @brief 初始化 shader 系统

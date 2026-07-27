@@ -98,6 +98,34 @@ enum class VertexFormat : uint8_t {
     P3T2C4,  ///< 3D位置 + 2通道纹理坐标 + 4通道颜色 (36字节)
 };
 
+/// 内存屏障标志枚举（对应 OpenGL MemoryBarrier bits）
+enum class BarrierFlag : uint32_t
+{
+    None           = 0x00000000,
+    VertexAttrib   = 0x00000001,
+    ElementArray   = 0x00000002,
+    Uniform        = 0x00000004,
+    TextureFetch   = 0x00000008,
+    ShaderImage    = 0x00000020,
+    Command        = 0x00000040,
+    PixelBuffer    = 0x00000080,
+    TextureUpdate  = 0x00000100,
+    BufferUpdate   = 0x00000200,
+    Framebuffer    = 0x00000400,
+    Transform      = 0x00000800,
+    AtomicCounter  = 0x00001000,
+    ShaderStorage  = 0x00002000,
+    ClientMapped   = 0x00004000,
+    QueryBuffer    = 0x00008000,
+    All            = 0xFFFFFFFF,
+};
+
+inline BarrierFlag operator|(BarrierFlag a, BarrierFlag b)
+{
+    return static_cast<BarrierFlag>(
+        static_cast<uint32_t>(a) | static_cast<uint32_t>(b));
+}
+
 /**
  * @brief 缓冲区创建描述结构
  */

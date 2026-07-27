@@ -260,6 +260,69 @@ namespace render::rhi
         PipelineHandle handle = allocPipelineHandle();
         auto& entry = m_pipelines[size_t(handle - 1)];
 
+        // compute pipeline 分支：只需要 compute shader
+        if (desc.computeShader)
+        {
+            const char* csSource = desc.computeShader;
+
+            // compute shader 名称映射
+            if (std::strcmp(csSource, "culling_comp") == 0)
+                csSource = shader::CULLING_COMP;
+
+            uint32_t cs = compileShader(GL_COMPUTE_SHADER, csSource);
+            if (!cs)
+            {
+                entry = GLPipelineEntry{};
+                m_pipelineFreeList.push_back(uint32_t(handle - 1));
+                return NullHandle;
+            }
+
+            uint32_t prog = g->CreateProgram();
+            g->AttachShader(prog, cs);
+            g->LinkProgram(prog);
+            g->DeleteShader(cs);
+
+            GLint success = 0;
+            g->GetProgramiv(prog, GL_LINK_STATUS, &success);
+            if (!success)
+            {
+                GLint logLen = 0;
+                g->GetProgramiv(prog, GL_INFO_LOG_LENGTH, &logLen);
+                if (logLen > 0)
+                {
+                    char* log = new char[logLen];
+                    g->GetProgramInfoLog(prog, logLen, nullptr, log);
+                    std::fprintf(stderr, "[RHI_GL] Compute pipeline link error:\n%s\n", log);
+                    delete[] log;
+                }
+                g->DeleteProgram(prog);
+                entry = GLPipelineEntry{};
+                m_pipelineFreeList.push_back(uint32_t(handle - 1));
+                return NullHandle;
+            }
+
+            entry.program = prog;
+            entry.topology = rhi::PrimitiveTopology::PointList; // compute pipeline 不使用
+            entry.depthTest = false;
+            entry.depthWrite = false;
+            entry.blendEnable = false;
+
+            // 预注册 compute shader 的 uniform 位置
+            static const std::vector<std::string> computeUniforms = {
+                "uViewProjMatrix", "uEntityCount", "uModelMatrix"
+            };
+            for (const auto& name : computeUniforms)
+            {
+                GLint loc = g->GetUniformLocation(prog, name.c_str());
+                if (loc >= 0)
+                    entry.uniformLocations[name] = loc;
+            }
+
+            std::fprintf(stderr, "[RHI_GL] compute pipeline created: program=%u\n", prog);
+            return handle;
+        }
+
+        // 图形 pipeline 分支：需要 vertex + fragment shader
         const char* vsSource = desc.vertexShader;
         const char* fsSource = desc.fragmentShader;
 
@@ -856,6 +919,22 @@ namespace render::rhi
         if (loc >= 0)
         {
             g->Uniform1f(loc, value);
+        }
+    }
+
+    void GLDevice::setUniformInt(const char* name, int32_t value)
+    {
+        if (!name) return;
+        if (m_currentPipeline == NullHandle) return;
+        auto& entry = m_pipelines[size_t(m_currentPipeline - 1)];
+        if (!entry.program) return;
+
+        auto* g = gl();
+        auto it = entry.uniformLocations.find(name);
+        GLint loc = (it != entry.uniformLocations.end()) ? it->second : g->GetUniformLocation(entry.program, name);
+        if (loc >= 0)
+        {
+            g->Uniform1i(loc, value);
         }
     }
 

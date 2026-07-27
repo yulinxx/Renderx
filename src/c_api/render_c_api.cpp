@@ -3,7 +3,7 @@
  * @brief C API 实现文件
  *
  * 提供 Renderx 渲染框架的 C 语言 API，作为外部应用程序与渲染核心之间的桥梁。
- * 实现了设备创建/销毁、实体管理、视图设置、渲染帧等核心功能。
+ * 实现了设备创建/销毁、图元管理、视图设置、渲染帧等核心功能。
  */
 #include "render/render.h"
 #include "render/render_types.h"
@@ -12,6 +12,9 @@
 #include "core/overlay_queue.h"
 #include "core/command_encoder.h"
 #include "core/render_graph.h"
+#include "core/pipeline_state_manager.h"
+#include "core/draw_batcher.h"
+#include "core/persistent_entity_manager.h"
 #include "core/mesh_manager.h"
 #include "core/text_atlas.h"
 #include "core/scene_env.h"
@@ -41,9 +44,9 @@ namespace render
         /// RHI 设备接口
         rhi::IDevice* rhiDevice = nullptr;
 
-        /// 2D 渲染世界（实体管理和可见性查询）
+        /// 2D 渲染世界（图元管理和可见性查询）
         core::RenderWorld    world2D;
-        /// 批处理队列（2D 实体批处理渲染）
+        /// 批处理队列（2D 图元批处理渲染）
         core::BatchQueue     batchQueue;
         /// 叠加层队列（UI 元素渲染）
         core::OverlayQueue   overlayQueue;
@@ -55,8 +58,14 @@ namespace render
         core::SceneEnv       sceneEnv;
         /// 统一命令编码器（Phase 3 新增，统一 overlay / world 绘制命令）
         core::CommandEncoder commandEncoder;
-        /// 渲染图（Phase 4 新增，显式 Pass 调度层）
+        /// 显式 Pass 调度器（Phase 4 新增，线性顺序执行器）
         core::RenderGraph    renderGraph;
+        /// 管线状态管理器（Phase 7 新增，缓存与复用 RHI 管线）
+        core::PipelineStateManager pipelineStateManager;
+        /// 绘制合批器（Phase 8 新增，overlay MDI 合批）
+        core::DrawBatcher    drawBatcher;
+        /// 持久图元管理器（Phase 9 新增，SSBO + GPU 剔除）
+        core::PersistentEntityManager persistentEntityManager;
 
         /// 视图模式（2D/3D）
         ViewMode             viewMode = ViewMode::Mode2D;
@@ -75,7 +84,7 @@ namespace render
         /// 是否已初始化
         bool                 initialized = false;
 
-        /// 可见实体索引缓存
+        /// 可见图元索引缓存
         std::vector<uint32_t> visibleIndices;
 
         /// 帧计数器（用于日志节流，每60帧输出一次统计）
@@ -157,6 +166,14 @@ extern "C" {
         dev->overlayQueue.initialize(dev->rhiDevice);
         dev->commandEncoder.initialize(dev->rhiDevice);
         dev->renderGraph.initialize(dev->rhiDevice);
+        dev->pipelineStateManager.initialize(dev->rhiDevice);
+        // Phase 7: 将 PSM 注入 CommandEncoder，使其复用管线缓存
+        dev->commandEncoder.setPipelineStateManager(&dev->pipelineStateManager);
+        // Phase 8: 初始化 DrawBatcher 并注入 CommandEncoder
+        dev->drawBatcher.initialize(dev->rhiDevice);
+        dev->commandEncoder.setDrawBatcher(&dev->drawBatcher);
+        // Phase 9: 初始化持久图元管理器（默认容量 65536）
+        dev->persistentEntityManager.initialize(dev->rhiDevice, 65536);
         dev->meshManager.initialize(dev->rhiDevice);
         dev->textAtlas.initialize(dev->rhiDevice);
         dev->sceneEnv.initialize(dev->rhiDevice);
@@ -180,6 +197,9 @@ extern "C" {
         dev->sceneEnv.shutdown();
         dev->textAtlas.shutdown();
         dev->meshManager.shutdown();
+        dev->persistentEntityManager.shutdown(); // Phase 9
+        dev->drawBatcher.shutdown();       // Phase 8
+        dev->pipelineStateManager.shutdown();
         dev->renderGraph.shutdown();
         dev->commandEncoder.shutdown();
         dev->overlayQueue.shutdown();
@@ -210,10 +230,10 @@ extern "C" {
     }
 
     /**
-     * @brief 添加实体到渲染世界
+     * @brief 添加图元到渲染世界
      *
      * @param dev 渲染设备指针
-     * @param id 实体ID
+     * @param id 图元ID
      * @param vertices 顶点数据
      * @param vertexCount 顶点数量
      * @param type 图元类型
@@ -230,10 +250,10 @@ extern "C" {
     }
 
     /**
-     * @brief 修改实体的顶点数据
+     * @brief 修改图元的顶点数据
      *
      * @param dev 渲染设备指针
-     * @param id 实体ID
+     * @param id 图元ID
      * @param vertices 新的顶点数据
      * @param vertexCount 顶点数量
      * @param materialIdx 材质索引
@@ -247,10 +267,10 @@ extern "C" {
     }
 
     /**
-     * @brief 从渲染世界移除实体
+     * @brief 从渲染世界移除图元
      *
      * @param dev 渲染设备指针
-     * @param id 实体ID
+     * @param id 图元ID
      */
     RENDER_API void renderRemoveEntity(RenderDevice* dev, EntityId id)
     {
@@ -259,10 +279,10 @@ extern "C" {
     }
 
     /**
-     * @brief 设置实体可见性
+     * @brief 设置图元可见性
      *
      * @param dev 渲染设备指针
-     * @param id 实体ID
+     * @param id 图元ID
      * @param visible 是否可见（非0表示可见）
      */
     RENDER_API void renderSetEntityVisibility(RenderDevice* dev, EntityId id, int32_t visible)
@@ -272,9 +292,9 @@ extern "C" {
     }
 
     /**
-     * @brief 批量应用实体更新
+     * @brief 批量应用图元更新
      *
-     * 从更新数据包中解析并应用一系列实体操作（添加、修改、删除）。
+     * 从更新数据包中解析并应用一系列图元操作（添加、修改、删除）。
      *
      * @param dev 渲染设备指针
      * @param packet 更新数据包指针
@@ -655,7 +675,8 @@ extern "C" {
     /**
      * @brief 设置点标记
      *
-     * Phase 1 起此函数变为统一 API 的兼容包装器，内部通过 renderSubmitOverlay 提交。
+     * Phase 6 起此函数改为统一 API 的兼容包装器。
+     * 有数据时通过 renderSubmitOverlay 提交，无数据时通过 clearOverlayKind 清除。
      *
      * @param dev 渲染设备指针
      * @param worldPositions 世界坐标数组（每点2个float）
@@ -668,7 +689,11 @@ extern "C" {
         uint32_t count, float markerSize,
         uint32_t fillColor, uint32_t borderColor)
     {
-        if (!dev || !worldPositions || count == 0) return;
+        if (!dev) return;
+
+        dev->overlayQueue.clearOverlayKind(OverlayPrimitiveKind::Points);
+        if (!worldPositions || count == 0)
+            return;
 
         OverlayMarkerSetDesc desc;
         desc.positions = worldPositions;
@@ -689,7 +714,8 @@ extern "C" {
     /**
      * @brief 设置选择框
      *
-     * Phase 1 起此函数变为统一 API 的兼容包装器，内部通过 renderSubmitOverlay 提交。
+     * Phase 6 起此函数改为统一 API 的兼容包装器。
+     * 有数据时通过 renderSubmitOverlay 提交，无数据时通过 clearOverlayKind 清除。
      *
      * @param dev 渲染设备指针
      * @param bbox 边界框
@@ -697,13 +723,15 @@ extern "C" {
      */
     RENDER_API void renderSetSelectionBox(RenderDevice* dev, const BBox2f* bbox, uint32_t colorRGBA)
     {
-        if (!dev || !bbox) return;
+        if (!dev) return;
+
+        dev->overlayQueue.clearOverlayKind(OverlayPrimitiveKind::Rect);
+        if (!bbox)
+            return;
 
         OverlayRectDesc desc;
-        desc.minX = bbox->minX;
-        desc.minY = bbox->minY;
-        desc.maxX = bbox->maxX;
-        desc.maxY = bbox->maxY;
+        desc.minX = bbox->minX; desc.minY = bbox->minY;
+        desc.maxX = bbox->maxX; desc.maxY = bbox->maxY;
 
         OverlayPrimitive prim;
         prim.kind = OverlayPrimitiveKind::Rect;
@@ -719,7 +747,7 @@ extern "C" {
     /**
      * @brief 设置选择预览矩形
      *
-     * Phase 1 起此函数变为统一 API 的兼容包装器，内部通过 renderSubmitOverlay 提交。
+     * Phase 6 起此函数改为统一 API 的兼容包装器。
      * 若填充色 alpha 不为 0，会提交两个图元：FilledRect（填充）+ Rect（边框）。
      *
      * @param dev 渲染设备指针
@@ -730,13 +758,16 @@ extern "C" {
     RENDER_API void renderSetSelectionRect(RenderDevice* dev, const BBox2f* bbox,
         uint32_t fillColor, uint32_t borderColor)
     {
-        if (!dev || !bbox) return;
+        if (!dev) return;
+
+        dev->overlayQueue.clearOverlayKind(OverlayPrimitiveKind::FilledRect);
+        dev->overlayQueue.clearOverlayKind(OverlayPrimitiveKind::Rect);
+        if (!bbox)
+            return;
 
         OverlayRectDesc desc;
-        desc.minX = bbox->minX;
-        desc.minY = bbox->minY;
-        desc.maxX = bbox->maxX;
-        desc.maxY = bbox->maxY;
+        desc.minX = bbox->minX; desc.minY = bbox->minY;
+        desc.maxX = bbox->maxX; desc.maxY = bbox->maxY;
 
         uint8_t fillAlpha = static_cast<uint8_t>((fillColor >> 24) & 0xFF);
         if (fillAlpha != 0)
@@ -763,7 +794,8 @@ extern "C" {
     /**
      * @brief 设置选择手柄
      *
-     * Phase 1 起此函数变为统一 API 的兼容包装器，内部通过 renderSubmitOverlay 提交。
+     * Phase 6 起此函数改为统一 API 的兼容包装器。
+     * 有数据时通过 renderSubmitOverlay 提交，无数据时通过 clearOverlayKind 清除。
      *
      * @param dev 渲染设备指针
      * @param worldPositions 世界坐标数组（每点2个float）
@@ -776,7 +808,11 @@ extern "C" {
         uint32_t count, float handleSize,
         uint32_t fillColor, uint32_t borderColor)
     {
-        if (!dev || !worldPositions || count == 0) return;
+        if (!dev) return;
+
+        dev->overlayQueue.clearOverlayKind(OverlayPrimitiveKind::Points);
+        if (!worldPositions || count == 0)
+            return;
 
         OverlayMarkerSetDesc desc;
         desc.positions = worldPositions;
@@ -820,6 +856,15 @@ extern "C" {
     {
         if (!dev) return;
         dev->overlayQueue.clearUnifiedOverlays();
+    }
+
+    /**
+     * @brief 按类型清除通过统一 API 提交的叠加层图元
+     */
+    RENDER_API void renderClearOverlayKind(RenderDevice* dev, OverlayPrimitiveKind kind)
+    {
+        if (!dev) return;
+        dev->overlayQueue.clearOverlayKind(kind);
     }
 
     /**
@@ -879,9 +924,9 @@ extern "C" {
      * 执行完整的渲染流程：
      * 1. 开始帧，设置渲染状态
      * 2. 更新渲染世界
-     * 3. 查询可见实体
+     * 3. 查询可见图元
      * 4. 渲染场景环境（网格背景）
-     * 5. 渲染2D实体批处理
+     * 5. 渲染2D图元批处理
      * 6. 渲染叠加层（十字准星、预览线等）
      * 7. 渲染3D网格实例（如果存在）
      * 8. 结束帧并呈现
@@ -902,7 +947,7 @@ extern "C" {
 
         uint32_t visibleCount = 0;
 
-        // Phase 4: 清空上一帧的 Pass，根据当前视图模式重新编排
+        // Phase 4: 清空上一帧的 Pass，根据当前视图模式重新编排（线性顺序执行）
         dev->renderGraph.clear();
 
         if (dev->viewMode == ViewMode::Mode2D)
@@ -932,7 +977,7 @@ extern "C" {
                 dev->view2D.viewMatrix[7],
                 dev->view2D.viewWidth, dev->view2D.viewHeight);
 
-            // 预先把 world2D 的可见实体提交给 BatchQueue（生成间接命令）
+            // 预先把 world2D 的可见图元提交给 BatchQueue（生成间接命令）
             dev->batchQueue.submit(dev->visibleIndices.data(), visibleCount, dev->world2D);
 
             // ---- Pass 0: FrameSetup ----
@@ -948,6 +993,9 @@ extern "C" {
                     d->enableBlend(true);
                     dev->commandEncoder.reset();
                 };
+                // Phase 5: 资源依赖描述（为后续自动屏障管理预留）
+                pass.outputs.push_back({ core::PassResourceType::ColorTarget,
+                    core::PassResourceAccess::Write, "Backbuffer", 0 });
                 dev->renderGraph.addPass(pass);
             }
 
@@ -962,11 +1010,15 @@ extern "C" {
                         static_cast<uint32_t>(dev->view2D.viewWidth),
                         static_cast<uint32_t>(dev->view2D.viewHeight));
                 };
+                pass.inputs.push_back({ core::PassResourceType::ColorTarget,
+                    core::PassResourceAccess::Read, "Backbuffer", 0 });
+                pass.outputs.push_back({ core::PassResourceType::ColorTarget,
+                    core::PassResourceAccess::Write, "Backbuffer", 0 });
                 dev->renderGraph.addPass(pass);
             }
 
             // ---- Pass 2: World2DCollect ----
-            // 将 world2D 实体渲染命令收集到 CommandEncoder
+            // 将 world2D 图元渲染命令收集到 CommandEncoder
             {
                 core::PassDesc pass;
                 pass.name = "World2DCollect";
@@ -975,6 +1027,10 @@ extern "C" {
                     dev->batchQueue.render(d, &dev->commandEncoder,
                         dev->view2D.viewMatrix, dev->world2D);
                 };
+                pass.inputs.push_back({ core::PassResourceType::VertexBuffer,
+                    core::PassResourceAccess::Read, "World2D_VB", 0 });
+                pass.inputs.push_back({ core::PassResourceType::IndirectBuffer,
+                    core::PassResourceAccess::Read, "BatchQueue_IB", 0 });
                 dev->renderGraph.addPass(pass);
             }
 
@@ -987,6 +1043,8 @@ extern "C" {
                 pass.onExecute = [dev](rhi::IDevice* d) {
                     dev->overlayQueue.render(d, &dev->commandEncoder, dev->view2D.viewMatrix);
                 };
+                pass.inputs.push_back({ core::PassResourceType::VertexBuffer,
+                    core::PassResourceAccess::Read, "OverlayQueue_VB", 0 });
                 dev->renderGraph.addPass(pass);
             }
 
@@ -1003,6 +1061,16 @@ extern "C" {
                         dev->batchQueue.getIndirectBuffer(),
                         dev->view2D.viewMatrix);
                 };
+                pass.inputs.push_back({ core::PassResourceType::VertexBuffer,
+                    core::PassResourceAccess::Read, "BatchQueue_VB", 0 });
+                pass.inputs.push_back({ core::PassResourceType::VertexBuffer,
+                    core::PassResourceAccess::Read, "OverlayQueue_VB", 0 });
+                pass.inputs.push_back({ core::PassResourceType::IndirectBuffer,
+                    core::PassResourceAccess::Read, "BatchQueue_IB", 0 });
+                pass.inputs.push_back({ core::PassResourceType::UniformBuffer,
+                    core::PassResourceAccess::Read, "ViewMatrix_UB", 0 });
+                pass.outputs.push_back({ core::PassResourceType::ColorTarget,
+                    core::PassResourceAccess::Write, "Backbuffer", 0 });
                 dev->renderGraph.addPass(pass);
             }
 
@@ -1025,6 +1093,12 @@ extern "C" {
                     dev->textAtlas.renderText(&list, dev->view2D.viewMatrix, d);
                     dev->pendingTextItems.clear();
                 };
+                pass.inputs.push_back({ core::PassResourceType::Texture,
+                    core::PassResourceAccess::Read, "TextAtlas_Tex", 0 });
+                pass.inputs.push_back({ core::PassResourceType::VertexBuffer,
+                    core::PassResourceAccess::Read, "Text_VB", 0 });
+                pass.outputs.push_back({ core::PassResourceType::ColorTarget,
+                    core::PassResourceAccess::Write, "Backbuffer", 0 });
                 dev->renderGraph.addPass(pass);
             }
         }
@@ -1042,6 +1116,10 @@ extern "C" {
                     d->enableDepthTest(true);
                     d->enableBlend(true);
                 };
+                pass.outputs.push_back({ core::PassResourceType::ColorTarget,
+                    core::PassResourceAccess::Write, "Backbuffer", 0 });
+                pass.outputs.push_back({ core::PassResourceType::DepthTarget,
+                    core::PassResourceAccess::Write, "DepthBuffer", 0 });
                 dev->renderGraph.addPass(pass);
             }
 
@@ -1056,6 +1134,16 @@ extern "C" {
                     dev->meshManager.update();
                     dev->meshManager.render(d, dev->view3D.viewMatrix, dev->view3D.projMatrix);
                 };
+                pass.inputs.push_back({ core::PassResourceType::VertexBuffer,
+                    core::PassResourceAccess::Read, "MeshManager_VB", 0 });
+                pass.inputs.push_back({ core::PassResourceType::IndexBuffer,
+                    core::PassResourceAccess::Read, "MeshManager_IB", 0 });
+                pass.inputs.push_back({ core::PassResourceType::UniformBuffer,
+                    core::PassResourceAccess::Read, "ViewProj_UB", 0 });
+                pass.outputs.push_back({ core::PassResourceType::ColorTarget,
+                    core::PassResourceAccess::Write, "Backbuffer", 0 });
+                pass.outputs.push_back({ core::PassResourceType::DepthTarget,
+                    core::PassResourceAccess::Write, "DepthBuffer", 0 });
                 dev->renderGraph.addPass(pass);
             }
         }
@@ -1092,10 +1180,10 @@ extern "C" {
     }
 
     /**
-     * @brief 获取实体数量
+     * @brief 获取图元数量
      *
      * @param dev 渲染设备指针
-     * @return 实体数量
+     * @return 图元数量
      */
     RENDER_API uint32_t renderGetEntityCount(RenderDevice* dev)
     {
@@ -1129,13 +1217,13 @@ extern "C" {
         return dev->rhiDevice->getNativeContext();
     }
 
-    /// 场景模式下的实体ID计数器
+    /// 场景模式下的图元ID计数器
     static uint64_t s_entityIdCounter = 1;
 
     /**
      * @brief 开始场景模式
      *
-     * 清除所有旧实体，重置实体ID计数器，准备接收新的场景数据。
+     * 清除所有旧图元，重置图元ID计数器，准备接收新的场景数据。
      *
      * @param dev 渲染设备指针
      */

@@ -5,6 +5,8 @@
  * Phase 3 核心实现，统一收集 overlay / world 绘制命令并按 batch key 排序执行。
  */
 #include "command_encoder.h"
+#include "pipeline_state_manager.h"
+#include "draw_batcher.h"
 #include "Log/SyLogger.h"
 #include <algorithm>
 #include <cstring>
@@ -46,11 +48,15 @@ void CommandEncoder::initialize(rhi::IDevice* device)
         lineDesc.srcBlend = rhi::BlendFactor::SrcAlpha;
         lineDesc.dstBlend = rhi::BlendFactor::OneMinusSrcAlpha;
         lineDesc.depthFunc = rhi::CompareFunc::Always;
-        m_overlayLinePipeline = device->createPipeline(lineDesc);
+        m_overlayLinePipeline = m_psm
+            ? m_psm->getOrCreatePipeline(lineDesc)
+            : device->createPipeline(lineDesc);
 
         rhi::PipelineDesc triDesc = lineDesc;
         triDesc.topology = rhi::PrimitiveTopology::TriangleList;
-        m_overlayTriPipeline = device->createPipeline(triDesc);
+        m_overlayTriPipeline = m_psm
+            ? m_psm->getOrCreatePipeline(triDesc)
+            : device->createPipeline(triDesc);
     }
 
     // ------------------------------------------------------------------------
@@ -83,14 +89,26 @@ void CommandEncoder::initialize(rhi::IDevice* device)
         desc.srcBlend = rhi::BlendFactor::SrcAlpha;
         desc.dstBlend = rhi::BlendFactor::OneMinusSrcAlpha;
         desc.depthFunc = rhi::CompareFunc::Always;
-        m_worldPipelines[i] = device->createPipeline(desc);
+        m_worldPipelines[i] = m_psm
+            ? m_psm->getOrCreatePipeline(desc)
+            : device->createPipeline(desc);
     }
 
     m_commands.reserve(256);
     m_initialized = true;
 
-    SY_INFOF("[CommandEncoder] Initialized with %u world pipelines + 2 overlay pipelines",
-            PRIMITIVE_TYPE_COUNT);
+    SY_INFOF("[CommandEncoder] Initialized with %u world pipelines + 2 overlay pipelines (PSM=%s)",
+            PRIMITIVE_TYPE_COUNT, m_psm ? "yes" : "no");
+}
+
+void CommandEncoder::setPipelineStateManager(PipelineStateManager* psm)
+{
+    m_psm = psm;
+}
+
+void CommandEncoder::setDrawBatcher(DrawBatcher* batcher)
+{
+    m_drawBatcher = batcher;
 }
 
 void CommandEncoder::shutdown()
@@ -247,8 +265,8 @@ void CommandEncoder::execute(rhi::IDevice* device,
             ++m_lastBatchCount;
     }
 
-    SY_DEBUGF("[CommandEncoder] execute: %u commands -> %u batches",
-              cmdCount, m_lastBatchCount);
+    SY_DEBUGF("[CommandEncoder] execute: %u commands -> %u batches (DrawBatcher=%s)",
+              cmdCount, m_lastBatchCount, m_drawBatcher ? "on" : "off");
 
     // 当前绑定的状态，用于避免重复绑定
     rhi::PipelineHandle     boundPipeline = {};
@@ -257,6 +275,10 @@ void CommandEncoder::execute(rhi::IDevice* device,
     PrimitiveType           boundTopology = PrimitiveType::PointList;
     uint16_t                boundMaterial = 0;
     bool                    stateDirty = true;
+
+    // Phase 8: 如果启用了 DrawBatcher，先重置合批器
+    if (m_drawBatcher)
+        m_drawBatcher->reset();
 
     for (uint32_t i = 0; i < cmdCount; ++i)
     {
@@ -277,7 +299,10 @@ void CommandEncoder::execute(rhi::IDevice* device,
 
             if (pipeline != boundPipeline)
             {
-                device->bindPipeline(pipeline);
+                if (m_psm)
+                    m_psm->bindPipeline(pipeline);
+                else
+                    device->bindPipeline(pipeline);
                 boundPipeline = pipeline;
                 device->setUniformMatrix3("uViewMatrix", viewMatrix);
             }
@@ -314,8 +339,18 @@ void CommandEncoder::execute(rhi::IDevice* device,
         // 执行绘制
         if (cmd.space == DrawSpace::Overlay)
         {
-            device->draw(cmd.overlay.vertexCount, 1,
-                         cmd.overlay.vertexOffset, 0);
+            if (m_drawBatcher)
+            {
+                // Phase 8: 收集 overlay 命令到合批器，跳过立即绘制
+                m_drawBatcher->appendOverlayCmd(boundPipeline,
+                                                cmd.overlay.vertexOffset,
+                                                cmd.overlay.vertexCount);
+            }
+            else
+            {
+                device->draw(cmd.overlay.vertexCount, 1,
+                             cmd.overlay.vertexOffset, 0);
+            }
         }
         else
         {
@@ -323,6 +358,38 @@ void CommandEncoder::execute(rhi::IDevice* device,
                                  cmd.world.indirectOffset,
                                  cmd.world.indirectCount,
                                  sizeof(DrawIndirectCmd));
+        }
+    }
+
+    // Phase 8: 统一执行合批后的 overlay 命令（Multi-Draw-Indirect）
+    if (m_drawBatcher)
+    {
+        const auto& groups = m_drawBatcher->build();
+        if (!groups.empty())
+        {
+            // 确保 overlay 顶点缓冲已绑定
+            device->bindVertexBuffer(0, overlayVB, 0);
+            rhi::BufferHandle mdiBuf = m_drawBatcher->getIndirectBuffer();
+
+            for (const auto& group : groups)
+            {
+                if (group.pipeline != boundPipeline)
+                {
+                    if (m_psm)
+                        m_psm->bindPipeline(group.pipeline);
+                    else
+                        device->bindPipeline(group.pipeline);
+                    boundPipeline = group.pipeline;
+                }
+
+                device->drawIndirect(mdiBuf,
+                                     group.indirectOffset,
+                                     group.drawCount,
+                                     sizeof(DrawIndirectCmd));
+            }
+
+            SY_DEBUGF("[CommandEncoder] MDI overlay: %u commands -> %u groups",
+                      m_drawBatcher->getCommandCount(), m_drawBatcher->getGroupCount());
         }
     }
 }

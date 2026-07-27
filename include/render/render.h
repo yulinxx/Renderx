@@ -274,7 +274,10 @@ RENDER_API void renderSetTexts(RenderDevice* dev, const TextItemList* texts);
 
 /**
  * @brief 设置预览线（用于绘制正在创建的几何图形）
- * 
+ *
+ * @deprecated Phase 1 起已废弃，请改用 renderSubmitOverlay + OverlayPrimitiveKind::LineList。
+ * 此函数保留仅用于兼容，后续版本可能移除。
+ *
  * @param dev 渲染设备
  * @param vertices 顶点数据
  * @param vertexCount 顶点数量
@@ -285,7 +288,10 @@ RENDER_API void renderSetPreviewLines(RenderDevice* dev, const VertexP3C3* verti
 
 /**
  * @brief 设置控制线（用于绘制控制点连线）
- * 
+ *
+ * @deprecated Phase 1 起已废弃，请改用 renderSubmitOverlay + OverlayPrimitiveKind::LineList。
+ * 此函数保留仅用于兼容，后续版本可能移除。
+ *
  * @param dev 渲染设备
  * @param vertices 顶点数据
  * @param vertexCount 顶点数量
@@ -296,7 +302,10 @@ RENDER_API void renderSetControlLines(RenderDevice* dev, const VertexP3C3* verti
 
 /**
  * @brief 设置点标记（用于标记关键点位置）
- * 
+ *
+ * @deprecated Phase 6 起已废弃，请改用 renderSubmitOverlay + OverlayPrimitiveKind::Points。
+ * 此函数保留仅用于兼容，后续版本可能移除。
+ *
  * @param dev 渲染设备
  * @param worldPositions 世界坐标位置数组（每点2个float）
  * @param count 点数量
@@ -310,7 +319,10 @@ RENDER_API void renderSetPointMarkers(RenderDevice* dev, const float* worldPosit
 
 /**
  * @brief 设置选择框（用于显示选中区域）
- * 
+ *
+ * @deprecated Phase 6 起已废弃，请改用 renderSubmitOverlay + OverlayPrimitiveKind::Rect。
+ * 此函数保留仅用于兼容，后续版本可能移除。
+ *
  * @param dev 渲染设备
  * @param bbox 边界框
  * @param colorRGBA 颜色（RGBA格式）
@@ -319,7 +331,10 @@ RENDER_API void renderSetSelectionBox(RenderDevice* dev, const BBox2f* bbox, uin
 
 /**
  * @brief 设置选择预览矩形（框选/交选时的半透明填充矩形）
- * 
+ *
+ * @deprecated Phase 6 起已废弃，请改用 renderSubmitOverlay + OverlayPrimitiveKind::FilledRect / Rect。
+ * 此函数保留仅用于兼容，后续版本可能移除。
+ *
  * @param dev 渲染设备
  * @param bbox 边界框
  * @param fillColor 填充颜色（RGBA格式，alpha=0时无填充）
@@ -330,6 +345,9 @@ RENDER_API void renderSetSelectionRect(RenderDevice* dev, const BBox2f* bbox,
 
 /**
  * @brief 设置选择手柄（用于拖拽调整选中对象）
+ *
+ * @deprecated Phase 6 起已废弃，请改用 renderSubmitOverlay + OverlayPrimitiveKind::Points。
+ * 此函数保留仅用于兼容，后续版本可能移除。
  *
  * @param dev 渲染设备
  * @param worldPositions 世界坐标位置数组（每点2个float）
@@ -375,6 +393,18 @@ RENDER_API void renderSubmitOverlays(RenderDevice* dev, const OverlayPrimitive* 
  * @param dev 渲染设备
  */
 RENDER_API void renderClearOverlays(RenderDevice* dev);
+
+/**
+ * @brief 按类型清除通过统一 API 提交的叠加层图元
+ *
+ * Phase 6 新增，支持增量式 overlay 更新。
+ * 与 renderClearOverlays 不同，此方法只清除指定类型的统一 overlay，
+ * 其他类型的统一 overlay 保留。
+ *
+ * @param dev  渲染设备
+ * @param kind 要清除的 overlay 类型
+ */
+RENDER_API void renderClearOverlayKind(RenderDevice* dev, OverlayPrimitiveKind kind);
 
 /**
  * @brief 设置场景环境层（如网格背景、参考线等）
@@ -498,7 +528,10 @@ RENDER_API void renderEndScene(RenderDevice* dev);
 
 /**
  * @brief 发射折线几何（用于即时渲染）
- * 
+ *
+ * @deprecated Phase 2 起已废弃，请改用 renderSubmitGeometry + GeometryPrimitiveKind::Polyline。
+ * 此函数保留仅用于兼容，后续版本可能移除。
+ *
  * @param dev 渲染设备
  * @param polyline 折线几何描述
  */
@@ -506,7 +539,10 @@ RENDER_API void renderEmitPolyline(RenderDevice* dev, const GeometryPolyline* po
 
 /**
  * @brief 发射圆形几何（用于即时渲染）
- * 
+ *
+ * @deprecated Phase 2 起已废弃，请改用 renderSubmitGeometry + GeometryPrimitiveKind::Circle。
+ * 此函数保留仅用于兼容，后续版本可能移除。
+ *
  * @param dev 渲染设备
  * @param circle 圆形几何描述
  */
@@ -514,7 +550,10 @@ RENDER_API void renderEmitCircle(RenderDevice* dev, const GeometryCircle* circle
 
 /**
  * @brief 发射圆弧几何（用于即时渲染）
- * 
+ *
+ * @deprecated Phase 2 起已废弃，请改用 renderSubmitGeometry + GeometryPrimitiveKind::Arc。
+ * 此函数保留仅用于兼容，后续版本可能移除。
+ *
  * @param dev 渲染设备
  * @param arc 圆弧几何描述
  */
@@ -522,7 +561,10 @@ RENDER_API void renderEmitArc(RenderDevice* dev, const GeometryArc* arc);
 
 /**
  * @brief 发射椭圆几何（用于即时渲染）
- * 
+ *
+ * @deprecated Phase 2 起已废弃，请改用 renderSubmitGeometry + GeometryPrimitiveKind::Ellipse。
+ * 此函数保留仅用于兼容，后续版本可能移除。
+ *
  * @param dev 渲染设备
  * @param ellipse 椭圆几何描述
  */
@@ -530,7 +572,10 @@ RENDER_API void renderEmitEllipse(RenderDevice* dev, const GeometryEllipse* elli
 
 /**
  * @brief 发射文本几何（用于即时渲染）
- * 
+ *
+ * @deprecated Phase 2 起已废弃，请改用 renderSubmitGeometry + GeometryPrimitiveKind::Text。
+ * 此函数保留仅用于兼容，后续版本可能移除。
+ *
  * @param dev 渲染设备
  * @param text 文本几何描述
  */
@@ -538,7 +583,10 @@ RENDER_API void renderEmitText(RenderDevice* dev, const GeometryText* text);
 
 /**
  * @brief 发射图像几何（用于即时渲染）
- * 
+ *
+ * @deprecated Phase 2 起已废弃，请改用 renderSubmitGeometry + GeometryPrimitiveKind::Image。
+ * 此函数保留仅用于兼容，后续版本可能移除。
+ *
  * @param dev 渲染设备
  * @param image 图像几何描述
  */
@@ -546,10 +594,13 @@ RENDER_API void renderEmitImage(RenderDevice* dev, const GeometryImage* image);
 
 /**
  * @brief 发射三角网格（用于即时渲染）
- * 
+ *
+ * @deprecated Phase 2 起已废弃，请改用 renderSubmitGeometry + GeometryPrimitiveKind::TriangleSoup。
+ * 此函数保留仅用于兼容，后续版本可能移除。
+ *
  * 将三角网格注册到 MeshManager，并添加一个实例（单位矩阵变换）。
  * 每 3 个顶点定义一个三角形。
- * 
+ *
  * @param dev 渲染设备
  * @param vertices 顶点位置数组（每顶点3个float）
  * @param normals 顶点法线数组（每顶点3个float）

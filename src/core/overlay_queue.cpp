@@ -189,6 +189,8 @@ namespace render
             uint32_t borderColor)
         {
             m_markerVerts.clear();
+            m_unifiedVerts.clear();
+            m_unifiedRanges.clear();
             if (!worldPositions || count == 0)
             {
                 m_dirty = true;
@@ -224,6 +226,8 @@ namespace render
         void OverlayQueue::setSelectionBox(const BBox2f* bbox, uint32_t colorRGBA)
         {
             m_selectionBoxVerts.clear();
+            m_unifiedVerts.clear();
+            m_unifiedRanges.clear();
             if (!bbox)
             {
                 m_dirty = true;
@@ -255,6 +259,8 @@ namespace render
             uint32_t borderColor)
         {
             m_handleVerts.clear();
+            m_unifiedVerts.clear();
+            m_unifiedRanges.clear();
             if (!worldPositions || count == 0)
             {
                 m_dirty = true;
@@ -291,6 +297,8 @@ namespace render
         {
             m_selRectFillVerts.clear();
             m_selRectBorderVerts.clear();
+            m_unifiedVerts.clear();
+            m_unifiedRanges.clear();
             if (!bbox)
             {
                 m_dirty = true;
@@ -490,6 +498,7 @@ namespace render
                 m_unifiedRanges.push_back(start);
                 m_unifiedRanges.push_back(count);
                 m_unifiedRanges.push_back(isTriangle);
+                m_unifiedRanges.push_back(static_cast<uint32_t>(primitive->kind));
                 m_dirty = true;
             }
         }
@@ -498,6 +507,44 @@ namespace render
         {
             m_unifiedVerts.clear();
             m_unifiedRanges.clear();
+            m_dirty = true;
+        }
+
+        void OverlayQueue::clearOverlayKind(OverlayPrimitiveKind kind)
+        {
+            if (m_unifiedRanges.empty())
+                return;
+
+            std::vector<OverlayVertex> newVerts;
+            std::vector<uint32_t> newRanges;
+            newVerts.reserve(m_unifiedVerts.size());
+            newRanges.reserve(m_unifiedRanges.size());
+
+            uint32_t newOffset = 0;
+            for (size_t i = 0; i < m_unifiedRanges.size(); i += 4)
+            {
+                uint32_t oldStart = m_unifiedRanges[i];
+                uint32_t count = m_unifiedRanges[i + 1];
+                uint32_t isTriangle = m_unifiedRanges[i + 2];
+                OverlayPrimitiveKind rangeKind = static_cast<OverlayPrimitiveKind>(m_unifiedRanges[i + 3]);
+
+                if (rangeKind == kind)
+                    continue;
+
+                newVerts.insert(newVerts.end(),
+                    m_unifiedVerts.begin() + oldStart,
+                    m_unifiedVerts.begin() + oldStart + count);
+
+                newRanges.push_back(newOffset);
+                newRanges.push_back(count);
+                newRanges.push_back(isTriangle);
+                newRanges.push_back(static_cast<uint32_t>(rangeKind));
+
+                newOffset += count;
+            }
+
+            m_unifiedVerts = std::move(newVerts);
+            m_unifiedRanges = std::move(newRanges);
             m_dirty = true;
         }
 
@@ -681,7 +728,7 @@ namespace render
             // 统一提交的 overlay 图元
             if (!m_unifiedRanges.empty() && totalUnifiedVerts > 0)
             {
-                for (size_t i = 0; i < m_unifiedRanges.size(); i += 3)
+                for (size_t i = 0; i < m_unifiedRanges.size(); i += 4)
                 {
                     uint32_t start = m_unifiedRanges[i];
                     uint32_t count = m_unifiedRanges[i + 1];

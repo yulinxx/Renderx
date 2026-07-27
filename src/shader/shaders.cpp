@@ -21,6 +21,7 @@ namespace render::shader
     static std::string textSdfFragSource;
     static std::string highlight3dVertSource;
     static std::string highlight3dFragSource;
+    static std::string cullingCompSource;
 
     const char* SCENE_2D_VERT = nullptr;
     const char* SCENE_2D_FRAG = nullptr;
@@ -37,6 +38,7 @@ namespace render::shader
     const char* TEXT_SDF_FRAG = nullptr;
     const char* HIGHLIGHT_3D_VERT = nullptr;
     const char* HIGHLIGHT_3D_FRAG = nullptr;
+    const char* CULLING_COMP = nullptr;
 
     static bool loadShaderFile(const std::string& dir, const std::string& fileName, std::string& outSource)
     {
@@ -75,6 +77,7 @@ namespace render::shader
         loadShaderFile(shaderDir, "text_sdf.frag", textSdfFragSource);
         loadShaderFile(shaderDir, "highlight_3d.vert", highlight3dVertSource);
         loadShaderFile(shaderDir, "highlight_3d.frag", highlight3dFragSource);
+        loadShaderFile(shaderDir, "culling.comp", cullingCompSource);
 
         SCENE_2D_VERT = scene2dVertSource.empty() ? "" : scene2dVertSource.c_str();
         SCENE_2D_FRAG = scene2dFragSource.empty() ? "" : scene2dFragSource.c_str();
@@ -91,5 +94,6 @@ namespace render::shader
         TEXT_SDF_FRAG = textSdfFragSource.empty() ? "" : textSdfFragSource.c_str();
         HIGHLIGHT_3D_VERT = highlight3dVertSource.empty() ? "" : highlight3dVertSource.c_str();
         HIGHLIGHT_3D_FRAG = highlight3dFragSource.empty() ? "" : highlight3dFragSource.c_str();
+        CULLING_COMP = cullingCompSource.empty() ? "" : cullingCompSource.c_str();
     }
 }

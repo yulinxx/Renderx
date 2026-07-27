@@ -501,4 +501,39 @@ struct GeometryPrimitive
     } desc;
 };
 
+// ============================================================================
+// Phase 3/8: 统一命令编码公共类型
+// ============================================================================
+
+/// 绘制空间类型，用于区分数据来源
+enum class DrawSpace : uint8_t
+{
+    World2D  = 0,  ///< 2D 文档几何空间
+    Overlay  = 1,  ///< 叠加层空间
+};
+
+/// 统一的 batch key，64bit
+using BatchKey = uint64_t;
+
+/// 统一的绘制命令描述（供 CommandEncoder / DrawBatcher 共享）
+struct DrawCommand
+{
+    BatchKey      sortKey;        ///< 排序键
+    DrawSpace     space;          ///< 绘制空间
+    PrimitiveType topology;       ///< 图元拓扑类型
+    uint16_t      materialIndex;  ///< 材质索引（World2D 有效）
+    uint32_t      zOrder;         ///< Z 序（Overlay 有效）
+
+    union {
+        struct {
+            uint32_t indirectOffset;  ///< 间接命令字节偏移
+            uint32_t indirectCount;   ///< 间接命令数量
+        } world;
+        struct {
+            uint32_t vertexOffset;  ///< 顶点偏移
+            uint32_t vertexCount;   ///< 顶点数量
+        } overlay;
+    };
+};
+
 }

@@ -21,46 +21,11 @@
 namespace render {
 namespace core {
 
-/// 绘制空间类型，用于区分数据来源
-enum class DrawSpace : uint8_t
-{
-    World2D  = 0,  ///< 2D 文档几何空间（来自 BatchQueue / RenderWorld）
-    Overlay  = 1,  ///< 叠加层空间（来自 OverlayQueue）
-};
+// Phase 7: 前向声明管线状态管理器
+class PipelineStateManager;
 
-/// 统一的 batch key，64bit，按优先级从高到低编码
-/// 排序规则（数值小者优先）：space → z-order → topology → material
-using BatchKey = uint64_t;
-
-/**
- * @brief 统一的绘制命令描述
- *
- * 收集来自 overlay 和 world 的所有绘制意图，
- * 由 CommandEncoder 统一排序后批量执行。
- */
-struct DrawCommand
-{
-    BatchKey      sortKey;        ///< 排序键，决定绘制顺序
-    DrawSpace     space;          ///< 绘制空间
-    PrimitiveType topology;       ///< 图元拓扑类型
-    uint16_t      materialIndex;  ///< 材质索引（World2D 有效）
-    uint32_t      zOrder;         ///< Z 序（Overlay 有效）
-
-    // 绘制参数联合体
-    union {
-        // World2D 路径：使用间接绘制
-        struct {
-            uint32_t indirectOffset;  ///< 间接命令在 buffer 中的字节偏移
-            uint32_t indirectCount;   ///< 间接命令数量
-        } world;
-
-        // Overlay 路径：使用直接绘制
-        struct {
-            uint32_t vertexOffset;  ///< 顶点在 overlay VB 中的偏移
-            uint32_t vertexCount;   ///< 顶点数量
-        } overlay;
-    };
-};
+// Phase 8: 前向声明绘制合批器
+class DrawBatcher;
 
 /**
  * @brief 统一命令编码器
@@ -86,6 +51,26 @@ public:
      * @param device RHI 设备指针
      */
     void initialize(rhi::IDevice* device);
+
+    /**
+     * @brief 设置管线状态管理器
+     *
+     * Phase 7 新增。传入 PipelineStateManager 后，编码器会优先通过它
+     * 获取/创建和绑定管线，从而复用缓存并过滤冗余绑定。
+     *
+     * @param psm 管线状态管理器指针（可为 null，表示不使用）
+     */
+    void setPipelineStateManager(PipelineStateManager* psm);
+
+    /**
+     * @brief 设置绘制合批器
+     *
+     * Phase 8 新增。传入 DrawBatcher 后，编码器会将 overlay 路径的
+     * 绘制命令收集到合批器，最终通过 MDI 统一执行，减少 draw call。
+     *
+     * @param batcher 绘制合批器指针（可为 null，表示不使用）
+     */
+    void setDrawBatcher(DrawBatcher* batcher);
 
     /**
      * @brief 关闭并释放资源
@@ -160,6 +145,12 @@ private:
     std::vector<DrawCommand> m_commands;
     rhi::IDevice* m_device = nullptr;
     bool m_initialized = false;
+
+    // Phase 7: 管线状态管理器（可选，用于缓存和冗余过滤）
+    PipelineStateManager* m_psm = nullptr;
+
+    // Phase 8: 绘制合批器（用于 overlay 路径的 MDI 合批）
+    class DrawBatcher* m_drawBatcher = nullptr;
 
     // pipeline 缓存
     rhi::PipelineHandle m_overlayLinePipeline = {};    ///< overlay 线段管线

@@ -276,11 +276,19 @@ public:
 
     /**
      * @brief 设置float类型uniform
-     * 
+     *
      * @param name uniform名称
      * @param value float值
      */
     virtual void setUniformFloat(const char* name, float value) = 0;
+
+    /**
+     * @brief 设置int类型uniform
+     *
+     * @param name uniform名称
+     * @param value int值
+     */
+    virtual void setUniformInt(const char* name, int32_t value) = 0;
 
     /**
      * @brief 设置2D向量uniform

@@ -1,0 +1,147 @@
+/**
+ * @file culling.comp
+ * @brief GPU 视锥剔除 Compute Shader
+ *
+ * Phase 9 核心 shader。每个线程处理一个实体，
+ * 进行视锥体-AABB 相交测试，为可见实体生成 indirect draw 命令。
+ *
+ * SSBO 绑定：
+ *   binding = 0: EntityData[]   实体元数据数组
+ *   binding = 1: uint[]         可见性结果数组（输出）
+ *   binding = 2: DrawCommand[]  indirect draw 命令数组（输出）
+ *   binding = 3: uint           原子计数器（输出命令数量）
+ */
+#version 460 core
+
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+// ============================================================================
+// SSBO 定义
+// ============================================================================
+
+struct EntityData
+{
+    vec4  bboxMin;       // xyz = min, w = padding
+    vec4  bboxMax;       // xyz = max, w = padding
+    vec4  worldPos;      // xyz = position, w = padding
+    uint  vertexOffset;  // 顶点缓冲偏移
+    uint  vertexCount;   // 顶点数量
+    uint  materialIndex; // 材质索引
+    uint  flags;         // 标志位
+};
+
+layout(std430, binding = 0) readonly buffer EntityBuffer
+{
+    EntityData entities[];
+};
+
+layout(std430, binding = 1) writeonly buffer VisibilityBuffer
+{
+    uint visibility[];
+};
+
+struct DrawCommand
+{
+    uint vertexCount;
+    uint instanceCount;
+    uint firstVertex;
+    uint baseInstance;
+};
+
+layout(std430, binding = 2) writeonly buffer IndirectBuffer
+{
+    DrawCommand commands[];
+};
+
+layout(std430, binding = 3) buffer CountBuffer
+{
+    uint commandCount;
+};
+
+// ============================================================================
+// Uniform
+// ============================================================================
+
+layout(location = 0) uniform mat4 uViewProjMatrix;
+layout(location = 1) uniform int  uEntityCount;
+
+// ============================================================================
+// 辅助函数
+// ============================================================================
+
+/**
+ * @brief AABB-视锥体快速剔除测试
+ *
+ * 使用裁剪空间下的 AABB 测试：
+ * 将 AABB 的 8 个角点变换到裁剪空间，若所有角点都在同一侧
+ * outside a frustum plane，则判定为不可见。
+ *
+ * 简化实现：将包围盒中心点变换到裁剪空间，按半径做保守估计。
+ */
+bool isVisible(const vec3 bboxMin, const vec3 bboxMax)
+{
+    // 使用中心点 + 半长作为球体做保守测试
+    vec3 center = (bboxMin + bboxMax) * 0.5;
+    float radius = length(bboxMax - bboxMin) * 0.5;
+
+    vec4 clipPos = uViewProjMatrix * vec4(center, 1.0);
+
+    // 保守裁剪空间测试（w 考虑半径）
+    float w = clipPos.w + radius;
+    if (w <= 0.0)
+        return false;
+
+    vec3 ndc = clipPos.xyz / w;
+    float r = radius / w;
+
+    // NDC 范围 [-1, 1]，带半径扩展
+    if (ndc.x < -1.0 - r || ndc.x > 1.0 + r)
+        return false;
+    if (ndc.y < -1.0 - r || ndc.y > 1.0 + r)
+        return false;
+    if (ndc.z < -1.0 - r || ndc.z > 1.0 + r)
+        return false;
+
+    return true;
+}
+
+// ============================================================================
+// 主入口
+// ============================================================================
+
+void main()
+{
+    uint idx = gl_GlobalInvocationID.x;
+    if (idx >= uint(uEntityCount))
+        return;
+
+    EntityData e = entities[idx];
+
+    // vertexCount == 0 表示已删除/无效实体
+    if (e.vertexCount == 0u)
+    {
+        visibility[idx] = 0u;
+        return;
+    }
+
+    bool visible = isVisible(e.bboxMin.xyz, e.bboxMax.xyz);
+
+    if (visible)
+    {
+        visibility[idx] = 1u;
+
+        // 原子递增获取写入位置
+        uint slot = atomicAdd(commandCount, 1u);
+
+        DrawCommand cmd;
+        cmd.vertexCount   = e.vertexCount;
+        cmd.instanceCount = 1u;
+        cmd.firstVertex   = e.vertexOffset;
+        cmd.baseInstance  = 0u;
+        commands[slot] = cmd;
+    }
+    else
+    {
+        visibility[idx] = 0u;
+    }
+}

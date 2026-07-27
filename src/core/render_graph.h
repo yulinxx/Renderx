@@ -1,15 +1,27 @@
 /**
  * @file render_graph.h
- * @brief 渲染图 Pass 调度层定义
+ * @brief 显式 Pass 调度层定义
  *
- * Phase 4 引入的核心组件，负责将渲染流程从“隐式调用顺序”升级为
- * “显式 Pass 编排 + 按依赖执行”。
+ * Phase 4 引入的核心组件，负责将渲染流程从"隐式调用顺序"升级为
+ * "显式 Pass 编排 + 按顺序执行"。
+ *
+ * 当前定位（Phase 4）：显式 Pass 顺序执行器（Linear Pass Scheduler）
+ *   - 按添加顺序依次执行 Pass
+ *   - 支持 enable/disable 控制
+ *   - 支持 onSetup（状态设置）和 onExecute（实际渲染）回调
+ *   - 每 60 帧输出执行摘要日志
+ *
+ * 尚未实现（留给后续 Phase）：
+ *   - Pass 依赖分析（拓扑排序）
+ *   - 资源读写冲突检查
+ *   - 自动屏障（barrier）插入
+ *   - 多分支并行执行
  *
  * 设计原则：
  * - 最小可用：先只承载顺序、目标、清屏和资源访问信息
  * - 不破坏现有行为：Pass 内部仍调用原有渲染逻辑
  * - 可观测：每个 Pass 边界输出日志，方便验证顺序
- * - 预留扩展：资源访问声明为后续屏障管理留出口
+ * - 预留扩展：资源访问声明（inputs/outputs）为后续屏障管理留出口
  */
 #pragma once
 
@@ -72,10 +84,12 @@ struct PassResourceSlot
  * 一个 Pass 代表渲染流程中的一个阶段，例如：
  * - FrameSetup：设置清屏颜色、深度测试、混合状态
  * - SceneEnv：渲染背景网格
- * - World2D：收集 2D 文档几何绘制命令
- * - Overlay：收集叠加层绘制命令
+ * - World2DCollect：收集 2D 文档几何绘制命令到 CommandEncoder
+ * - OverlayCollect：收集叠加层绘制命令到 CommandEncoder
  * - CommandExecute：执行已收集的所有绘制命令
  * - Text：渲染文本
+ *
+ * Pass 按 addPass() 的调用顺序执行，不做拓扑排序。
  */
 struct PassDesc
 {
@@ -100,13 +114,18 @@ struct PassDesc
 // ============================================================================
 
 /**
- * @brief 渲染图：显式 Pass 调度层
+ * @brief 显式 Pass 顺序执行器
  *
- * 管理一组按顺序执行的渲染 Pass，提供：
+ * 管理一组按添加顺序执行的渲染 Pass，提供：
  * - 显式的执行顺序（不再依赖代码中的隐式调用顺序）
  * - Pass 级别的启用/禁用控制
  * - 资源访问声明（为后续自动屏障管理做准备）
  * - 执行统计和日志观测
+ *
+ * 注意（Phase 4 当前状态）：
+ * - 这是线性顺序执行器，不是完整的依赖图调度器
+ * - 不执行依赖分析、拓扑排序或自动屏障插入
+ * - 这些能力将在后续 Phase 中逐步引入
  */
 class RenderGraph
 {

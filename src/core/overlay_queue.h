@@ -158,6 +158,17 @@ public:
     void clearUnifiedOverlays();
 
     /**
+     * @brief 按类型清除通过 submitOverlay 提交的图元
+     *
+     * Phase 6 新增，支持增量式 overlay 更新。
+     * 调用方可先清除特定类型的旧数据，再 submit 新数据，
+     * 实现与旧 set* API 相同的替换语义。
+     *
+     * @param kind 要清除的图元类型
+     */
+    void clearOverlayKind(OverlayPrimitiveKind kind);
+
+    /**
      * @brief 渲染所有叠加元素
      *
      * Phase 3 起，overlay 的绘制命令不再直接调用 RHI，
@@ -199,7 +210,8 @@ private:
 
     /// 统一提交的 overlay 顶点数据（Phase 1 新增）
     std::vector<OverlayVertex> m_unifiedVerts;
-    /// 统一 overlay 的绘制子区间记录：[start, count, isTriangle]
+    /// 统一 overlay 的绘制子区间记录：[start, count, isTriangle, kind] x N
+    /// Phase 6 起增加 kind 字段，支持按类型清除。
     std::vector<uint32_t> m_unifiedRanges;
     /// unified 数据在合并缓冲区中的起始偏移（用于无脏数据时直接绘制）
     uint32_t m_unifiedStart = 0;

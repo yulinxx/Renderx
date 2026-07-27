@@ -62,12 +62,15 @@ set(RENDER_SOURCES
     src/c_api/render_c_api.cpp          # C API实现
     src/platform/gl_loader.cpp          # OpenGL函数加载器
     src/rhi/rhi_gl.cpp                  # OpenGL RHI实现
-    src/core/render_world.cpp           # 渲染世界（实体管理）
+    src/core/render_world.cpp           # 渲染世界（图元管理）
     src/core/batch_queue.cpp            # 批量绘制队列
     src/core/overlay_queue.cpp          # 叠加层渲染队列
     src/core/transient_buffer_pool.cpp  # 瞬态缓冲区池（Persistent Mapped Buffer）
     src/core/command_encoder.cpp        # 统一命令编码器（Phase 3 新增）
     src/core/render_graph.cpp           # 渲染图 Pass 调度层（Phase 4 新增）
+    src/core/pipeline_state_manager.cpp # 管线状态管理器（Phase 7 新增）
+    src/core/draw_batcher.cpp           # 绘制合批器（Phase 8 新增）
+    src/core/persistent_entity_manager.cpp # 持久图元管理器（Phase 9 新增）
     src/core/mesh_manager.cpp           # 3D网格管理器
     src/core/text_atlas.cpp             # 文本图集管理器
     src/core/scene_env.cpp              # 场景环境渲染器
@@ -104,6 +107,10 @@ endif()
 
 # 创建渲染库目标
 add_library(${PROJECT_NAME} ${RENDER_SOURCES})
+
+set_target_properties(${PROJECT_NAME} PROPERTIES
+    DEBUG_POSTFIX "_d"
+)
 
 # 设置头文件搜索路径
 target_include_directories(${PROJECT_NAME}
@@ -168,6 +175,7 @@ set(SHADER_FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/text_sdf.frag
     ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/highlight_3d.vert
     ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/highlight_3d.frag
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/culling.comp
 )
 
 # 构建后自动复制Shader文件到输出目录

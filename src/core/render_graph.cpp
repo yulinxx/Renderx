@@ -1,9 +1,12 @@
 /**
  * @file render_graph.cpp
- * @brief 渲染图 Pass 调度层实现
+ * @brief 显式 Pass 顺序执行器实现
  *
  * Phase 4 引入的核心组件，负责将渲染流程从"隐式调用顺序"升级为
- * "显式 Pass 编排 + 按依赖执行"。
+ * "显式 Pass 编排 + 按顺序执行"。
+ *
+ * 当前定位（Phase 4）：线性顺序执行器（Linear Pass Scheduler）
+ * 不执行依赖分析、拓扑排序或自动屏障插入。
  */
 #include "render_graph.h"
 #include "Log/SyLogger.h"
@@ -111,9 +114,9 @@ void RenderGraph::execute(rhi::IDevice* device)
         {
             entry.desc.onExecute(device);
         }
-        else
+        else if (!entry.desc.onSetup)
         {
-            SY_WARNF("RenderGraph::execute: [%u] '%s' has no onExecute callback", i, passName);
+            SY_WARNF("RenderGraph::execute: [%u] '%s' has no onSetup and no onExecute callback", i, passName);
         }
 
         ++executedCount;

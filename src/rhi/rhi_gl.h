@@ -90,6 +90,7 @@ public:
     void setUniformMatrix3(const char* name, const float* data) override;
     void setUniformMatrix4(const char* name, const float* data) override;
     void setUniformFloat(const char* name, float value) override;
+    void setUniformInt(const char* name, int32_t value) override;
     void setUniformVec2(const char* name, const float* data) override;
     void setUniformVec3(const char* name, const float* data) override;
     void setUniformVec4(const char* name, const float* data) override;
