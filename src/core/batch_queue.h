@@ -20,6 +20,9 @@
 namespace render {
 namespace core {
 
+// Phase 3: 前向声明统一命令编码器
+class CommandEncoder;
+
 /**
  * @brief 批量绘制队列类
  * 
@@ -57,14 +60,27 @@ public:
 
     /**
      * @brief 执行批量绘制
-     * 
-     * 将顶点数据和间接绘制命令上传到 GPU，并执行绘制调用。
-     * 
-     * @param device RHI设备指针
+     *
+     * Phase 3 起，world2D 的绘制命令不再直接调用 RHI，
+     * 而是通过 CommandEncoder 统一收集和排序后执行。
+     *
+     * @param device     RHI设备指针
+     * @param encoder    统一命令编码器（Phase 3 新增）
      * @param viewMatrix 3x3视图矩阵
-     * @param world 渲染世界引用（用于获取顶点数据）
+     * @param world      渲染世界引用（用于获取顶点数据）
      */
-    void render(rhi::IDevice* device, const float viewMatrix[9], const RenderWorld& world);
+    void render(rhi::IDevice* device, CommandEncoder* encoder,
+                const float viewMatrix[9], const RenderWorld& world);
+
+    /**
+     * @brief 获取 world2D 顶点缓冲区句柄
+     */
+    rhi::BufferHandle getVertexBuffer() const { return m_vertexBuffer; }
+
+    /**
+     * @brief 获取间接命令缓冲区句柄
+     */
+    rhi::BufferHandle getIndirectBuffer() const { return m_indirectBuffer; }
 
 private:
     /**

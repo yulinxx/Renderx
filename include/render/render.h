@@ -318,8 +318,19 @@ RENDER_API void renderSetPointMarkers(RenderDevice* dev, const float* worldPosit
 RENDER_API void renderSetSelectionBox(RenderDevice* dev, const BBox2f* bbox, uint32_t colorRGBA);
 
 /**
- * @brief 设置选择手柄（用于拖拽调整选中对象）
+ * @brief 设置选择预览矩形（框选/交选时的半透明填充矩形）
  * 
+ * @param dev 渲染设备
+ * @param bbox 边界框
+ * @param fillColor 填充颜色（RGBA格式，alpha=0时无填充）
+ * @param borderColor 边框颜色（RGBA格式）
+ */
+RENDER_API void renderSetSelectionRect(RenderDevice* dev, const BBox2f* bbox,
+                                       uint32_t fillColor, uint32_t borderColor);
+
+/**
+ * @brief 设置选择手柄（用于拖拽调整选中对象）
+ *
  * @param dev 渲染设备
  * @param worldPositions 世界坐标位置数组（每点2个float）
  * @param count 手柄数量
@@ -330,6 +341,40 @@ RENDER_API void renderSetSelectionBox(RenderDevice* dev, const BBox2f* bbox, uin
 RENDER_API void renderSetSelectionHandles(RenderDevice* dev, const float* worldPositions,
                                           uint32_t count, float handleSize,
                                           uint32_t fillColor, uint32_t borderColor);
+
+/**
+ * @brief 提交单个叠加层图元（统一 API）
+ *
+ * Phase 1 引入的统一 overlay 提交入口。调用方通过 OverlayPrimitive 描述图元类型、
+ * 几何数据和样式，渲染器内部转换为顶点数据并批量渲染。
+ *
+ * 替代范围：renderSetPreviewLines / renderSetControlLines / renderSetSelectionBox /
+ *           renderSetSelectionRect / renderSetSelectionHandles / renderSetPointMarkers
+ *
+ * @param dev 渲染设备
+ * @param primitive 图元描述指针
+ */
+RENDER_API void renderSubmitOverlay(RenderDevice* dev, const OverlayPrimitive* primitive);
+
+/**
+ * @brief 批量提交叠加层图元（统一 API）
+ *
+ * 批量版本的 renderSubmitOverlay，减少多次调用的开销。
+ *
+ * @param dev 渲染设备
+ * @param primitives 图元描述数组指针
+ * @param count 图元数量
+ */
+RENDER_API void renderSubmitOverlays(RenderDevice* dev, const OverlayPrimitive* primitives, uint32_t count);
+
+/**
+ * @brief 清除所有通过统一 API 提交的叠加层图元
+ *
+ * 不影响通过旧 API（renderSetPreviewLines 等）设置的数据。
+ *
+ * @param dev 渲染设备
+ */
+RENDER_API void renderClearOverlays(RenderDevice* dev);
 
 /**
  * @brief 设置场景环境层（如网格背景、参考线等）
@@ -514,6 +559,34 @@ RENDER_API void renderEmitTriangleSoup(RenderDevice* dev,
                                        const float* vertices, const float* normals,
                                        uint32_t vertexCount,
                                        const float color[4]);
+
+/**
+ * @brief 提交单个几何图元（统一 API）
+ *
+ * Phase 2 引入的统一几何提交入口。调用方通过 GeometryPrimitive 描述图元类型和
+ * 类型明确的描述指针，渲染器内部按 kind 分发到对应路径：
+ * - Polyline / Circle / Arc / Ellipse / Image → 2D 文档几何路径
+ * - Text → 文本缓存路径（TextAtlas）
+ * - TriangleSoup → 3D mesh 路径（MeshManager）
+ *
+ * 替代范围：renderEmitPolyline / renderEmitCircle / renderEmitArc /
+ *           renderEmitEllipse / renderEmitText / renderEmitImage / renderEmitTriangleSoup
+ *
+ * @param dev 渲染设备
+ * @param primitive 图元描述指针
+ */
+RENDER_API void renderSubmitGeometry(RenderDevice* dev, const GeometryPrimitive* primitive);
+
+/**
+ * @brief 批量提交几何图元（统一 API）
+ *
+ * 批量版本的 renderSubmitGeometry，减少多次调用的开销。
+ *
+ * @param dev 渲染设备
+ * @param primitives 图元描述数组指针
+ * @param count 图元数量
+ */
+RENDER_API void renderSubmitGeometries(RenderDevice* dev, const GeometryPrimitive* primitives, uint32_t count);
 
 }
 

@@ -81,6 +81,7 @@ public:
     void bindVertexBuffer(uint32_t slot, BufferHandle, uint64_t offset) override;
     void bindIndexBuffer(BufferHandle, uint64_t offset) override;
     void bindUniformBuffer(uint32_t set, uint32_t binding, BufferHandle, uint64_t offset, uint64_t size) override;
+    void bindShaderStorageBuffer(uint32_t set, uint32_t binding, BufferHandle, uint64_t offset, uint64_t size) override;
     void bindTexture(uint32_t set, uint32_t binding, TextureHandle) override;
     void setViewport(const Viewport&) override;
     void setScissor(const Scissor&) override;
@@ -98,6 +99,9 @@ public:
     void drawIndirect(BufferHandle indirectBuffer, uint64_t offset, uint32_t drawCount, uint32_t stride) override;
     void drawIndexedIndirect(BufferHandle indirectBuffer, uint64_t offset, uint32_t drawCount, uint32_t stride) override;
 
+    void dispatchCompute(uint32_t groupsX, uint32_t groupsY, uint32_t groupsZ) override;
+    void memoryBarrier(uint32_t barrierFlags) override;
+
     void setClearColor(float r, float g, float b, float a) override;
     void clear(uint32_t flags) override;
     void enableDepthTest(bool enable) override;
@@ -110,7 +114,10 @@ public:
 
 private:
     uint32_t compileShader(uint32_t type, const char* source);
+    uint32_t compileShaderSPIRV(ShaderStage stage, const uint32_t* spirvWords, uint32_t wordCount, const char* entryPoint);
     uint32_t linkProgram(uint32_t vs, uint32_t fs);
+    uint32_t createComputeProgram(const ShaderModuleDesc* modules, uint32_t count);
+    uint32_t shaderStageToGL(ShaderStage stage) const;
     uint32_t topologyToGL(PrimitiveTopology topo) const;
     uint32_t formatToGLInternal(Format fmt) const;
     uint32_t formatToGLFormat(Format fmt) const;

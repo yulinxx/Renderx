@@ -65,6 +65,9 @@ set(RENDER_SOURCES
     src/core/render_world.cpp           # 渲染世界（实体管理）
     src/core/batch_queue.cpp            # 批量绘制队列
     src/core/overlay_queue.cpp          # 叠加层渲染队列
+    src/core/transient_buffer_pool.cpp  # 瞬态缓冲区池（Persistent Mapped Buffer）
+    src/core/command_encoder.cpp        # 统一命令编码器（Phase 3 新增）
+    src/core/render_graph.cpp           # 渲染图 Pass 调度层（Phase 4 新增）
     src/core/mesh_manager.cpp           # 3D网格管理器
     src/core/text_atlas.cpp             # 文本图集管理器
     src/core/scene_env.cpp              # 场景环境渲染器
@@ -203,3 +206,17 @@ message(STATUS "  Build Type: ${CMAKE_BUILD_TYPE}")
 message(STATUS "  Shared Libraries: ${BUILD_SHARED_LIBS}")
 message(STATUS "  C++ Standard: ${CMAKE_CXX_STANDARD}")
 message(STATUS "  Log Library: ${LOG_INCLUDE_DIR}")
+
+# ==================== 测试配置 ====================
+find_package(GTest QUIET)
+if(GTest_FOUND)
+    option(BUILD_RENDERX_TESTS "Build Renderx unit tests" ON)
+    if(BUILD_RENDERX_TESTS)
+        add_subdirectory(Test)
+        message(STATUS "[Renderx] Unit tests enabled (Test/)")
+    else()
+        message(STATUS "[Renderx] Unit tests disabled by BUILD_RENDERX_TESTS=OFF")
+    endif()
+else()
+    message(STATUS "[Renderx] GTest not found, unit tests skipped. Install GTest to enable testing.")
+endif()

@@ -1,4 +1,5 @@
 #include "batch_queue.h"
+#include "command_encoder.h"
 #include "render_world.h"
 #include <cstring>
 #include <algorithm>
@@ -224,11 +225,20 @@ namespace render
             m_dirty = true;
         }
 
-        void BatchQueue::render(rhi::IDevice* device, const float viewMatrix[9], const RenderWorld& world)
+        void BatchQueue::render(rhi::IDevice* device, CommandEncoder* encoder,
+            const float viewMatrix[9], const RenderWorld& world)
         {
+            (void)viewMatrix; // viewMatrix 由 CommandEncoder::execute() 统一设置
+
+            if (!encoder)
+            {
+                SY_ERROR("[BatchQueue] render: encoder is null, cannot submit commands");
+                return;
+            }
+
             if (m_batches.empty())
             {
-                SY_WARNF("BatchQueue::render: m_batches is EMPTY, skipping render");
+                SY_DEBUGF("BatchQueue::render: m_batches is EMPTY, skipping render");
                 return;
             }
 
@@ -281,20 +291,14 @@ namespace render
                 m_dirty = false;
             }
 
-            device->bindVertexBuffer(0, m_vertexBuffer, 0);
-
+            // Phase 3: 通过 CommandEncoder 提交绘制命令，不再直接调用 RHI
             for (const Batch& batch : m_batches)
             {
-                // SY_INFOF("BatchQueue::render: batch type=%u, firstIndirect=%u, count=%u, lineWidth=%.2f",
-                //     static_cast<uint32_t>(batch.type), batch.firstIndirect, batch.indirectCount, batch.lineWidth);
-
-                device->bindPipeline(m_pipelines[static_cast<uint32_t>(batch.type)]);
-                device->setUniformMatrix3("uViewMatrix", viewMatrix);
-                device->setLineWidth(batch.lineWidth);
-                device->drawIndirect(m_indirectBuffer,
+                encoder->submitWorld(
+                    batch.type,
+                    batch.materialIndex,
                     batch.firstIndirect * sizeof(DrawIndirectCmd),
-                    batch.indirectCount,
-                    sizeof(DrawIndirectCmd));
+                    batch.indirectCount);
             }
         }
 

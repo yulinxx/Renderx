@@ -217,8 +217,28 @@
 #define GL_BUFFER_IMMUTABLE_STORAGE 0x821F
 #endif
 
+#ifndef GL_COMMAND_BARRIER_BIT
+#define GL_COMMAND_BARRIER_BIT 0x00000040
+#endif
+#ifndef GL_SHADER_STORAGE_BARRIER_BIT
+#define GL_SHADER_STORAGE_BARRIER_BIT 0x00002000
+#endif
+#ifndef GL_BUFFER_UPDATE_BARRIER_BIT
+#define GL_BUFFER_UPDATE_BARRIER_BIT 0x00000200
+#endif
+#ifndef GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT
+#define GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT 0x00004000
+#endif
+
+#ifndef GL_SHADER_BINARY_FORMAT_SPIR_V
+#define GL_SHADER_BINARY_FORMAT_SPIR_V 0x9551
+#endif
+
 #ifndef GL_VERTEX_SHADER
 #define GL_VERTEX_SHADER 0x8B31
+#endif
+#ifndef GL_COMPUTE_SHADER
+#define GL_COMPUTE_SHADER 0x91B9
 #endif
 #ifndef GL_FRAGMENT_SHADER
 #define GL_FRAGMENT_SHADER 0x8B30
@@ -302,6 +322,12 @@ typedef void   (RENDER_GLAPI *PFNGLDRAWARRAYSINDIRECTPROC)(GLenum mode, const vo
 typedef void   (RENDER_GLAPI *PFNGLDRAWELEMENTSINDIRECTPROC)(GLenum mode, GLenum type, const void* indirect);
 typedef void   (RENDER_GLAPI *PFNGLMULTIDRAWARRAYSINDIRECTPROC)(GLenum mode, const void* indirect, GLsizei drawcount, GLsizei stride);
 typedef void   (RENDER_GLAPI *PFNGLMULTIDRAWELEMENTSINDIRECTPROC)(GLenum mode, GLenum type, const void* indirect, GLsizei drawcount, GLsizei stride);
+
+typedef void   (RENDER_GLAPI *PFNGLDISPATCHCOMPUTEPROC)(GLuint num_groups_x, GLuint num_groups_y, GLuint num_groups_z);
+typedef void   (RENDER_GLAPI *PFNGLMEMORYBARRIERPROC)(GLbitfield barriers);
+typedef void   (RENDER_GLAPI *PFNGLSHADERBINARYPROC)(GLsizei count, const GLuint* shaders, GLenum binaryformat, const void* binary, GLsizei length);
+typedef void   (RENDER_GLAPI *PFNGLSPECIALIZESHADERPROC)(GLuint shader, const GLchar* pEntryPoint, GLuint numSpecializationConstants, const GLuint* pConstantIndex, const GLuint* pConstantValue);
+typedef void   (RENDER_GLAPI *PFNGLNAMEDBUFFERSTORAGEPROC)(GLuint buffer, GLsizeiptr size, const void* data, GLbitfield flags);
 
 typedef GLuint (RENDER_GLAPI *PFNGLCREATESHADERPROC)(GLenum type);
 typedef void   (RENDER_GLAPI *PFNGLDELETESHADERPROC)(GLuint shader);
@@ -431,6 +457,12 @@ struct GLFuncs {
     PFNGLDRAWELEMENTSINDIRECTPROC    DrawElementsIndirect;
     PFNGLMULTIDRAWARRAYSINDIRECTPROC  MultiDrawArraysIndirect;
     PFNGLMULTIDRAWELEMENTSINDIRECTPROC MultiDrawElementsIndirect;
+
+    PFNGLDISPATCHCOMPUTEPROC         DispatchCompute;
+    PFNGLMEMORYBARRIERPROC           MemoryBarrier;
+    PFNGLSHADERBINARYPROC            ShaderBinary;
+    PFNGLSPECIALIZESHADERPROC        SpecializeShader;
+    PFNGLNAMEDBUFFERSTORAGEPROC      NamedBufferStorage;
 
     PFNGLCREATESHADERPROC            CreateShader;
     PFNGLDELETESHADERPROC            DeleteShader;

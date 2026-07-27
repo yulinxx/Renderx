@@ -10,6 +10,8 @@
 #include "core/render_world.h"
 #include "core/batch_queue.h"
 #include "core/overlay_queue.h"
+#include "core/command_encoder.h"
+#include "core/render_graph.h"
 #include "core/mesh_manager.h"
 #include "core/text_atlas.h"
 #include "core/scene_env.h"
@@ -51,6 +53,10 @@ namespace render
         core::TextAtlas      textAtlas;
         /// 场景环境渲染器（网格背景等）
         core::SceneEnv       sceneEnv;
+        /// 统一命令编码器（Phase 3 新增，统一 overlay / world 绘制命令）
+        core::CommandEncoder commandEncoder;
+        /// 渲染图（Phase 4 新增，显式 Pass 调度层）
+        core::RenderGraph    renderGraph;
 
         /// 视图模式（2D/3D）
         ViewMode             viewMode = ViewMode::Mode2D;
@@ -149,6 +155,8 @@ extern "C" {
         dev->world2D.initialize();
         dev->batchQueue.initialize(dev->rhiDevice);
         dev->overlayQueue.initialize(dev->rhiDevice);
+        dev->commandEncoder.initialize(dev->rhiDevice);
+        dev->renderGraph.initialize(dev->rhiDevice);
         dev->meshManager.initialize(dev->rhiDevice);
         dev->textAtlas.initialize(dev->rhiDevice);
         dev->sceneEnv.initialize(dev->rhiDevice);
@@ -172,6 +180,8 @@ extern "C" {
         dev->sceneEnv.shutdown();
         dev->textAtlas.shutdown();
         dev->meshManager.shutdown();
+        dev->renderGraph.shutdown();
+        dev->commandEncoder.shutdown();
         dev->overlayQueue.shutdown();
         dev->batchQueue.shutdown();
         dev->world2D.shutdown();
@@ -470,6 +480,8 @@ extern "C" {
     /**
      * @brief 设置叠加层数据
      *
+     * Phase 1 起，十字准星和捕捉指示器通过统一 API 提交。
+     *
      * @param dev 渲染设备指针
      * @param overlay 叠加层数据
      */
@@ -477,10 +489,53 @@ extern "C" {
     {
         if (!dev || !overlay) return;
         dev->overlay = *overlay;
-        dev->overlayQueue.setCrosshair(overlay->crosshairWorld[0], overlay->crosshairWorld[1],
-            overlay->crosshairVisible != 0);
-        dev->overlayQueue.setSnapIndicator(overlay->snapWorld[0], overlay->snapWorld[1],
-            overlay->snapVisible != 0, overlay->snapColor);
+
+        // 十字准星通过统一 API 提交
+        if (overlay->crosshairVisible != 0)
+        {
+            float pos[2] = { overlay->crosshairWorld[0], overlay->crosshairWorld[1] };
+            OverlayMarkerSetDesc desc;
+            desc.positions = pos;
+            desc.count = 1;
+
+            OverlayPrimitive prim;
+            prim.kind = OverlayPrimitiveKind::Crosshair;
+            prim.flags = 0;
+            prim.payload = &desc;
+            prim.payloadSize = sizeof(desc);
+            prim.style.borderColor = 0xFFFFFFFF; // 白色
+            prim.style.pointSize = 20.0f; // 十字线半长
+            dev->overlayQueue.submitOverlay(&prim);
+        }
+
+        // 捕捉指示器通过统一 API 提交
+        if (overlay->snapVisible != 0)
+        {
+            float pos[2] = { overlay->snapWorld[0], overlay->snapWorld[1] };
+            OverlayMarkerSetDesc desc;
+            desc.positions = pos;
+            desc.count = 1;
+
+            // 将 float[4] 颜色转换为 RGBA32
+            uint32_t rgba = 0;
+            auto f2u = [](float f) -> uint32_t {
+                int v = static_cast<int>(f * 255.0f + 0.5f);
+                return static_cast<uint32_t>(v < 0 ? 0 : (v > 255 ? 255 : v));
+            };
+            rgba |= f2u(overlay->snapColor[0]) << 0;
+            rgba |= f2u(overlay->snapColor[1]) << 8;
+            rgba |= f2u(overlay->snapColor[2]) << 16;
+            rgba |= f2u(overlay->snapColor[3]) << 24;
+
+            OverlayPrimitive prim;
+            prim.kind = OverlayPrimitiveKind::SnapIndicator;
+            prim.flags = 0;
+            prim.payload = &desc;
+            prim.payloadSize = sizeof(desc);
+            prim.style.fillColor = rgba;
+            prim.style.pointSize = 8.0f; // 圆半径
+            dev->overlayQueue.submitOverlay(&prim);
+        }
     }
 
     /**
@@ -498,6 +553,8 @@ extern "C" {
     /**
      * @brief 设置预览线
      *
+     * Phase 1 起此函数变为统一 API 的兼容包装器，内部通过 renderSubmitOverlay 提交。
+     *
      * @param dev 渲染设备指针
      * @param vertices 顶点数据
      * @param vertexCount 顶点数量
@@ -506,12 +563,49 @@ extern "C" {
     RENDER_API void renderSetPreviewLines(RenderDevice* dev, const VertexP3C3* vertices,
         uint32_t vertexCount, uint32_t colorRGBA)
     {
-        if (!dev) return;
-        dev->overlayQueue.setPreviewLines(vertices, vertexCount, colorRGBA);
+        if (!dev || !vertices || vertexCount == 0) return;
+
+        // 提取位置数组（每顶点3个float）
+        std::vector<float> positions;
+        positions.resize(static_cast<size_t>(vertexCount) * 3);
+        for (uint32_t i = 0; i < vertexCount; ++i)
+        {
+            positions[i * 3 + 0] = vertices[i].px;
+            positions[i * 3 + 1] = vertices[i].py;
+            positions[i * 3 + 2] = vertices[i].pz;
+        }
+
+        // 提取逐顶点颜色数组（每顶点3个float）
+        std::vector<float> colors;
+        colors.resize(static_cast<size_t>(vertexCount) * 3);
+        for (uint32_t i = 0; i < vertexCount; ++i)
+        {
+            colors[i * 3 + 0] = vertices[i].cr;
+            colors[i * 3 + 1] = vertices[i].cg;
+            colors[i * 3 + 2] = vertices[i].cb;
+        }
+
+        OverlayPolylineDesc desc;
+        desc.vertices = positions.data();
+        desc.vertexCount = vertexCount;
+        desc.usePerVertexColor = true;
+        desc.colors = colors.data();
+
+        OverlayPrimitive prim;
+        prim.kind = OverlayPrimitiveKind::LineList;
+        prim.flags = 0;
+        prim.payload = &desc;
+        prim.payloadSize = sizeof(desc);
+        prim.style.borderColor = colorRGBA;
+        prim.style.lineWidth = 1.0f;
+
+        dev->overlayQueue.submitOverlay(&prim);
     }
 
     /**
      * @brief 设置控制线
+     *
+     * Phase 1 起此函数变为统一 API 的兼容包装器，内部通过 renderSubmitOverlay 提交。
      *
      * @param dev 渲染设备指针
      * @param vertices 顶点数据
@@ -521,12 +615,47 @@ extern "C" {
     RENDER_API void renderSetControlLines(RenderDevice* dev, const VertexP3C3* vertices,
         uint32_t vertexCount, uint32_t colorRGBA)
     {
-        if (!dev) return;
-        dev->overlayQueue.setControlLines(vertices, vertexCount, colorRGBA);
+        if (!dev || !vertices || vertexCount == 0) return;
+
+        std::vector<float> positions;
+        positions.resize(static_cast<size_t>(vertexCount) * 3);
+        for (uint32_t i = 0; i < vertexCount; ++i)
+        {
+            positions[i * 3 + 0] = vertices[i].px;
+            positions[i * 3 + 1] = vertices[i].py;
+            positions[i * 3 + 2] = vertices[i].pz;
+        }
+
+        std::vector<float> colors;
+        colors.resize(static_cast<size_t>(vertexCount) * 3);
+        for (uint32_t i = 0; i < vertexCount; ++i)
+        {
+            colors[i * 3 + 0] = vertices[i].cr;
+            colors[i * 3 + 1] = vertices[i].cg;
+            colors[i * 3 + 2] = vertices[i].cb;
+        }
+
+        OverlayPolylineDesc desc;
+        desc.vertices = positions.data();
+        desc.vertexCount = vertexCount;
+        desc.usePerVertexColor = true;
+        desc.colors = colors.data();
+
+        OverlayPrimitive prim;
+        prim.kind = OverlayPrimitiveKind::LineList;
+        prim.flags = 0;
+        prim.payload = &desc;
+        prim.payloadSize = sizeof(desc);
+        prim.style.borderColor = colorRGBA;
+        prim.style.lineWidth = 1.0f;
+
+        dev->overlayQueue.submitOverlay(&prim);
     }
 
     /**
      * @brief 设置点标记
+     *
+     * Phase 1 起此函数变为统一 API 的兼容包装器，内部通过 renderSubmitOverlay 提交。
      *
      * @param dev 渲染设备指针
      * @param worldPositions 世界坐标数组（每点2个float）
@@ -539,12 +668,28 @@ extern "C" {
         uint32_t count, float markerSize,
         uint32_t fillColor, uint32_t borderColor)
     {
-        if (!dev) return;
-        dev->overlayQueue.setPointMarkers(worldPositions, count, markerSize, fillColor, borderColor);
+        if (!dev || !worldPositions || count == 0) return;
+
+        OverlayMarkerSetDesc desc;
+        desc.positions = worldPositions;
+        desc.count = count;
+
+        OverlayPrimitive prim;
+        prim.kind = OverlayPrimitiveKind::Points;
+        prim.flags = 0;
+        prim.payload = &desc;
+        prim.payloadSize = sizeof(desc);
+        prim.style.fillColor = fillColor;
+        prim.style.borderColor = borderColor;
+        prim.style.pointSize = markerSize;
+
+        dev->overlayQueue.submitOverlay(&prim);
     }
 
     /**
      * @brief 设置选择框
+     *
+     * Phase 1 起此函数变为统一 API 的兼容包装器，内部通过 renderSubmitOverlay 提交。
      *
      * @param dev 渲染设备指针
      * @param bbox 边界框
@@ -552,12 +697,73 @@ extern "C" {
      */
     RENDER_API void renderSetSelectionBox(RenderDevice* dev, const BBox2f* bbox, uint32_t colorRGBA)
     {
-        if (!dev) return;
-        dev->overlayQueue.setSelectionBox(bbox, colorRGBA);
+        if (!dev || !bbox) return;
+
+        OverlayRectDesc desc;
+        desc.minX = bbox->minX;
+        desc.minY = bbox->minY;
+        desc.maxX = bbox->maxX;
+        desc.maxY = bbox->maxY;
+
+        OverlayPrimitive prim;
+        prim.kind = OverlayPrimitiveKind::Rect;
+        prim.flags = 0;
+        prim.payload = &desc;
+        prim.payloadSize = sizeof(desc);
+        prim.style.borderColor = colorRGBA;
+        prim.style.lineWidth = 1.0f;
+
+        dev->overlayQueue.submitOverlay(&prim);
+    }
+
+    /**
+     * @brief 设置选择预览矩形
+     *
+     * Phase 1 起此函数变为统一 API 的兼容包装器，内部通过 renderSubmitOverlay 提交。
+     * 若填充色 alpha 不为 0，会提交两个图元：FilledRect（填充）+ Rect（边框）。
+     *
+     * @param dev 渲染设备指针
+     * @param bbox 边界框
+     * @param fillColor 填充颜色（32位RGBA格式，alpha=0时无填充）
+     * @param borderColor 边框颜色（32位RGBA格式）
+     */
+    RENDER_API void renderSetSelectionRect(RenderDevice* dev, const BBox2f* bbox,
+        uint32_t fillColor, uint32_t borderColor)
+    {
+        if (!dev || !bbox) return;
+
+        OverlayRectDesc desc;
+        desc.minX = bbox->minX;
+        desc.minY = bbox->minY;
+        desc.maxX = bbox->maxX;
+        desc.maxY = bbox->maxY;
+
+        uint8_t fillAlpha = static_cast<uint8_t>((fillColor >> 24) & 0xFF);
+        if (fillAlpha != 0)
+        {
+            OverlayPrimitive fillPrim;
+            fillPrim.kind = OverlayPrimitiveKind::FilledRect;
+            fillPrim.flags = 0;
+            fillPrim.payload = &desc;
+            fillPrim.payloadSize = sizeof(desc);
+            fillPrim.style.fillColor = fillColor;
+            dev->overlayQueue.submitOverlay(&fillPrim);
+        }
+
+        OverlayPrimitive borderPrim;
+        borderPrim.kind = OverlayPrimitiveKind::Rect;
+        borderPrim.flags = 0;
+        borderPrim.payload = &desc;
+        borderPrim.payloadSize = sizeof(desc);
+        borderPrim.style.borderColor = borderColor;
+        borderPrim.style.lineWidth = 1.0f;
+        dev->overlayQueue.submitOverlay(&borderPrim);
     }
 
     /**
      * @brief 设置选择手柄
+     *
+     * Phase 1 起此函数变为统一 API 的兼容包装器，内部通过 renderSubmitOverlay 提交。
      *
      * @param dev 渲染设备指针
      * @param worldPositions 世界坐标数组（每点2个float）
@@ -570,8 +776,50 @@ extern "C" {
         uint32_t count, float handleSize,
         uint32_t fillColor, uint32_t borderColor)
     {
+        if (!dev || !worldPositions || count == 0) return;
+
+        OverlayMarkerSetDesc desc;
+        desc.positions = worldPositions;
+        desc.count = count;
+
+        OverlayPrimitive prim;
+        prim.kind = OverlayPrimitiveKind::Points;
+        prim.flags = 0;
+        prim.payload = &desc;
+        prim.payloadSize = sizeof(desc);
+        prim.style.fillColor = fillColor;
+        prim.style.borderColor = borderColor;
+        prim.style.pointSize = handleSize;
+
+        dev->overlayQueue.submitOverlay(&prim);
+    }
+
+    /**
+     * @brief 提交单个叠加层图元（统一 API）
+     */
+    RENDER_API void renderSubmitOverlay(RenderDevice* dev, const OverlayPrimitive* primitive)
+    {
+        if (!dev || !primitive) return;
+        dev->overlayQueue.submitOverlay(primitive);
+    }
+
+    /**
+     * @brief 批量提交叠加层图元（统一 API）
+     */
+    RENDER_API void renderSubmitOverlays(RenderDevice* dev, const OverlayPrimitive* primitives, uint32_t count)
+    {
+        if (!dev || !primitives || count == 0) return;
+        for (uint32_t i = 0; i < count; ++i)
+            dev->overlayQueue.submitOverlay(&primitives[i]);
+    }
+
+    /**
+     * @brief 清除所有通过统一 API 提交的叠加层图元
+     */
+    RENDER_API void renderClearOverlays(RenderDevice* dev)
+    {
         if (!dev) return;
-        dev->overlayQueue.setSelectionHandles(worldPositions, count, handleSize, fillColor, borderColor);
+        dev->overlayQueue.clearUnifiedOverlays();
     }
 
     /**
@@ -652,36 +900,26 @@ extern "C" {
 
         rhi->beginFrame();
 
-        if (dev->viewMode == ViewMode::Mode2D)
-        {
-            rhi->setClearColor(dev->clearColor[0], dev->clearColor[1], dev->clearColor[2], dev->clearColor[3]);
-            rhi->enableDepthTest(false);
-        }
-        else
-        {
-            rhi->setClearColor(0.12f, 0.14f, 0.20f, 1.0f);
-            rhi->enableDepthTest(true);
-        }
-        rhi->enableBlend(true);
-
         uint32_t visibleCount = 0;
 
+        // Phase 4: 清空上一帧的 Pass，根据当前视图模式重新编排
+        dev->renderGraph.clear();
+
         if (dev->viewMode == ViewMode::Mode2D)
         {
+            // ---- CPU 侧数据准备（不涉及 RHI，放在 Pass 外）----
             dev->world2D.update();
 
             uint32_t maxVisible = static_cast<uint32_t>(dev->world2D.getEntityCount());
-
             if (dev->visibleIndices.size() < maxVisible)
-            {
                 dev->visibleIndices.resize(maxVisible);
-            }
+
             dev->world2D.queryVisible(dev->view2D.viewMatrix, dev->view2D.viewWidth,
                 dev->view2D.viewHeight, dev->visibleIndices.data(), &visibleCount, maxVisible);
 
             if (maxVisible > 0 && visibleCount == 0)
             {
-                SY_WARNF("renderFrame: queryVisible returned 0 (total=%u), forcing all entities for debug", maxVisible);
+                SY_DEBUGF("renderFrame: queryVisible returned 0 (total=%u), forcing all entities for debug", maxVisible);
                 visibleCount = maxVisible;
                 for (uint32_t i = 0; i < maxVisible; ++i)
                     dev->visibleIndices[i] = i;
@@ -694,36 +932,136 @@ extern "C" {
                 dev->view2D.viewMatrix[7],
                 dev->view2D.viewWidth, dev->view2D.viewHeight);
 
-            dev->sceneEnv.render(rhi, dev->view2D.viewMatrix,
-                static_cast<uint32_t>(dev->view2D.viewWidth),
-                static_cast<uint32_t>(dev->view2D.viewHeight));
-
+            // 预先把 world2D 的可见实体提交给 BatchQueue（生成间接命令）
             dev->batchQueue.submit(dev->visibleIndices.data(), visibleCount, dev->world2D);
-            dev->batchQueue.render(rhi, dev->view2D.viewMatrix, dev->world2D);
 
-            dev->overlayQueue.render(rhi, dev->view2D.viewMatrix);
+            // ---- Pass 0: FrameSetup ----
+            // 设置清屏颜色、深度测试、混合状态，并重置命令编码器
+            {
+                core::PassDesc pass;
+                pass.name = "FrameSetup";
+                pass.enabled = true;
+                pass.onSetup = [dev](rhi::IDevice* d) {
+                    d->setClearColor(dev->clearColor[0], dev->clearColor[1],
+                        dev->clearColor[2], dev->clearColor[3]);
+                    d->enableDepthTest(false);
+                    d->enableBlend(true);
+                    dev->commandEncoder.reset();
+                };
+                dev->renderGraph.addPass(pass);
+            }
 
+            // ---- Pass 1: SceneEnv ----
+            // 渲染场景环境（网格背景等）
+            {
+                core::PassDesc pass;
+                pass.name = "SceneEnv";
+                pass.enabled = true;
+                pass.onExecute = [dev](rhi::IDevice* d) {
+                    dev->sceneEnv.render(d, dev->view2D.viewMatrix,
+                        static_cast<uint32_t>(dev->view2D.viewWidth),
+                        static_cast<uint32_t>(dev->view2D.viewHeight));
+                };
+                dev->renderGraph.addPass(pass);
+            }
+
+            // ---- Pass 2: World2DCollect ----
+            // 将 world2D 实体渲染命令收集到 CommandEncoder
+            {
+                core::PassDesc pass;
+                pass.name = "World2DCollect";
+                pass.enabled = true;
+                pass.onExecute = [dev](rhi::IDevice* d) {
+                    dev->batchQueue.render(d, &dev->commandEncoder,
+                        dev->view2D.viewMatrix, dev->world2D);
+                };
+                dev->renderGraph.addPass(pass);
+            }
+
+            // ---- Pass 3: OverlayCollect ----
+            // 将 overlay 渲染命令收集到 CommandEncoder
+            {
+                core::PassDesc pass;
+                pass.name = "OverlayCollect";
+                pass.enabled = true;
+                pass.onExecute = [dev](rhi::IDevice* d) {
+                    dev->overlayQueue.render(d, &dev->commandEncoder, dev->view2D.viewMatrix);
+                };
+                dev->renderGraph.addPass(pass);
+            }
+
+            // ---- Pass 4: CommandExecute ----
+            // 统一执行所有已收集的绘制命令（World2D + Overlay）
+            {
+                core::PassDesc pass;
+                pass.name = "CommandExecute";
+                pass.enabled = true;
+                pass.onExecute = [dev](rhi::IDevice* d) {
+                    dev->commandEncoder.execute(d,
+                        dev->batchQueue.getVertexBuffer(),
+                        dev->overlayQueue.getVertexBuffer(),
+                        dev->batchQueue.getIndirectBuffer(),
+                        dev->view2D.viewMatrix);
+                };
+                dev->renderGraph.addPass(pass);
+            }
+
+            // ---- Pass 5: Text ----
+            // 渲染文本（在 overlay 之上）
             if (!dev->pendingTextItems.empty())
             {
-                std::vector<TextItem> items;
-                items.reserve(dev->pendingTextItems.size());
-                for (auto& pt : dev->pendingTextItems)
-                    items.push_back(pt.item);
-                TextItemList list;
-                list.items = items.data();
-                list.count = static_cast<uint32_t>(items.size());
-                dev->textAtlas.renderText(&list, dev->view2D.viewMatrix, rhi);
-                dev->pendingTextItems.clear();
+                core::PassDesc pass;
+                pass.name = "Text";
+                pass.enabled = true;
+                pass.onExecute = [dev](rhi::IDevice* d) {
+                    if (dev->pendingTextItems.empty()) return;
+                    std::vector<TextItem> items;
+                    items.reserve(dev->pendingTextItems.size());
+                    for (auto& pt : dev->pendingTextItems)
+                        items.push_back(pt.item);
+                    TextItemList list;
+                    list.items = items.data();
+                    list.count = static_cast<uint32_t>(items.size());
+                    dev->textAtlas.renderText(&list, dev->view2D.viewMatrix, d);
+                    dev->pendingTextItems.clear();
+                };
+                dev->renderGraph.addPass(pass);
             }
         }
         else
         {
+            // ---- 3D 模式 Pass 编排 ----
+
+            // Pass 0: FrameSetup3D
+            {
+                core::PassDesc pass;
+                pass.name = "FrameSetup3D";
+                pass.enabled = true;
+                pass.onSetup = [](rhi::IDevice* d) {
+                    d->setClearColor(0.12f, 0.14f, 0.20f, 1.0f);
+                    d->enableDepthTest(true);
+                    d->enableBlend(true);
+                };
+                dev->renderGraph.addPass(pass);
+            }
+
+            // Pass 1: Mesh3D
             if (dev->meshManager.getInstanceCount() > 0)
             {
-                dev->meshManager.update();
-                dev->meshManager.render(rhi, dev->view3D.viewMatrix, dev->view3D.projMatrix);
+                core::PassDesc pass;
+                pass.name = "Mesh3D";
+                pass.enabled = true;
+                pass.onExecute = [dev](rhi::IDevice* d) {
+                    if (dev->meshManager.getInstanceCount() == 0) return;
+                    dev->meshManager.update();
+                    dev->meshManager.render(d, dev->view3D.viewMatrix, dev->view3D.projMatrix);
+                };
+                dev->renderGraph.addPass(pass);
             }
         }
+
+        // Phase 4: 按 Pass 顺序统一执行
+        dev->renderGraph.execute(rhi);
 
         rhi->endFrame();
         rhi->present();
@@ -980,7 +1318,7 @@ extern "C" {
     /**
      * @brief 发射多段线几何到渲染世界
      *
-     * 将多段线细分为顶点并添加到渲染世界。
+     * Phase 2 起此函数变为统一 API 的兼容包装器，内部通过 renderSubmitGeometry 提交。
      *
      * @param dev 渲染设备指针
      * @param polyline 多段线几何数据
@@ -1003,26 +1341,17 @@ extern "C" {
             s_emitCount++;
         }
 
-        std::vector<render::VertexP3C3> vertices;
-        tessellatePolyline(polyline, vertices);
-
-        if (!vertices.empty())
-        {
-            render::PrimitiveType type = polyline->closed ?
-                render::PrimitiveType::LineLoop : render::PrimitiveType::LineStrip;
-            dev->world2D.addEntity(s_entityIdCounter++, vertices.data(),
-                static_cast<uint32_t>(vertices.size()), type, 0);
-        }
-        else
-        {
-            SY_WARN("renderEmitPolyline: no vertices generated");
-        }
+        GeometryPrimitive prim;
+        prim.kind = GeometryPrimitiveKind::Polyline;
+        prim.flags = 0;
+        prim.desc.polyline = polyline;
+        renderSubmitGeometry(dev, &prim);
     }
 
     /**
      * @brief 发射圆形几何到渲染世界
      *
-     * 将圆形细分为顶点并添加到渲染世界（使用LineLoop）。
+     * Phase 2 起此函数变为统一 API 的兼容包装器，内部通过 renderSubmitGeometry 提交。
      *
      * @param dev 渲染设备指针
      * @param circle 圆形几何数据
@@ -1031,21 +1360,17 @@ extern "C" {
     {
         if (!dev || !circle) return;
 
-        std::vector<render::VertexP3C3> vertices;
-        tessellateCircle(circle, vertices);
-
-        if (!vertices.empty())
-        {
-            dev->world2D.addEntity(s_entityIdCounter++, vertices.data(),
-                static_cast<uint32_t>(vertices.size()),
-                render::PrimitiveType::LineLoop, 0);
-        }
+        GeometryPrimitive prim;
+        prim.kind = GeometryPrimitiveKind::Circle;
+        prim.flags = 0;
+        prim.desc.circle = circle;
+        renderSubmitGeometry(dev, &prim);
     }
 
     /**
      * @brief 发射圆弧几何到渲染世界
      *
-     * 将圆弧细分为顶点并添加到渲染世界（使用LineStrip）。
+     * Phase 2 起此函数变为统一 API 的兼容包装器，内部通过 renderSubmitGeometry 提交。
      *
      * @param dev 渲染设备指针
      * @param arc 圆弧几何数据
@@ -1054,21 +1379,17 @@ extern "C" {
     {
         if (!dev || !arc) return;
 
-        std::vector<render::VertexP3C3> vertices;
-        tessellateArc(arc, vertices);
-
-        if (!vertices.empty())
-        {
-            dev->world2D.addEntity(s_entityIdCounter++, vertices.data(),
-                static_cast<uint32_t>(vertices.size()),
-                render::PrimitiveType::LineStrip, 0);
-        }
+        GeometryPrimitive prim;
+        prim.kind = GeometryPrimitiveKind::Arc;
+        prim.flags = 0;
+        prim.desc.arc = arc;
+        renderSubmitGeometry(dev, &prim);
     }
 
     /**
      * @brief 发射椭圆几何到渲染世界
      *
-     * 将椭圆细分为顶点并添加到渲染世界。
+     * Phase 2 起此函数变为统一 API 的兼容包装器，内部通过 renderSubmitGeometry 提交。
      *
      * @param dev 渲染设备指针
      * @param ellipse 椭圆几何数据
@@ -1077,20 +1398,17 @@ extern "C" {
     {
         if (!dev || !ellipse) return;
 
-        std::vector<render::VertexP3C3> vertices;
-        tessellateEllipse(ellipse, vertices);
-
-        if (!vertices.empty())
-        {
-            render::PrimitiveType type = ellipse->fullEllipse ?
-                render::PrimitiveType::LineLoop : render::PrimitiveType::LineStrip;
-            dev->world2D.addEntity(s_entityIdCounter++, vertices.data(),
-                static_cast<uint32_t>(vertices.size()), type, 0);
-        }
+        GeometryPrimitive prim;
+        prim.kind = GeometryPrimitiveKind::Ellipse;
+        prim.flags = 0;
+        prim.desc.ellipse = ellipse;
+        renderSubmitGeometry(dev, &prim);
     }
 
     /**
-     * @brief 发射文本几何到渲染世界（预留接口，尚未实现）
+     * @brief 发射文本几何到渲染世界
+     *
+     * Phase 2 起此函数变为统一 API 的兼容包装器，内部通过 renderSubmitGeometry 提交。
      *
      * @param dev 渲染设备指针
      * @param text 文本几何数据
@@ -1099,29 +1417,17 @@ extern "C" {
     {
         if (!dev || !text || !text->text) return;
 
-        RenderDevice::PendingText pt;
-        pt.textStorage = text->text;
-        pt.item.text = pt.textStorage.c_str();
-        pt.item.x = static_cast<float>(text->position.x);
-        pt.item.y = static_cast<float>(text->position.y);
-        pt.item.coordMode = 0; // 世界坐标
-        pt.item.hAlign = 0; // 左对齐
-        pt.item.vAlign = 0; // 上对齐
-        pt.item.fontSize = (text->fontSize > 0.0f) ? static_cast<int32_t>(text->fontSize) : 12;
-        pt.item.color[0] = text->color[0];
-        pt.item.color[1] = text->color[1];
-        pt.item.color[2] = text->color[2];
-        pt.item.color[3] = text->color[3];
-        pt.item.rotationDeg = 0.0f;
-        pt.item.zOrder = 0.0f;
-
-        dev->pendingTextItems.push_back(std::move(pt));
+        GeometryPrimitive prim;
+        prim.kind = GeometryPrimitiveKind::Text;
+        prim.flags = 0;
+        prim.desc.text = text;
+        renderSubmitGeometry(dev, &prim);
     }
 
     /**
      * @brief 发射图像几何到渲染世界
      *
-     * 将图像的四个角连接成线框（使用LineStrip）。
+     * Phase 2 起此函数变为统一 API 的兼容包装器，内部通过 renderSubmitGeometry 提交。
      *
      * @param dev 渲染设备指针
      * @param image 图像几何数据
@@ -1130,28 +1436,24 @@ extern "C" {
     {
         if (!dev || !image) return;
 
-        std::vector<render::VertexP3C3> vertices;
-        vertices.reserve(5);
-
-        render::VertexP3C3 v;
-        v.cr = image->color[0]; v.cg = image->color[1]; v.cb = image->color[2];
-
-        v.px = static_cast<float>(image->topLeft.x); v.py = static_cast<float>(image->topLeft.y); v.pz = 0.0f;
-        vertices.push_back(v);
-        v.px = static_cast<float>(image->topRight.x); v.py = static_cast<float>(image->topRight.y);
-        vertices.push_back(v);
-        v.px = static_cast<float>(image->bottomRight.x); v.py = static_cast<float>(image->bottomRight.y);
-        vertices.push_back(v);
-        v.px = static_cast<float>(image->bottomLeft.x); v.py = static_cast<float>(image->bottomLeft.y);
-        vertices.push_back(v);
-        v.px = static_cast<float>(image->topLeft.x); v.py = static_cast<float>(image->topLeft.y);
-        vertices.push_back(v);
-
-        dev->world2D.addEntity(s_entityIdCounter++, vertices.data(),
-            static_cast<uint32_t>(vertices.size()),
-            render::PrimitiveType::LineStrip, 0);
+        GeometryPrimitive prim;
+        prim.kind = GeometryPrimitiveKind::Image;
+        prim.flags = 0;
+        prim.desc.image = image;
+        renderSubmitGeometry(dev, &prim);
     }
 
+    /**
+     * @brief 发射三角网格几何到渲染世界
+     *
+     * Phase 2 起此函数变为统一 API 的兼容包装器，内部通过 renderSubmitGeometry 提交。
+     *
+     * @param dev 渲染设备指针
+     * @param vertices 顶点位置数组
+     * @param normals 顶点法线数组
+     * @param vertexCount 顶点数量
+     * @param color RGBA颜色，为null时使用默认灰色
+     */
     RENDER_API void renderEmitTriangleSoup(RenderDevice* dev,
         const float* vertices, const float* normals,
         uint32_t vertexCount,
@@ -1159,32 +1461,180 @@ extern "C" {
     {
         if (!dev || !vertices || !normals || vertexCount < 3) return;
 
-        // 生成顺序索引 (0, 1, 2, 3, 4, 5, ...)
-        std::vector<uint32_t> indices(vertexCount);
-        for (uint32_t i = 0; i < vertexCount; ++i) indices[i] = i;
-
-        MeshId meshId = dev->meshManager.registerMesh(vertices, normals,
-            indices.data(), vertexCount,
-            vertexCount);
-        if (meshId == INVALID_MESH_ID) return;
-
-        // 默认单位矩阵作为模型变换
-        float identity[16] = {
-            1,0,0,0,
-            0,1,0,0,
-            0,0,1,0,
-            0,0,0,1
-        };
-        float col[4];
+        // 组装 typed desc 并转发到统一入口
+        GeometryTriangleSoupDesc desc;
+        desc.vertices = vertices;
+        desc.normals = normals;
+        desc.vertexCount = vertexCount;
         if (color)
         {
-            col[0] = color[0]; col[1] = color[1];
-            col[2] = color[2]; col[3] = color[3];
+            desc.color[0] = color[0];
+            desc.color[1] = color[1];
+            desc.color[2] = color[2];
+            desc.color[3] = color[3];
         }
         else
         {
-            col[0] = col[1] = col[2] = 0.7f; col[3] = 1.0f;
+            desc.color[0] = desc.color[1] = desc.color[2] = 0.7f;
+            desc.color[3] = 1.0f;
         }
-        dev->meshManager.addInstance(meshId, identity, 0, col);
+
+        GeometryPrimitive prim;
+        prim.kind = GeometryPrimitiveKind::TriangleSoup;
+        prim.flags = 0;
+        prim.desc.triangleSoup = &desc;
+        renderSubmitGeometry(dev, &prim);
+    }
+
+    // ========================================================================
+    // Phase 2: 统一几何提交 API 实现
+    // ========================================================================
+
+    /**
+     * @brief 提交单个几何图元（统一 API）
+     *
+     * 根据 GeometryPrimitive::kind 分发到对应渲染路径：
+     * - Polyline / Circle / Arc / Ellipse / Image → tessellate 后 world2D.addEntity
+     * - Text → 暂存到 pendingTextItems，renderFrame 时由 TextAtlas 渲染
+     * - TriangleSoup → meshManager.registerMesh + addInstance
+     */
+    RENDER_API void renderSubmitGeometry(RenderDevice* dev, const GeometryPrimitive* primitive)
+    {
+        if (!dev || !primitive) return;
+
+        switch (primitive->kind)
+        {
+            // ---- 2D 文档几何路径 ----
+            case GeometryPrimitiveKind::Polyline:
+            {
+                if (!primitive->desc.polyline) return;
+                std::vector<render::VertexP3C3> vertices;
+                tessellatePolyline(primitive->desc.polyline, vertices);
+                if (!vertices.empty())
+                {
+                    render::PrimitiveType type = primitive->desc.polyline->closed ?
+                        render::PrimitiveType::LineLoop : render::PrimitiveType::LineStrip;
+                    dev->world2D.addEntity(s_entityIdCounter++, vertices.data(),
+                        static_cast<uint32_t>(vertices.size()), type, 0);
+                }
+                break;
+            }
+            case GeometryPrimitiveKind::Circle:
+            {
+                if (!primitive->desc.circle) return;
+                std::vector<render::VertexP3C3> vertices;
+                tessellateCircle(primitive->desc.circle, vertices);
+                if (!vertices.empty())
+                {
+                    dev->world2D.addEntity(s_entityIdCounter++, vertices.data(),
+                        static_cast<uint32_t>(vertices.size()),
+                        render::PrimitiveType::LineLoop, 0);
+                }
+                break;
+            }
+            case GeometryPrimitiveKind::Arc:
+            {
+                if (!primitive->desc.arc) return;
+                std::vector<render::VertexP3C3> vertices;
+                tessellateArc(primitive->desc.arc, vertices);
+                if (!vertices.empty())
+                {
+                    dev->world2D.addEntity(s_entityIdCounter++, vertices.data(),
+                        static_cast<uint32_t>(vertices.size()),
+                        render::PrimitiveType::LineStrip, 0);
+                }
+                break;
+            }
+            case GeometryPrimitiveKind::Ellipse:
+            {
+                if (!primitive->desc.ellipse) return;
+                std::vector<render::VertexP3C3> vertices;
+                tessellateEllipse(primitive->desc.ellipse, vertices);
+                if (!vertices.empty())
+                {
+                    render::PrimitiveType type = primitive->desc.ellipse->fullEllipse ?
+                        render::PrimitiveType::LineLoop : render::PrimitiveType::LineStrip;
+                    dev->world2D.addEntity(s_entityIdCounter++, vertices.data(),
+                        static_cast<uint32_t>(vertices.size()), type, 0);
+                }
+                break;
+            }
+            case GeometryPrimitiveKind::Image:
+            {
+                if (!primitive->desc.image) return;
+                const GeometryImage* image = primitive->desc.image;
+                std::vector<render::VertexP3C3> vertices;
+                vertices.reserve(5);
+                render::VertexP3C3 v;
+                v.cr = image->color[0]; v.cg = image->color[1]; v.cb = image->color[2];
+                v.px = static_cast<float>(image->topLeft.x); v.py = static_cast<float>(image->topLeft.y); v.pz = 0.0f;
+                vertices.push_back(v);
+                v.px = static_cast<float>(image->topRight.x); v.py = static_cast<float>(image->topRight.y);
+                vertices.push_back(v);
+                v.px = static_cast<float>(image->bottomRight.x); v.py = static_cast<float>(image->bottomRight.y);
+                vertices.push_back(v);
+                v.px = static_cast<float>(image->bottomLeft.x); v.py = static_cast<float>(image->bottomLeft.y);
+                vertices.push_back(v);
+                v.px = static_cast<float>(image->topLeft.x); v.py = static_cast<float>(image->topLeft.y);
+                vertices.push_back(v);
+                dev->world2D.addEntity(s_entityIdCounter++, vertices.data(),
+                    static_cast<uint32_t>(vertices.size()),
+                    render::PrimitiveType::LineStrip, 0);
+                break;
+            }
+            // ---- 文本缓存路径 ----
+            case GeometryPrimitiveKind::Text:
+            {
+                if (!primitive->desc.text || !primitive->desc.text->text) return;
+                const GeometryText* text = primitive->desc.text;
+                RenderDevice::PendingText pt;
+                pt.textStorage = text->text;
+                pt.item.text = pt.textStorage.c_str();
+                pt.item.x = static_cast<float>(text->position.x);
+                pt.item.y = static_cast<float>(text->position.y);
+                pt.item.coordMode = 0;
+                pt.item.hAlign = 0;
+                pt.item.vAlign = 0;
+                pt.item.fontSize = (text->fontSize > 0.0f) ? static_cast<int32_t>(text->fontSize) : 12;
+                pt.item.color[0] = text->color[0];
+                pt.item.color[1] = text->color[1];
+                pt.item.color[2] = text->color[2];
+                pt.item.color[3] = text->color[3];
+                pt.item.rotationDeg = 0.0f;
+                pt.item.zOrder = 0.0f;
+                dev->pendingTextItems.push_back(std::move(pt));
+                break;
+            }
+            // ---- 3D mesh 路径 ----
+            case GeometryPrimitiveKind::TriangleSoup:
+            {
+                if (!primitive->desc.triangleSoup) return;
+                const GeometryTriangleSoupDesc* desc = primitive->desc.triangleSoup;
+                if (!desc->vertices || !desc->normals || desc->vertexCount < 3) return;
+
+                // 生成顺序索引
+                std::vector<uint32_t> indices(desc->vertexCount);
+                for (uint32_t i = 0; i < desc->vertexCount; ++i) indices[i] = i;
+
+                MeshId meshId = dev->meshManager.registerMesh(desc->vertices, desc->normals,
+                    indices.data(), desc->vertexCount, desc->vertexCount);
+                if (meshId == INVALID_MESH_ID) return;
+
+                // 默认单位矩阵作为模型变换
+                float identity[16] = { 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1 };
+                dev->meshManager.addInstance(meshId, identity, 0, const_cast<float*>(desc->color));
+                break;
+            }
+        }
+    }
+
+    /**
+     * @brief 批量提交几何图元（统一 API）
+     */
+    RENDER_API void renderSubmitGeometries(RenderDevice* dev, const GeometryPrimitive* primitives, uint32_t count)
+    {
+        if (!dev || !primitives || count == 0) return;
+        for (uint32_t i = 0; i < count; ++i)
+            renderSubmitGeometry(dev, &primitives[i]);
     }
 }

@@ -38,6 +38,7 @@ enum class BufferUsage : uint8_t {
     Indirect,       ///< 间接绘制命令缓冲区
     ShaderVisible,  ///< 着色器可见的缓冲区（如实例数据）
     Staging,        ///< 暂存缓冲区（用于CPU-GPU数据传输）
+    ShaderStorage,  ///< 着色器存储缓冲区（SSBO，GL 4.3+）
 };
 
 /// 内存类型枚举，用于指定缓冲区/纹理的内存分配策略
@@ -81,6 +82,13 @@ enum class BlendOp : uint8_t {
     Add,  ///< 加法混合：result = src * srcFactor + dst * dstFactor
 };
 
+/// 着色器阶段枚举
+enum class ShaderStage : uint8_t {
+    Vertex   = 0,   ///< 顶点着色器
+    Fragment = 1,   ///< 片段着色器
+    Compute  = 2,   ///< 计算着色器（GL 4.3+）
+};
+
 /// 顶点格式枚举，定义了顶点数据的布局方式
 enum class VertexFormat : uint8_t {
     P3C3,    ///< 3D位置 + 3通道颜色 (24字节)
@@ -112,13 +120,29 @@ struct TextureDesc {
 };
 
 /**
+ * @brief 着色器模块描述
+ *
+ * 支持 GLSL 源码或 SPIR-V 二进制两种输入方式。
+ * SPIR-V 模式优先使用，性能更优（无需运行时编译）。
+ */
+struct ShaderModuleDesc {
+    ShaderStage stage;          ///< 着色器阶段
+    const char* source;         ///< GLSL 源码（spirvWords 为 nullptr 时使用）
+    const uint32_t* spirvWords; ///< SPIR-V 二进制数据指针
+    uint32_t spirvWordCount;    ///< SPIR-V 字数量
+    const char* entryPoint;     ///< 入口函数名称（SPIR-V 模式使用，默认 "main"）
+};
+
+/**
  * @brief 图形管线创建描述结构
  */
 struct PipelineDesc {
     PrimitiveTopology topology;      ///< 图元拓扑类型
-    const char*  vertexShader;      ///< 顶点着色器源码
+    const char*  vertexShader;      ///< 顶点着色器源码（传统方式，优先使用 shaderModules）
     const char*  fragmentShader;    ///< 片段着色器源码
     const char*  computeShader;     ///< 计算着色器源码（可选）
+    const ShaderModuleDesc* shaderModules; ///< 着色器模块数组（新方式，支持 SPIR-V）
+    uint32_t     shaderModuleCount; ///< 着色器模块数量
     VertexFormat vertexFormat;      ///< 顶点格式
     bool         depthTest;         ///< 是否启用深度测试
     bool         depthWrite;        ///< 是否启用深度写入

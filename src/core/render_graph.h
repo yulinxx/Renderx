@@ -1,0 +1,186 @@
+/**
+ * @file render_graph.h
+ * @brief 渲染图 Pass 调度层定义
+ *
+ * Phase 4 引入的核心组件，负责将渲染流程从“隐式调用顺序”升级为
+ * “显式 Pass 编排 + 按依赖执行”。
+ *
+ * 设计原则：
+ * - 最小可用：先只承载顺序、目标、清屏和资源访问信息
+ * - 不破坏现有行为：Pass 内部仍调用原有渲染逻辑
+ * - 可观测：每个 Pass 边界输出日志，方便验证顺序
+ * - 预留扩展：资源访问声明为后续屏障管理留出口
+ */
+#pragma once
+
+#include "rhi/rhi_device.h"
+#include <vector>
+#include <string>
+#include <functional>
+#include <cstdint>
+
+namespace render {
+namespace core {
+
+// ============================================================================
+// 资源访问语义（为后续屏障管理预留）
+// ============================================================================
+
+/**
+ * @brief Pass 对资源的访问类型
+ */
+enum class PassResourceAccess : uint8_t
+{
+    None      = 0,
+    Read      = 1 << 0,   // 读访问
+    Write     = 1 << 1,   // 写访问
+    ReadWrite = Read | Write,
+};
+
+/**
+ * @brief Pass 可能访问的资源类型
+ */
+enum class PassResourceType : uint8_t
+{
+    ColorTarget,    // 颜色目标
+    DepthTarget,    // 深度目标
+    VertexBuffer,   // 顶点缓冲
+    IndexBuffer,    // 索引缓冲
+    UniformBuffer,  // 统一变量缓冲
+    Texture,        // 纹理
+    IndirectBuffer, // 间接绘制命令缓冲
+};
+
+/**
+ * @brief 资源槽描述（用于依赖追踪）
+ */
+struct PassResourceSlot
+{
+    PassResourceType   type;     // 资源类型
+    PassResourceAccess access;   // 访问方式
+    const char*        name;     // 调试名称
+    uint32_t           handle;   // RHI 句柄（可选，0 表示未指定）
+};
+
+// ============================================================================
+// Pass 描述
+// ============================================================================
+
+/**
+ * @brief 单个渲染 Pass 的描述
+ *
+ * 一个 Pass 代表渲染流程中的一个阶段，例如：
+ * - FrameSetup：设置清屏颜色、深度测试、混合状态
+ * - SceneEnv：渲染背景网格
+ * - World2D：收集 2D 文档几何绘制命令
+ * - Overlay：收集叠加层绘制命令
+ * - CommandExecute：执行已收集的所有绘制命令
+ * - Text：渲染文本
+ */
+struct PassDesc
+{
+    const char* name = nullptr;   // Pass 名称（用于日志和调试）
+    bool        enabled = true;   // 是否启用
+
+    // 状态设置回调（可选）：设置清屏颜色、深度测试、混合等
+    std::function<void(rhi::IDevice*)> onSetup;
+
+    // 执行回调（必须）：实际渲染逻辑
+    std::function<void(rhi::IDevice*)> onExecute;
+
+    // 输入资源声明（读访问）
+    std::vector<PassResourceSlot> inputs;
+
+    // 输出资源声明（写访问）
+    std::vector<PassResourceSlot> outputs;
+};
+
+// ============================================================================
+// 渲染图
+// ============================================================================
+
+/**
+ * @brief 渲染图：显式 Pass 调度层
+ *
+ * 管理一组按顺序执行的渲染 Pass，提供：
+ * - 显式的执行顺序（不再依赖代码中的隐式调用顺序）
+ * - Pass 级别的启用/禁用控制
+ * - 资源访问声明（为后续自动屏障管理做准备）
+ * - 执行统计和日志观测
+ */
+class RenderGraph
+{
+public:
+    RenderGraph();
+    ~RenderGraph();
+
+    /**
+     * @brief 初始化渲染图
+     */
+    void initialize(rhi::IDevice* device);
+
+    /**
+     * @brief 关闭并释放资源
+     */
+    void shutdown();
+
+    /**
+     * @brief 添加一个 Pass（按添加顺序执行）
+     */
+    void addPass(const PassDesc& desc);
+
+    /**
+     * @brief 清空所有 Pass
+     */
+    void clear();
+
+    /**
+     * @brief 按顺序执行所有启用的 Pass
+     *
+     * 执行流程：
+     *   1. 遍历所有 Pass
+     *   2. 对启用的 Pass 先调用 onSetup（如有）
+     *   3. 再调用 onExecute
+     *   4. 记录执行统计
+     */
+    void execute(rhi::IDevice* device);
+
+    /**
+     * @brief 获取 Pass 数量
+     */
+    uint32_t getPassCount() const;
+
+    /**
+     * @brief 按索引获取 Pass 名称
+     */
+    const char* getPassName(uint32_t index) const;
+
+    /**
+     * @brief 启用/禁用指定 Pass
+     */
+    void setPassEnabled(uint32_t index, bool enabled);
+
+    /**
+     * @brief 查询 Pass 是否启用
+     */
+    bool isPassEnabled(uint32_t index) const;
+
+    /**
+     * @brief 获取上一帧实际执行的 Pass 数量
+     */
+    uint32_t getExecutedPassCount() const { return m_lastExecutedCount; }
+
+private:
+    struct PassEntry
+    {
+        PassDesc desc;
+    };
+
+    std::vector<PassEntry> m_passes;
+    rhi::IDevice*          m_device = nullptr;
+    bool                   m_initialized = false;
+    uint32_t               m_lastExecutedCount = 0;
+};
+
+} // namespace core
+} // namespace render

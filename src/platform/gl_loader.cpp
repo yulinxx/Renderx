@@ -74,6 +74,12 @@ extern "C" RENDER_API bool gl_loader_init(void* getProcAddress)
     g_funcs.MultiDrawArraysIndirect = (PFNGLMULTIDRAWARRAYSINDIRECTPROC)getProc("glMultiDrawArraysIndirect");
     g_funcs.MultiDrawElementsIndirect = (PFNGLMULTIDRAWELEMENTSINDIRECTPROC)getProc("glMultiDrawElementsIndirect");
 
+    g_funcs.DispatchCompute = (PFNGLDISPATCHCOMPUTEPROC)getProc("glDispatchCompute");
+    g_funcs.MemoryBarrier = (PFNGLMEMORYBARRIERPROC)getProc("glMemoryBarrier");
+    g_funcs.ShaderBinary = (PFNGLSHADERBINARYPROC)getProc("glShaderBinary");
+    g_funcs.SpecializeShader = (PFNGLSPECIALIZESHADERPROC)getProc("glSpecializeShader");
+    g_funcs.NamedBufferStorage = (PFNGLNAMEDBUFFERSTORAGEPROC)getProc("glNamedBufferStorage");
+
     g_funcs.CreateShader = (PFNGLCREATESHADERPROC)getProc("glCreateShader");
     g_funcs.DeleteShader = (PFNGLDELETESHADERPROC)getProc("glDeleteShader");
     g_funcs.ShaderSource = (PFNGLSHADERSOURCEPROC)getProc("glShaderSource");

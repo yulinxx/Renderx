@@ -1,0 +1,169 @@
+/**
+ * @file render_graph.cpp
+ * @brief 渲染图 Pass 调度层实现
+ *
+ * Phase 4 引入的核心组件，负责将渲染流程从"隐式调用顺序"升级为
+ * "显式 Pass 编排 + 按依赖执行"。
+ */
+#include "render_graph.h"
+#include "Log/SyLogger.h"
+
+namespace render {
+namespace core {
+
+RenderGraph::RenderGraph() = default;
+RenderGraph::~RenderGraph() = default;
+
+void RenderGraph::initialize(rhi::IDevice* device)
+{
+    if (m_initialized)
+    {
+        SY_WARNF("RenderGraph::initialize: already initialized");
+        return;
+    }
+    m_device = device;
+    m_initialized = true;
+    m_lastExecutedCount = 0;
+    SY_INFOF("RenderGraph::initialize: OK");
+}
+
+void RenderGraph::shutdown()
+{
+    if (!m_initialized)
+        return;
+
+    m_passes.clear();
+    m_device = nullptr;
+    m_initialized = false;
+    m_lastExecutedCount = 0;
+    SY_INFOF("RenderGraph::shutdown: OK");
+}
+
+void RenderGraph::addPass(const PassDesc& desc)
+{
+    if (!m_initialized)
+    {
+        SY_ERRORF("RenderGraph::addPass: not initialized, pass '%s' ignored", desc.name ? desc.name : "(unnamed)");
+        return;
+    }
+    PassEntry entry;
+    entry.desc = desc;
+    m_passes.push_back(std::move(entry));
+    SY_DEBUGF("RenderGraph::addPass: '%s' (total=%zu)", desc.name ? desc.name : "(unnamed)", m_passes.size());
+}
+
+void RenderGraph::clear()
+{
+    m_passes.clear();
+    m_lastExecutedCount = 0;
+    SY_DEBUGF("RenderGraph::clear: all passes removed");
+}
+
+void RenderGraph::execute(rhi::IDevice* device)
+{
+    if (!m_initialized || !device)
+    {
+        SY_ERROR("RenderGraph::execute: not initialized or device is null");
+        return;
+    }
+
+    if (m_passes.empty())
+    {
+        SY_WARNF("RenderGraph::execute: no passes to execute");
+        return;
+    }
+
+    uint32_t executedCount = 0;
+    const uint32_t passCount = static_cast<uint32_t>(m_passes.size());
+
+    // 每60帧输出一次 Pass 执行摘要（避免日志过多）
+    static uint32_t s_frameIndex = 0;
+    bool logSummary = (s_frameIndex % 60 == 0);
+    ++s_frameIndex;
+
+    if (logSummary)
+    {
+        SY_INFOF("RenderGraph::execute: begin (%u passes)", passCount);
+    }
+
+    for (uint32_t i = 0; i < passCount; ++i)
+    {
+        const PassEntry& entry = m_passes[i];
+        if (!entry.desc.enabled)
+        {
+            if (logSummary)
+            {
+                SY_DEBUGF("RenderGraph::execute: [%u] '%s' skipped (disabled)", i, entry.desc.name ? entry.desc.name : "");
+            }
+            continue;
+        }
+
+        const char* passName = entry.desc.name ? entry.desc.name : "(unnamed)";
+
+        // Phase 4: 先调用 onSetup（如有），设置清屏、深度、混合等状态
+        if (entry.desc.onSetup)
+        {
+            entry.desc.onSetup(device);
+        }
+
+        // Phase 4: 再调用 onExecute，执行实际渲染逻辑
+        if (entry.desc.onExecute)
+        {
+            entry.desc.onExecute(device);
+        }
+        else
+        {
+            SY_WARNF("RenderGraph::execute: [%u] '%s' has no onExecute callback", i, passName);
+        }
+
+        ++executedCount;
+
+        if (logSummary)
+        {
+            SY_DEBUGF("RenderGraph::execute: [%u] '%s' done", i, passName);
+        }
+    }
+
+    m_lastExecutedCount = executedCount;
+
+    if (logSummary)
+    {
+        SY_INFOF("RenderGraph::execute: end (executed %u/%u passes)", executedCount, passCount);
+    }
+}
+
+uint32_t RenderGraph::getPassCount() const
+{
+    return static_cast<uint32_t>(m_passes.size());
+}
+
+const char* RenderGraph::getPassName(uint32_t index) const
+{
+    if (index >= m_passes.size())
+        return nullptr;
+    return m_passes[index].desc.name;
+}
+
+void RenderGraph::setPassEnabled(uint32_t index, bool enabled)
+{
+    if (index >= m_passes.size())
+    {
+        SY_WARNF("RenderGraph::setPassEnabled: index %u out of range (count=%zu)", index, m_passes.size());
+        return;
+    }
+    m_passes[index].desc.enabled = enabled;
+    SY_DEBUGF("RenderGraph::setPassEnabled: [%u] '%s' -> %s",
+        index,
+        m_passes[index].desc.name ? m_passes[index].desc.name : "",
+        enabled ? "enabled" : "disabled");
+}
+
+bool RenderGraph::isPassEnabled(uint32_t index) const
+{
+    if (index >= m_passes.size())
+        return false;
+    return m_passes[index].desc.enabled;
+}
+
+} // namespace core
+} // namespace render

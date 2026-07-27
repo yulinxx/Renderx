@@ -374,4 +374,131 @@ struct GeometryImage
     float color[4];    ///< RGBA边框颜色，默认白色
 };
 
+/// 叠加层图元类型枚举，统一描述所有 2D overlay 元素
+enum class OverlayPrimitiveKind : uint8_t
+{
+    LineList,       ///< 线段列表（preview lines, control lines, selection box border）
+    Rect,           ///< 空心矩形（selection box, selection rect border）
+    FilledRect,     ///< 填充矩形（selection rect fill）
+    Points,         ///< 点集（point markers, selection handles）
+    Crosshair,      ///< 十字准星
+    SnapIndicator,  ///< 捕捉指示器（圆形）
+};
+
+/// 叠加层绘制样式
+struct OverlayStyle
+{
+    uint32_t fillColor = 0;     ///< 填充颜色（RGBA格式）
+    uint32_t borderColor = 0;   ///< 边框/线条颜色（RGBA格式）
+    float lineWidth = 1.0f;     ///< 线宽（像素）
+    float pointSize = 8.0f;     ///< 点/标记大小（像素）
+    float zOrder = 0.0f;        ///< Z序（用于叠加层排序）
+};
+
+/// 线段列表描述（对应 LineList）
+struct OverlayPolylineDesc
+{
+    const float* vertices;      ///< 顶点位置数组（每顶点3个float: x,y,z）
+    uint32_t vertexCount;       ///< 顶点数量
+    bool usePerVertexColor;     ///< 是否使用逐顶点颜色（为true时colors字段有效）
+    const float* colors;        ///< 逐顶点颜色数组（每顶点3个float: r,g,b），可选
+};
+
+/// 矩形描述（对应 Rect / FilledRect）
+struct OverlayRectDesc
+{
+    float minX, minY;           ///< 左上角坐标
+    float maxX, maxY;           ///< 右下角坐标
+};
+
+/// 点集描述（对应 Points）
+struct OverlayMarkerSetDesc
+{
+    const float* positions;     ///< 位置数组（每点2个float: x,y）
+    uint32_t count;             ///< 点数量
+};
+
+/// 统一的叠加层图元描述
+struct OverlayPrimitive
+{
+    OverlayPrimitiveKind kind;  ///< 图元类型
+    uint32_t flags;             ///< 标志位（保留）
+    const void* payload;        ///< 类型相关的数据指针
+    uint32_t payloadSize;       ///< payload 大小（字节）
+    OverlayStyle style;         ///< 绘制样式
+};
+
+// ============================================================================
+// Phase 2: 统一几何提交模型
+// ============================================================================
+
+/// 几何图元类型枚举，统一描述所有可提交的几何内容
+enum class GeometryPrimitiveKind : uint8_t
+{
+    Polyline     = 0,  ///< 多段线（2D 文档几何路径）
+    Circle       = 1,  ///< 圆形（2D 文档几何路径）
+    Arc          = 2,  ///< 圆弧（2D 文档几何路径）
+    Ellipse      = 3,  ///< 椭圆（2D 文档几何路径）
+    Image        = 4,  ///< 图像线框（2D 文档几何路径）
+    Text         = 5,  ///< 文本（文本缓存 / TextAtlas 路径）
+    TriangleSoup = 6,  ///< 三角网格（3D mesh 路径）
+};
+
+/// 多段线几何描述（对应 GeometryPrimitiveKind::Polyline）
+/// 复用现有 GeometryPolyline，此处仅做类型别名说明
+// typedef GeometryPolyline GeometryPolylineDesc;
+
+/// 圆形几何描述（对应 GeometryPrimitiveKind::Circle）
+/// 复用现有 GeometryCircle
+
+/// 圆弧几何描述（对应 GeometryPrimitiveKind::Arc）
+/// 复用现有 GeometryArc
+
+/// 椭圆几何描述（对应 GeometryPrimitiveKind::Ellipse）
+/// 复用现有 GeometryEllipse
+
+/// 文本几何描述（对应 GeometryPrimitiveKind::Text）
+/// 复用现有 GeometryText
+
+/// 图像几何描述（对应 GeometryPrimitiveKind::Image）
+/// 复用现有 GeometryImage
+
+/// 三角网格几何描述（对应 GeometryPrimitiveKind::TriangleSoup）
+struct GeometryTriangleSoupDesc
+{
+    const float* vertices;     ///< 顶点位置数组（每顶点3个float: x,y,z）
+    const float* normals;      ///< 顶点法线数组（每顶点3个float: nx,ny,nz）
+    uint32_t vertexCount;      ///< 顶点数量
+    float color[4];            ///< RGBA颜色，范围[0,1]
+};
+
+/**
+ * @brief 统一几何图元描述
+ *
+ * Phase 2 引入的统一几何提交入口使用此结构。
+ * 通过 kind 字段区分类型，union 提供类型明确的描述指针，
+ * 避免纯 void* payload 导致的类型信息丢失。
+ *
+ * 内部分发规则：
+ * - Polyline / Circle / Arc / Ellipse / Image → 2D 文档几何路径（world2D）
+ * - Text → 文本缓存路径（TextAtlas）
+ * - TriangleSoup → 3D mesh 路径（MeshManager）
+ */
+struct GeometryPrimitive
+{
+    GeometryPrimitiveKind kind;  ///< 图元类型
+    uint32_t flags;              ///< 标志位（保留）
+
+    /// 类型明确的描述指针联合体
+    union {
+        const GeometryPolyline*     polyline;     ///< Polyline 类型的描述
+        const GeometryCircle*       circle;       ///< Circle 类型的描述
+        const GeometryArc*          arc;          ///< Arc 类型的描述
+        const GeometryEllipse*      ellipse;      ///< Ellipse 类型的描述
+        const GeometryImage*        image;        ///< Image 类型的描述
+        const GeometryText*         text;         ///< Text 类型的描述
+        const GeometryTriangleSoupDesc* triangleSoup; ///< TriangleSoup 类型的描述
+    } desc;
+};
+
 }

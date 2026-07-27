@@ -211,6 +211,20 @@ public:
     virtual void bindUniformBuffer(uint32_t set, uint32_t binding, BufferHandle, uint64_t offset, uint64_t size) = 0;
 
     /**
+     * @brief 绑定着色器存储缓冲区（SSBO）
+     *
+     * 用于 OpenGL 的 Shader Storage Buffer Object（GL 4.3+）。
+     * SSBO 容量远大于 UBO，支持随机读写。
+     *
+     * @param set 描述符集索引
+     * @param binding 绑定点索引
+     * @param handle 缓冲区句柄
+     * @param offset 偏移量（字节）
+     * @param size 大小（字节）
+     */
+    virtual void bindShaderStorageBuffer(uint32_t set, uint32_t binding, BufferHandle, uint64_t offset, uint64_t size) = 0;
+
+    /**
      * @brief 绑定纹理
      * 
      * @param set 描述符集索引
@@ -336,6 +350,28 @@ public:
      * @param stride 命令步长（字节）
      */
     virtual void drawIndexedIndirect(BufferHandle indirectBuffer, uint64_t offset, uint32_t drawCount, uint32_t stride) = 0;
+
+    /**
+     * @brief 分发计算着色器
+     *
+     * 执行 GL 4.3+ 的 Compute Shader 工作组分发。
+     * 调用后如需读取写入的缓冲区，应插入适当的内存屏障。
+     *
+     * @param groupsX X 方向工作组数量
+     * @param groupsY Y 方向工作组数量
+     * @param groupsZ Z 方向工作组数量
+     */
+    virtual void dispatchCompute(uint32_t groupsX, uint32_t groupsY, uint32_t groupsZ) = 0;
+
+    /**
+     * @brief 插入内存屏障
+     *
+     * 确保在此调用之前的 GPU 写入对后续操作可见。
+     * 常用于 Compute Shader 写入缓冲区后的同步点。
+     *
+     * @param barrierFlags 屏障标志位组合
+     */
+    virtual void memoryBarrier(uint32_t barrierFlags) = 0;
     /// @}
 
     /// @name 渲染状态

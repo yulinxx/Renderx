@@ -152,13 +152,30 @@ namespace render::rhi
         if (g->CreateBuffers)
         {
             g->CreateBuffers(1, &entry.glName);
-            g->NamedBufferData(entry.glName, (GLsizeiptr)desc.size, nullptr, GL_DYNAMIC_DRAW);
+            // 对于需要 CPU 持续写入的缓冲区，使用不可变存储配合持久映射标志
+            if (desc.memory == MemoryType::GPU_CPU_Coherent && g->NamedBufferStorage)
+            {
+                GLbitfield flags = GL_DYNAMIC_STORAGE_BIT | GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT;
+                g->NamedBufferStorage(entry.glName, (GLsizeiptr)desc.size, nullptr, flags);
+            }
+            else
+            {
+                g->NamedBufferData(entry.glName, (GLsizeiptr)desc.size, nullptr, GL_DYNAMIC_DRAW);
+            }
         }
         else
         {
             g->GenBuffers(1, &entry.glName);
             g->BindBuffer(GL_ARRAY_BUFFER, entry.glName);
-            g->BufferData(GL_ARRAY_BUFFER, (GLsizeiptr)desc.size, nullptr, GL_DYNAMIC_DRAW);
+            if (desc.memory == MemoryType::GPU_CPU_Coherent && g->BufferStorage)
+            {
+                GLbitfield flags = GL_DYNAMIC_STORAGE_BIT | GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT;
+                g->BufferStorage(GL_ARRAY_BUFFER, (GLsizeiptr)desc.size, nullptr, flags);
+            }
+            else
+            {
+                g->BufferData(GL_ARRAY_BUFFER, (GLsizeiptr)desc.size, nullptr, GL_DYNAMIC_DRAW);
+            }
             g->BindBuffer(GL_ARRAY_BUFFER, 0);
         }
 
@@ -614,6 +631,18 @@ namespace render::rhi
         g->BindBufferRange(GL_UNIFORM_BUFFER, binding, entry.glName, (GLintptr)offset, (GLsizeiptr)size);
     }
 
+    void GLDevice::bindShaderStorageBuffer(uint32_t set, uint32_t binding, BufferHandle handle, uint64_t offset, uint64_t size)
+    {
+        (void)set;
+        if (!m_initialized) return;
+        if (handle == NullHandle) return;
+        auto& entry = m_buffers[size_t(handle - 1)];
+        if (!entry.glName) return;
+
+        auto* g = gl();
+        g->BindBufferRange(GL_SHADER_STORAGE_BUFFER, binding, entry.glName, (GLintptr)offset, (GLsizeiptr)size);
+    }
+
     void GLDevice::bindTexture(uint32_t set, uint32_t binding, TextureHandle handle)
     {
         (void)set;
@@ -725,6 +754,42 @@ namespace render::rhi
             g->MultiDrawElementsIndirect(topo, GL_UNSIGNED_INT, (const void*)(uintptr_t)offset, (GLsizei)drawCount, (GLsizei)stride);
         }
         g->BindBuffer(GL_DRAW_INDIRECT_BUFFER, 0);
+    }
+
+    void GLDevice::dispatchCompute(uint32_t groupsX, uint32_t groupsY, uint32_t groupsZ)
+    {
+        if (!m_initialized)
+        {
+            std::fprintf(stderr, "[RHI_GL] dispatchCompute called before initialization\n");
+            return;
+        }
+        auto* g = gl();
+        if (g->DispatchCompute)
+        {
+            g->DispatchCompute(groupsX, groupsY, groupsZ);
+        }
+        else
+        {
+            std::fprintf(stderr, "[RHI_GL] DispatchCompute not available (requires OpenGL 4.3+)\n");
+        }
+    }
+
+    void GLDevice::memoryBarrier(uint32_t barrierFlags)
+    {
+        if (!m_initialized)
+        {
+            std::fprintf(stderr, "[RHI_GL] memoryBarrier called before initialization\n");
+            return;
+        }
+        auto* g = gl();
+        if (g->MemoryBarrier)
+        {
+            g->MemoryBarrier(static_cast<GLbitfield>(barrierFlags));
+        }
+        else
+        {
+            std::fprintf(stderr, "[RHI_GL] MemoryBarrier not available (requires OpenGL 4.2+)\n");
+        }
     }
 
     void GLDevice::setViewport(const Viewport& vp)
@@ -926,6 +991,17 @@ namespace render::rhi
         return m_nativeContext;
     }
 
+    uint32_t GLDevice::shaderStageToGL(ShaderStage stage) const
+    {
+        switch (stage)
+        {
+            case ShaderStage::Vertex:   return GL_VERTEX_SHADER;
+            case ShaderStage::Fragment: return GL_FRAGMENT_SHADER;
+            case ShaderStage::Compute:  return GL_COMPUTE_SHADER;
+        }
+        return GL_VERTEX_SHADER;
+    }
+
     uint32_t GLDevice::compileShader(uint32_t type, const char* source)
     {
         if (!source || source[0] == '\0') return 0;
@@ -952,6 +1028,105 @@ namespace render::rhi
             return 0;
         }
         return shader;
+    }
+
+    uint32_t GLDevice::compileShaderSPIRV(ShaderStage stage, const uint32_t* spirvWords, uint32_t wordCount, const char* entryPoint)
+    {
+        if (!spirvWords || wordCount == 0) return 0;
+
+        auto* g = gl();
+        if (!g->ShaderBinary || !g->SpecializeShader)
+        {
+            std::fprintf(stderr, "[RHI_GL] SPIR-V not supported by current OpenGL context\n");
+            return 0;
+        }
+
+        uint32_t glType = shaderStageToGL(stage);
+        uint32_t shader = g->CreateShader(glType);
+        if (!shader)
+        {
+            std::fprintf(stderr, "[RHI_GL] Failed to create shader object for SPIR-V\n");
+            return 0;
+        }
+
+        g->ShaderBinary(1, &shader, GL_SHADER_BINARY_FORMAT_SPIR_V, spirvWords, wordCount * sizeof(uint32_t));
+
+        const char* ep = entryPoint ? entryPoint : "main";
+        g->SpecializeShader(shader, ep, 0, nullptr, nullptr);
+
+        GLint success = 0;
+        g->GetShaderiv(shader, GL_COMPILE_STATUS, &success);
+        if (!success)
+        {
+            GLint logLen = 0;
+            g->GetShaderiv(shader, GL_INFO_LOG_LENGTH, &logLen);
+            if (logLen > 0)
+            {
+                char* log = new char[logLen];
+                g->GetShaderInfoLog(shader, logLen, nullptr, log);
+                std::fprintf(stderr, "[RHI_GL] SPIR-V specialization error:\n%s\n", log);
+                delete[] log;
+            }
+            g->DeleteShader(shader);
+            return 0;
+        }
+        return shader;
+    }
+
+    uint32_t GLDevice::createComputeProgram(const ShaderModuleDesc* modules, uint32_t count)
+    {
+        if (!modules || count == 0) return 0;
+
+        const ShaderModuleDesc* csModule = nullptr;
+        for (uint32_t i = 0; i < count; ++i)
+        {
+            if (modules[i].stage == ShaderStage::Compute)
+            {
+                csModule = &modules[i];
+                break;
+            }
+        }
+        if (!csModule)
+        {
+            std::fprintf(stderr, "[RHI_GL] No compute shader module found\n");
+            return 0;
+        }
+
+        uint32_t cs = 0;
+        if (csModule->spirvWords && csModule->spirvWordCount > 0)
+        {
+            cs = compileShaderSPIRV(ShaderStage::Compute, csModule->spirvWords, csModule->spirvWordCount, csModule->entryPoint);
+        }
+        else if (csModule->source)
+        {
+            cs = compileShader(GL_COMPUTE_SHADER, csModule->source);
+        }
+
+        if (!cs) return 0;
+
+        auto* g = gl();
+        uint32_t prog = g->CreateProgram();
+        g->AttachShader(prog, cs);
+        g->LinkProgram(prog);
+        g->DeleteShader(cs);
+
+        GLint success = 0;
+        g->GetProgramiv(prog, GL_LINK_STATUS, &success);
+        if (!success)
+        {
+            GLint logLen = 0;
+            g->GetProgramiv(prog, GL_INFO_LOG_LENGTH, &logLen);
+            if (logLen > 0)
+            {
+                char* log = new char[logLen];
+                g->GetProgramInfoLog(prog, logLen, nullptr, log);
+                std::fprintf(stderr, "[RHI_GL] Compute program link error:\n%s\n", log);
+                delete[] log;
+            }
+            g->DeleteProgram(prog);
+            return 0;
+        }
+        return prog;
     }
 
     uint32_t GLDevice::linkProgram(uint32_t vs, uint32_t fs)

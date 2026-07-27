@@ -23,6 +23,9 @@
 namespace render {
 namespace core {
 
+// Phase 3: 前向声明统一命令编码器
+class CommandEncoder;
+
 /**
  * @brief 叠加层渲染队列类
  * 
@@ -130,12 +133,49 @@ public:
                              uint32_t borderColor);
 
     /**
-     * @brief 渲染所有叠加元素
+     * @brief 设置选择预览矩形（框选/交选时的半透明填充矩形）
      * 
-     * @param device RHI设备指针
+     * @param bbox 矩形边界
+     * @param fillColor 填充颜色（32位RGBA格式，alpha=0时无填充）
+     * @param borderColor 边框颜色（32位RGBA格式）
+     */
+    void setSelectionRect(const BBox2f* bbox, uint32_t fillColor,
+                          uint32_t borderColor);
+
+    /**
+     * @brief 提交统一的叠加层图元
+     *
+     * 将统一描述的 overlay 图元转换为内部顶点数据。
+     * 这是 Phase 1 引入的新入口，用于替代专用 set* 方法。
+     *
+     * @param primitive 图元描述指针
+     */
+    void submitOverlay(const OverlayPrimitive* primitive);
+
+    /**
+     * @brief 清除所有通过 submitOverlay 提交的图元
+     */
+    void clearUnifiedOverlays();
+
+    /**
+     * @brief 渲染所有叠加元素
+     *
+     * Phase 3 起，overlay 的绘制命令不再直接调用 RHI，
+     * 而是通过 CommandEncoder 统一收集和排序后执行。
+     *
+     * @param device   RHI设备指针
+     * @param encoder  统一命令编码器（Phase 3 新增）
      * @param viewMatrix 3x3视图矩阵
      */
-    void render(rhi::IDevice* device, const float viewMatrix[9]);
+    void render(rhi::IDevice* device, CommandEncoder* encoder,
+                const float viewMatrix[9]);
+
+    /**
+     * @brief 获取 overlay 顶点缓冲区句柄
+     *
+     * 供 CommandEncoder::execute() 绑定使用。
+     */
+    rhi::BufferHandle getVertexBuffer() const { return m_vertexBuffer; }
 
 private:
     /// 十字准星顶点数据
@@ -152,6 +192,17 @@ private:
     std::vector<OverlayVertex> m_selectionBoxVerts;
     /// 手柄顶点数据
     std::vector<OverlayVertex> m_handleVerts;
+    /// 选择预览矩形填充顶点数据（三角形）
+    std::vector<OverlayVertex> m_selRectFillVerts;
+    /// 选择预览矩形边框顶点数据（线段）
+    std::vector<OverlayVertex> m_selRectBorderVerts;
+
+    /// 统一提交的 overlay 顶点数据（Phase 1 新增）
+    std::vector<OverlayVertex> m_unifiedVerts;
+    /// 统一 overlay 的绘制子区间记录：[start, count, isTriangle]
+    std::vector<uint32_t> m_unifiedRanges;
+    /// unified 数据在合并缓冲区中的起始偏移（用于无脏数据时直接绘制）
+    uint32_t m_unifiedStart = 0;
 
     /// RHI设备指针
     rhi::IDevice*       m_device           = nullptr;
@@ -167,8 +218,13 @@ private:
     bool                m_dirty             = false;
 
     /// 缓存的合并顶点缓冲区偏移量和计数，避免每帧重建
-    uint32_t m_mergedOffsets[7] = {};
-    uint32_t m_mergedCounts[7] = {};
+    uint32_t m_mergedOffsets[9] = {};
+    uint32_t m_mergedCounts[9] = {};
+
+    /// 每个标记的顶点数（14=填充+边框, 8=仅边框）
+    uint32_t m_markerVertsPerItem = 14;
+    /// 每个手柄的顶点数（14=填充+边框, 8=仅边框）
+    uint32_t m_handleVertsPerItem = 14;
 
     /**
      * @brief 构建标记点的填充四边形
