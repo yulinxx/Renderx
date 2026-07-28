@@ -121,8 +121,6 @@ private:
     rhi::BufferHandle   m_vertexBuffer       = rhi::NullHandle;
     /// 顶点缓冲区容量
     uint32_t            m_vertexBufferCapacity = 0;
-    /// 各图元类型对应的管线
-    rhi::PipelineHandle m_pipelines[7]       = {};
     /// 间接缓冲区容量
     uint32_t            m_indirectBufferCapacity = 0;
     /// 是否有脏数据需要上传
@@ -136,19 +134,17 @@ private:
     /// 上一帧的 RenderWorld 代数（用于检测顶点池重建）
     uint32_t            m_lastGeneration     = 0;
 
+    /// 顶点上传区间缓存（在 submit 时收集，供 render 时使用）
+    std::vector<RenderWorld::VertexUploadRange> m_vertexUploadRanges;
+    /// 是否需要全量上传顶点缓冲（首次渲染或扩容后）
+    bool                m_needFullVertexUpload = true;
+
     /**
      * @brief 确保间接缓冲区容量足够
-     * 
+     *
      * @param cmdCount 需要的命令数量
      */
     void ensureIndirectCapacity(uint32_t cmdCount);
-
-    /**
-     * @brief 构建各图元类型的渲染管线
-     * 
-     * @param device RHI设备指针
-     */
-    void buildPipelines(rhi::IDevice* device);
 
     /**
      * @brief 合并相邻的脏范围

@@ -75,6 +75,7 @@ set(RENDER_SOURCES
     src/core/text_atlas.cpp             # 文本图集管理器
     src/core/scene_env.cpp              # 场景环境渲染器
     src/core/stb_truetype_impl.cpp      # stb_truetype字体库实现
+    src/core/screen_text_renderer.cpp   # 屏幕文本渲染器
     src/shader/shaders.cpp              # Shader加载管理
 )
 
@@ -159,6 +160,20 @@ endif()
 # ==================== Shader文件配置 ====================
 
 # 所有Shader文件列表
+# 默认屏幕字体文件（运行时自动加载）
+set(FONT_FILES
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/res/default_screen_font.ttf
+)
+
+# 构建后自动复制字体文件到输出目录
+add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${FONT_FILES}
+        "$<TARGET_FILE_DIR:${PROJECT_NAME}>/"
+    COMMENT "Copying font files to output directory"
+)
+
+# 所有Shader文件列表
 set(SHADER_FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/scene_2d.vert
     ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/scene_2d.frag
@@ -173,6 +188,8 @@ set(SHADER_FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/mesh_3d_instanced.vert
     ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/text_sdf.vert
     ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/text_sdf.frag
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/text_screen.vert
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/text_screen.frag
     ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/highlight_3d.vert
     ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/highlight_3d.frag
     ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/culling.comp

@@ -1,490 +1,513 @@
-# Renderx - 高性能2D/3D渲染引擎
+# SanYiRender Library (SanYiRender.dll)
 
-Renderx 是一个基于 OpenGL 的高性能渲染引擎，专为 CAD 应用设计，支持 2D 矢量图形和 3D 网格模型的渲染。
+工业级 2D/3D 渲染库，基于 OpenGL 实现，为 SanYi CAD 项目提供高性能的渲染解决方案。
 
-## 目录结构
+## 功能描述
 
-```
-Renderx/
-├── include/
-│   └── render/
-│       ├── render.h        # 公共 C API 头文件
-│       └── render_types.h  # 公共类型定义
-├── src/
-│   ├── c_api/              # C API 实现
-│   │   └── render_c_api.cpp
-│   ├── core/               # 核心渲染模块
-│   │   ├── arena.h              # 内存竞技场分配器
-│   │   ├── batch_queue.h/cpp    # 批量绘制队列
-│   │   ├── mesh_manager.h/cpp   # 3D网格管理与实例化渲染
-│   │   ├── overlay_queue.h/cpp  # 覆盖层渲染队列
-│   │   ├── render_world.h/cpp   # 渲染世界（实体管理与空间分区）
-│   │   ├── scene_env.h/cpp      # 场景环境渲染（网格背景）
-│   │   ├── slot_map.h           # 插槽映射（高效实体存储）
-│   │   └── text_atlas.h/cpp     # 字体图集管理（SDF文本渲染）
-│   ├── rhi/                # 渲染硬件接口（RHI）
-│   │   ├── rhi_device.h    # 设备接口定义
-│   │   ├── rhi_gl.h/cpp    # OpenGL 实现
-│   │   └── rhi_types.h     # RHI 类型定义
-│   ├── shader/             # 着色器管理
-│   │   ├── shaders.h/cpp   # 着色器加载与初始化
-│   │   └── *.glsl          # 独立着色器文件（运行时加载）
-│   └── platform/           # 平台相关代码
-│       ├── gl_loader.h/cpp # OpenGL 函数加载器
-│       └── stb_truetype_impl.cpp
-├── Test/                   # 单元测试
-├── CMakeLists.txt          # CMake 构建配置
-└── README.md               # 本文件
-```
+SanYiRender 是一个面向 CAD 应用的专业渲染库，核心功能包括：
 
-## 架构设计
-
-### 分层架构
-
-Renderx 采用经典的分层架构设计，从底层到上层依次为：
-
-| 层级 | 名称 | 职责 |
-|------|------|------|
-| **RHI层** | Render Hardware Interface | 跨平台图形硬件抽象，屏蔽不同图形API差异 |
-| **核心层** | Core | 渲染逻辑核心，包括实体管理、批量绘制、空间分区等 |
-| **API层** | C API | 对外暴露的 C 语言接口，便于跨语言绑定 |
-
-### 核心模块说明
-
-#### 0. 数据传递流程
-
-Renderx 的数据传递从 CAD 图元到最终渲染分为以下几个阶段：
-
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                         数据传递流程                                     │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│  CAD图元数据                                                            │
-│      │                                                                  │
-│      ▼                                                                  │
-│  ┌──────────────┐   几何细分    ┌──────────────┐                        │
-│  │ 几何描述结构  │ ──────────→  │  顶点数组     │                        │
-│  │ (Polyline,   │              │  (VertexP3C3) │                        │
-│  │  Circle,     │              │               │                        │
-│  │  Arc, etc.)  │              │  x, y, z      │                        │
-│  └──────────────┘              │  r, g, b      │                        │
-│                                └──────────────┘                        │
-│                                      │                                  │
-│                                      ▼                                  │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │                     RenderWorld                                 │   │
-│  │  ┌──────────┐   分配顶点空间    ┌──────────┐                    │   │
-│  │  │ EntityId │ ──────────────→   │ SlotMap  │                    │   │
-│  │  │ (稀疏索引)│   存储实体信息    │ (实体存储)│                    │   │
-│  │  └──────────┘                  └──────────┘                    │   │
-│  │         │                             │                        │   │
-│  │         │ 映射实体ID                   │ 管理稠密索引            │   │
-│  │         ▼                             ▼                        │   │
-│  │  ┌──────────┐                  ┌─────────────┐                 │   │
-│  │  │ EntityMap│                  │ VertexPool  │                 │   │
-│  │  │ (ID→索引)│                  │ (顶点池)    │                 │   │
-│  │  └──────────┘                  └─────────────┘                 │   │
-│  │                                      │                          │   │
-│  │                                      ▼                          │   │
-│  │  ┌─────────────────────────────────────────────────────────┐    │   │
-│  │  │                     QuadTree                            │    │   │
-│  │  │  (空间分区 - 用于可见性查询)                             │    │   │
-│  │  └─────────────────────────────────────────────────────────┘    │   │
-│  └─────────────────────────────────────────────────────────────────┘   │
-│                                      │                                  │
-│                                      ▼                                  │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │                     BatchQueue                                  │   │
-│  │  ┌────────────────┐    构建绘制命令    ┌───────────────────┐     │   │
-│  │  │ 可见实体列表    │ ───────────────→  │  间接命令缓冲区     │     │   │
-│  │  └────────────────┘                   │  (IndirectBuffer)  │     │   │
-│  │          │                            └───────────────────┘     │   │
-│  │          │ 按材质/图元分组                    │                  │   │
-│  │          ▼                                   ▼                  │   │
-│  │  ┌────────────────┐                   ┌───────────────────┐     │   │
-│  │  │ 排序合并       │                   │  顶点缓冲区        │     │   │
-│  │  │ (减少状态切换)  │                   │  (VertexBuffer)   │     │   │
-│  │  └────────────────┘                   └───────────────────┘     │   │
-│  │                                      │                          │   │
-│  │                                      ▼                          │   │
-│  │  ┌─────────────────────────────────────────────────────────┐    │   │
-│  │  │              RHI Layer (OpenGL)                          │    │   │
-│  │  │  ┌────────────┐   ┌────────────┐   ┌─────────────────┐   │    │   │
-│  │  │  │ uploadBuffer│   │bindVertex │   │ glDrawArrays    │   │    │   │
-│  │  │  │  (上传数据) │   │ Buffer    │   │ Indirect        │   │    │   │
-│  │  │  └────────────┘   └────────────┘   └─────────────────┘   │    │   │
-│  │  └─────────────────────────────────────────────────────────┘    │   │
-│  └─────────────────────────────────────────────────────────────────┘   │
-│                                      │                                  │
-│                                      ▼                                  │
-│                           GPU 渲染输出                                  │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
-```
-
-**数据传递详细说明**：
-
-| 阶段 | 组件 | 数据格式 | 职责 |
-|------|------|----------|------|
-| 输入 | 用户代码 | 几何描述结构 (Polyline/Circle/Arc/Ellipse) | 提供CAD图元数据 |
-| 细分 | tessellate* 函数 | VertexP3C3[] | 将几何描述转换为顶点数组 |
-| 存储 | RenderWorld | SlotMap + VertexPool | 管理实体和顶点数据 |
-| 查询 | QuadTree | 稠密索引列表 | 视锥体可见性查询 |
-| 批处理 | BatchQueue | 间接命令 + VBO | 分组、排序、批量提交 |
-| 渲染 | RHI层 | GPU缓冲区 | 上传数据并执行绘制 |
-
-**2D 实体数据流程**：
-
-1. 用户调用 `renderAddEntity()` 或 `renderEmit*()` 函数
-2. C API 将几何数据细分为顶点数组 (`VertexP3C3`)
-3. `RenderWorld.addEntity()` 将顶点数据存储到顶点池
-4. 实体信息存储到 `SlotMap`，记录顶点偏移和数量
-5. 实体包围盒插入四叉树
-6. 渲染时，`BatchQueue.render()` 查询可见实体
-7. 构建间接绘制命令，上传顶点数据到 GPU
-8. 调用 `glDrawArraysIndirect()` 执行批量渲染
-
-**3D 网格数据流程**：
-
-1. 用户调用 `renderRegisterMesh()` 注册网格
-2. 网格数据存储到 `MeshManager`，创建 GPU 顶点缓冲区
-3. 用户调用 `renderAddInstance()` 添加实例
-4. 实例数据（模型矩阵）存储到实例缓冲区
-5. 渲染时，`MeshManager.render()` 使用 `glDrawElementsInstanced()` 绘制所有实例
-
-**材质数据流程**：
-
-1. 用户调用 `renderAddMaterial()` 创建材质
-2. 材质参数（线宽、点大小、颜色）存储到 `MaterialList`
-3. 渲染时，按材质索引分组实体
-4. 每个材质对应的管线设置对应的 Uniform
-
-#### 1. RenderWorld
-
-渲染世界是实体管理的核心，负责：
-- 实体的添加、修改、删除
-- 顶点数据的分配和管理
-- 基于四叉树的空间分区（QuadTree）
-- 视锥体可见性查询
-
-**数据结构**：
-- 使用 `SlotMap` 存储实体，支持 O(1) 的插入、删除和查找
-- 使用 `Arena` 内存分配器管理顶点数据，支持批量释放
-- 四叉树层级固定为 4 层，最大实体数 16384
-
-```cpp
-// 创建实体
-renderAddEntity(device, entityId, vertices, vertexCount, PrimitiveType::LineList, materialIdx);
-
-// 修改实体
-renderModifyEntity(device, entityId, newVertices, newVertexCount, materialIdx);
-
-// 删除实体
-renderRemoveEntity(device, entityId);
-```
-
-#### 2. BatchQueue
-
-批量绘制队列负责将可见实体按图元类型和材质分组，使用间接绘制（`glDrawArraysIndirect`）减少 CPU-GPU 通信开销。
-
-**核心优化**：
-- 按材质和图元类型排序，减少状态切换
-- 使用间接绘制命令缓冲区，批量提交绘制命令
-- Dirty 范围合并，只更新修改过的区域
-- 顶点缓冲区动态扩展，避免频繁重分配
-
-**绘制流程**：
-1. 提交可见实体列表
-2. 按材质和图元类型分组
-3. 构建间接绘制命令
-4. 更新 Dirty 范围
-5. 批量渲染
-
-#### 3. OverlayQueue
-
-覆盖层渲染队列负责绘制 UI 叠加元素，包括：
-- 选择框和选择手柄
-- 控制点连线
-- 预览线和控制线
-- 点标记
-- 十字准星和捕捉点
-
-**特性**：
-- 使用世界坐标，通过视图矩阵转换到屏幕空间
-- 支持多种颜色和线宽
-- 合并顶点缓冲区，减少绘制调用
-
-#### 4. MeshManager
-
-3D 网格管理器负责：
-- 网格的注册和注销
-- 实例化渲染支持（一个网格多个实例）
-- 实例缓冲区的管理和复用
-
-**实例化渲染**：
-- 使用 `glDrawElementsInstanced` 一次绘制多个实例
-- 每个实例有独立的模型矩阵
-- 支持可见性查询和遮挡剔除
-
-```cpp
-// 注册网格
-MeshId mesh = renderRegisterMesh(device, positions, normals, indices, vertexCount, indexCount);
-
-// 添加实例
-uint32_t instanceId = renderAddInstance(device, mesh, modelMatrix, materialIdx);
-
-// 修改实例
-renderModifyInstance(device, instanceId, newModelMatrix);
-
-// 删除实例
-renderRemoveInstance(device, instanceId);
-```
-
-#### 5. TextAtlas
-
-字体图集管理器使用 SDF（Signed Distance Field）技术渲染文本，支持：
-- TrueType 字体加载（基于 stb_truetype）
-- 动态字形缓存（按需栅格化）
-- 高质量文本渲染（抗锯齿）
-- 支持多种字体大小
-
-**图集布局**：
-- 图集大小：2048x2048 像素
-- 行式布局，自动换行
-- 字形信息缓存，避免重复栅格化
-
-#### 6. SceneEnv
-
-场景环境渲染负责绘制：
-- 网格背景（Grid）
-- 参考线
-- 图层分隔线
-
-**特性**：
-- 支持多层渲染，每层可以有不同的颜色和线宽
-- 使用三角形填充绘制背景区域
-- 使用线绘制网格和参考线
-
-### RHI 层设计
-
-RHI（Render Hardware Interface）层提供了跨平台的图形硬件抽象，当前实现了 OpenGL 后端。
-
-**设计原则**：
-- 命令式 API，与传统图形 API 风格一致
-- 资源管理明确（创建/销毁配对）
-- 状态设置与绘制分离
-- 支持间接绘制和实例化渲染
-- Uniform 位置缓存，避免每帧查询
-
-**核心接口**：
-```cpp
-// 资源创建
-BufferHandle buffer = device->createBuffer(desc);
-TextureHandle texture = device->createTexture(desc);
-PipelineHandle pipeline = device->createPipeline(desc);
-
-// 状态设置
-device->bindPipeline(pipeline);
-device->bindVertexBuffer(0, buffer, 0);
-device->setUniformMatrix4("uViewMatrix", viewMatrix);
-
-// 绘制命令
-device->draw(vertexCount, 1, 0, 0);
-device->drawIndirect(indirectBuffer, 0, drawCount, stride);
-```
-
-### Shader 系统
-
-Shader 系统采用运行时加载方式，从独立的 `.glsl` 文件读取源码。
-
-**支持的 Shader**：
-
-| Shader 文件 | 用途 |
-|------------|------|
-| `scene_2d.vert/frag` | 2D 场景渲染 |
-| `overlay.vert/frag` | 世界坐标叠加层渲染 |
-| `overlay_screen.vert/frag` | 屏幕坐标叠加层渲染 |
-| `bitmap.vert/frag` | 位图渲染 |
-| `mesh_3d.vert/frag` | 3D 网格渲染 |
-| `mesh_3d_instanced.vert` | 3D 网格实例化渲染 |
-| `text_sdf.vert/frag` | SDF 文本渲染 |
-| `highlight_3d.vert/frag` | 3D 高亮渲染 |
+- **2D 渲染管线**：支持点、线、折线、多边形等基本图元的高效渲染，采用间接绘制（Indirect Draw）减少 CPU-GPU 通信开销
+- **3D 网格渲染**：支持 3D 网格注册、实例化渲染、GPU 视锥剔除，适用于 CAD 模型可视化
+- **叠加层渲染**：提供十字准星、捕捉指示器、预览线、选择框、选择手柄等交互 UI 元素的渲染
+- **文本渲染**：基于 stb_truetype 的字体光栅化，支持世界坐标和屏幕坐标两种文本渲染模式
+- **Shader 管理**：运行时从文件加载 GLSL Shader，支持 2D 场景、3D 网格、叠加层、SDF 文本、高亮等多种着色器
+- **GPU 剔除**：使用 Compute Shader 实现 GPU 驱动的视锥剔除，大幅提升大规模场景的渲染性能
+- **渲染图（RenderGraph）**：显式 Pass 编排与调度，支持 2D/3D 两种渲染模式的自动切换
+- **管线状态缓存**：通过 PipelineStateManager 缓存和复用 RHI 管线，减少状态切换开销
 
 ## 使用方法
 
-### 基本流程
+### 创建渲染上下文
 
-1. **创建设备**
-```cpp
-render::DeviceDesc desc;
-desc.backend = render::BackendType::OpenGL;
-desc.nativeWindowHandle = nativeWindow;
-desc.width = width;
-desc.height = height;
+```c
+#include "render/render.h"
+#include "render/render_types.h"
 
-render::RenderDevice* device = renderCreateDevice(&desc);
+// 1. 准备设备描述
+DeviceDesc desc;
+desc.backend = BackendType::OpenGL;
+desc.debugLayer = 0;
+desc.nativeWindowHandle = hWnd;  // 平台相关的窗口句柄
+desc.width = 1920;
+desc.height = 1080;
+
+// 2. 创建渲染设备
+RenderDevice* dev = renderCreateDevice(&desc);
+if (!dev) {
+    // 创建失败处理
+}
+
+// 3. 设置视图模式（2D 或 3D）
+renderSetViewMode(dev, ViewMode::Mode2D);
+
+// 4. 设置清屏颜色（可选，默认浅灰色）
+renderSetClearColor(dev, 0.94f, 0.94f, 0.94f, 1.0f);
+
+// 5. 销毁设备
+renderDestroyDevice(dev);
 ```
 
-2. **设置视图**
-```cpp
-// 2D 视图
-float viewMatrix[9] = { ... };
-renderSetView2D(device, viewMatrix, viewWidth, viewHeight);
+### 渲染流程
 
-// 3D 视图
-float viewMatrix[16] = { ... };
-float projMatrix[16] = { ... };
-renderSetView3D(device, viewMatrix, projMatrix);
+```c
+// 每帧渲染的典型流程
+
+// Step 1: 设置视图参数
+float viewMatrix[9] = { /* 3x3 视图矩阵，列主序 */ };
+renderSetView2D(dev, viewMatrix, viewWidth, viewHeight);
+
+// Step 2: 添加/修改图元（详见图元操作）
+
+// Step 3: 渲染一帧
+renderFrame(dev);
 ```
 
-3. **添加实体**
-```cpp
-render::VertexP3C3 vertices[] = {
-    { 0, 0, 0, 1, 0, 0 },
-    { 1, 0, 0, 0, 1, 0 },
-    { 0.5, 1, 0, 0, 0, 1 },
+`renderFrame` 内部执行完整的渲染流程：
+
+1. **GPU 剔除**：将 RenderWorld 实体同步到 PersistentEntityManager，执行 GPU 视锥剔除，生成间接绘制命令
+2. **可见性查询**：优先使用 GPU 剔除结果，失败时回退到 CPU 四叉树
+3. **构建批次**：BatchQueue 将可见实体按图元类型和材质分组，构建间接绘制命令
+4. **叠加层收集**：OverlayQueue 将叠加元素顶点数据提交
+5. **命令排序与执行**：CommandEncoder 按 sortKey 排序所有绘制命令，统一绑定管线和缓冲区后执行绘制
+6. **文本渲染**：TextAtlas 和 ScreenTextRenderer 渲染世界坐标文本和屏幕坐标文本
+7. **呈现**：交换缓冲区完成一帧渲染
+
+### 图元操作
+
+#### 2D 实体管理
+
+```c
+// 添加实体
+VertexP3C3 vertices[] = {
+    { 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f },
+    { 100.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f },
+    { 100.0f, 100.0f, 0.0f, 0.0f, 0.0f, 1.0f },
 };
+uint32_t idx = renderAddEntity(dev, 1001, vertices, 3, PrimitiveType::TriangleList, 0);
 
-renderAddEntity(device, entityId, vertices, 3, 
-                render::PrimitiveType::TriangleList, materialIdx);
+// 修改实体
+renderModifyEntity(dev, 1001, newVertices, newVertexCount, 0);
+
+// 删除实体
+renderRemoveEntity(dev, 1001);
+
+// 设置可见性
+renderSetEntityVisibility(dev, 1001, 0);  // 0=不可见, 1=可见
+
+// 批量更新
+// renderApplyUpdates(dev, packet, packetSize);
 ```
 
-4. **渲染帧**
-```cpp
-renderFrame(device);
+#### 3D 网格管理
+
+```c
+// 注册网格
+MeshId mesh = renderRegisterMesh(dev, positions, normals, indices, vertexCount, indexCount);
+
+// 添加实例
+float modelMatrix[16] = { /* 4x4 矩阵，列主序 */ };
+float color[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
+uint32_t instId = renderAddInstance(dev, mesh, modelMatrix, materialIdx, color);
+
+// 修改实例
+renderModifyInstance(dev, instId, newModelMatrix);
+
+// 删除实例
+renderRemoveInstance(dev, instId);
+
+// 注销网格
+renderUnregisterMesh(dev, mesh);
 ```
 
-5. **销毁设备**
-```cpp
-renderDestroyDevice(device);
+#### 统一几何提交
+
+```c
+// 提交单个几何图元
+GeometryPrimitive prim;
+prim.kind = GeometryPrimitiveKind::Polyline;
+prim.desc.polyline = &polylineDesc;
+renderSubmitGeometry(dev, &prim);
+
+// 批量提交
+// renderSubmitGeometries(dev, primitives, count);
 ```
 
-### 材质管理
+#### 叠加层提交
 
-```cpp
-render::MaterialDesc material;
-material.lineWidth = 1.0f;
-material.pointSize = 2.0f;
-material.color[0] = 1.0f; // R
-material.color[1] = 0.5f; // G
-material.color[2] = 0.0f; // B
-material.color[3] = 1.0f; // A
+```c
+// 提交叠加层图元（支持 LineList, Rect, FilledRect, Points, Crosshair, SnapIndicator）
+OverlayPrimitive prim;
+prim.kind = OverlayPrimitiveKind::LineList;
+prim.payload = &polylineDesc;
+prim.payloadSize = sizeof(polylineDesc);
+prim.style.borderColor = 0xFFFFFFFF;
+renderSubmitOverlay(dev, &prim);
 
-uint16_t materialIdx = renderAddMaterial(device, &material);
+// 清除叠加层
+renderClearOverlays(dev);
+renderClearOverlayKind(dev, OverlayPrimitiveKind::LineList);
 ```
 
-### 覆盖层设置
+#### 材质管理
 
-```cpp
-// 设置预览线
-renderSetPreviewLines(device, vertices, vertexCount, 0xFFFF00FF);
+```c
+// 添加材质
+MaterialDesc matDesc;
+matDesc.lineWidth = 2.0f;
+matDesc.pointSize = 4.0f;
+matDesc.color[0] = 1.0f; matDesc.color[1] = 0.0f;
+matDesc.color[2] = 0.0f; matDesc.color[3] = 1.0f;
+matDesc.flags = 0;
+uint16_t matIdx = renderAddMaterial(dev, &matDesc);
 
-// 设置选择框
-render::BBox2f bbox = { 0, 0, 100, 100 };
-renderSetSelectionBox(device, &bbox, 0xFF00FF00);
-
-// 设置文本
-render::TextItem items[] = {
-    { "Hello", 100, 200, 0, 1, 1, 16, { 1, 1, 1, 1 }, 0, 0 },
-};
-render::TextItemList textList = { items, 1 };
-renderSetTexts(device, &textList);
+// 更新材质
+renderUpdateMaterial(dev, matIdx, &newMatDesc);
 ```
 
-### 场景模式
+## 设计框架
 
-场景模式支持从几何数据直接发射实体，无需手动管理实体ID：
+SanYiRender 采用分层架构设计，各模块职责清晰、松耦合：
 
-```cpp
-// 开始场景（清除旧实体）
-renderBeginScene(device);
-
-// 发射几何
-renderEmitPolyline(device, &polyline);
-renderEmitCircle(device, &circle);
-renderEmitArc(device, &arc);
-renderEmitEllipse(device, &ellipse);
-
-// 渲染帧（会自动包含场景中的实体）
-renderFrame(device);
+```
+┌─────────────────────────────────────────────────────────┐
+│                    C API Facade                          │
+│            (render.h / render_types.h)                  │
+├─────────────────────────────────────────────────────────┤
+│                    RenderDevice                          │
+├──────────────┬──────────────┬───────────────────────────┤
+│  RenderWorld │  RenderGraph │    CommandEncoder          │
+│  (实体管理)  │  (Pass 调度) │  (统一命令编码/排序)       │
+├──────────────┼──────────────┼───────────────────────────┤
+│  BatchQueue  │ OverlayQueue │ PipelineStateManager       │
+│  (2D 批处理) │ (叠加层)    │    (管线缓存)              │
+├──────────────┼──────────────┼───────────────────────────┤
+│  TextAtlas   │ MeshManager  │ PersistentEntityManager   │
+│  (文本图集)  │ (3D 网格)    │    (GPU 剔除)             │
+├──────────────┴──────────────┴───────────────────────────┤
+│                    RHI Device (OpenGL)                    │
+├─────────────────────────────────────────────────────────┤
+│                    Shader Manager                         │
+└─────────────────────────────────────────────────────────┘
 ```
 
-## 构建说明
+### C API Facade
 
-### 依赖
+**文件**：`include/render/render.h`、`include/render/render_types.h`
 
-- CMake 3.16+
-- OpenGL 3.3+
-- Visual Studio 2019+（Windows）或 GCC 8+（Linux）
-- C++17 标准库（std::filesystem）
-- stb_truetype（可选，用于文本渲染）
+对外暴露的 C 接口层，所有接口使用 C 语言调用约定（`extern "C"`），便于跨语言绑定和动态库调用。API 导出宏 `RENDER_API` 支持 Windows（`__declspec(dllexport/dllimport)`）和 Linux/macOS（`__attribute__((visibility))`）。
 
-### 构建步骤
+### 渲染世界 (RenderWorld)
+
+**文件**：`src/core/render_world.h` / `src/core/render_world.cpp`
+
+负责管理场景中所有 2D 实体的核心组件：
+
+- **实体生命周期**：添加、修改、删除实体，基于 `SlotMap` 实现稀疏索引到稠密索引的 O(1) 映射
+- **顶点池管理**：动态分配和释放顶点数据空间，支持脏区增量上传
+- **四叉树空间分区**：实现高效的视锥体可见性查询（CPU 端回退方案）
+- **材质管理**：添加和更新渲染材质
+
+### 渲染图 (RenderGraph)
+
+**文件**：`src/core/render_graph.h` / `src/core/render_graph.cpp`
+
+Phase 4 引入的显式 Pass 调度层：
+
+- 按添加顺序依次执行渲染 Pass
+- 支持每个 Pass 的 `onSetup`（状态设置）和 `onExecute`（实际渲染）回调
+- 支持 Pass 级别的启用/禁用控制
+- 声明资源输入/输出，为后续自动屏障管理预留接口
+- 2D 模式 Pass 编排：FrameSetup → SceneEnv → World2DCollect → OverlayCollect → CommandExecute → Text
+- 3D 模式 Pass 编排：FrameSetup3D → Mesh3D
+
+### 命令编码器 (CommandEncoder)
+
+**文件**：`src/core/command_encoder.h` / `src/core/command_encoder.cpp`
+
+Phase 3 引入的统一命令收集与排序组件：
+
+- 统一收集 World2D 和 Overlay 的绘制命令到同一条链路
+- 基于 64-bit `BatchKey` 排序（空间 → Z序 → 图元类型 → 材质），减少状态切换
+- 支持通过 `PipelineStateManager` 复用管线缓存
+- 支持通过 `DrawBatcher` 实现 Overlay 路径的 MDI 合批
+
+### 批量队列 (BatchQueue)
+
+**文件**：`src/core/batch_queue.h` / `src/core/batch_queue.cpp`
+
+2D 实体的批量绘制管理：
+
+- 将可见实体按图元类型和材质分组，构建间接绘制命令（`glDrawArraysIndirect`）
+- Dirty 范围合并，只增量上传修改过的顶点区间
+- 顶点缓冲区动态扩容，支持首次全量上传和后续增量更新
+
+### 叠加层队列 (OverlayQueue)
+
+**文件**：`src/core/overlay_queue.h` / `src/core/overlay_queue.cpp`
+
+管理所有叠加在场景之上的 UI 元素：
+
+- 十字准星、捕捉指示器、预览线、控制线、点标记、选择框、选择手柄
+- 支持统一 API（`submitOverlay`）和旧 API 的兼容封装
+- 支持按类型增量清除（`clearOverlayKind`）
+- 合并所有子项到统一顶点缓冲区，批量渲染
+
+### 文本图集 (TextAtlas)
+
+**文件**：`src/core/text_atlas.h` / `src/core/text_atlas.cpp`
+
+基于 stb_truetype 的字体光栅化和纹理图集管理：
+
+- 动态加载 TTF/OTF 字体
+- Glyph 缓存与图集打包（2048×2048 像素图集）
+- 构建文本四边形（带纹理坐标和颜色）
+- 支持多种字体大小和对齐方式
+
+### Shader 管理
+
+**文件**：`src/shader/shaders.h` / `src/shader/shaders.cpp`
+
+运行时从文件加载 GLSL Shader 源码，提供统一的 Shader 资源访问接口。
+
+## 依赖库
+
+| 依赖库 | 说明 |
+|--------|------|
+| OpenGL | 跨平台图形 API，Windows 使用 opengl32，Linux/macOS 使用 OpenGL::GL |
+| Log | SanYi CAD 项目内部日志库（`../Log/Log/Include`） |
+| stb | Header-only 字体渲染库（stb_truetype），用于字体光栅化 |
+
+## 依赖库安装方法
+
+### Windows
+
+OpenGL 通过系统自带的 `opengl32.lib` 自动链接，无需额外安装。
+
+stb 库支持两种获取方式：
+- **vcpkg**：通过环境变量 `VCPKG_DIR` 指定路径，CMake 自动从 `installed/x64-windows/include` 查找
+- **手动安装**：将 stb 头文件放置到项目可搜索的路径
+
+Log 库为项目内部库，确保 `../Log/Log/Include` 目录存在即可。
+
+### Linux / macOS
 
 ```bash
-# 创建构建目录
-mkdir build && cd build
-
-# 配置 CMake（Windows）
-cmake .. -G "Visual Studio 17 2022" -A x64
-
-# 配置 CMake（Linux）
-cmake .. -DCMAKE_BUILD_TYPE=Release
-
-# 构建
-cmake --build . --config Release
+# OpenGL
+find_package(OpenGL REQUIRED)
+# 系统通常已自带，开发环境需安装 mesa/libglvnd 等开发包
+# Ubuntu: sudo apt install libgl1-mesa-dev
+# macOS: 系统框架自带
 ```
 
-### 输出
+## 构建配置
 
-- **动态库**：`bin_Qt6/Release/Renderx.dll`（Windows）或 `libRenderx.so`（Linux）
-- **头文件**：`include/render/render.h` 和 `include/render/render_types.h`
-- **Shader 文件**：自动复制到输出目录
+### CMake 配置说明
 
-## 设计理念
+```cmake
+cmake_minimum_required(VERSION 4.3)
+project(SanYiRender VERSION 2.0.0 LANGUAGES CXX)
 
-### 性能优先
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_BUILD_TYPE Release)
+option(BUILD_SHARED_LIBS "Build shared libraries" ON)
+```
 
-- **批量绘制**：使用间接绘制减少绘制调用
-- **空间分区**：四叉树实现高效可见性查询
-- **Dirty 范围合并**：只更新修改过的数据
-- **缓冲区复用**：避免频繁的分配和销毁
-- **Uniform 缓存**：避免每帧查询 Uniform 位置
+**编译器配置**：
+- MSVC：`/W4 /utf-8`，禁用 `_CRT_SECURE_NO_WARNINGS` 和类型转换警告
+- GCC/Clang：`-Wall -Wextra -Wpedantic`，禁用类型转换相关警告
 
-### 可扩展性
+**链接依赖**：
 
-- **RHI 抽象**：易于添加新的图形后端（Vulkan、Metal）
-- **模块化设计**：各模块职责清晰，易于扩展
-- **C API 封装**：便于跨语言绑定（Python、C#等）
-- **运行时 Shader 加载**：便于调试和热更新
+| 平台 | OpenGL 链接 | 其他 |
+|------|------------|------|
+| Windows | `opengl32` | - |
+| Linux | `OpenGL::GL` | `stdc++fs`（GCC） |
+| macOS | `OpenGL::GL` | - |
 
-### 易用性
+**输出配置**：
+- Debug 版本添加 `_d` 后缀（`SanYiRender_d.dll`）
+- 公开头文件安装到 `include/`
+- 动态库安装到 `bin/`，静态库安装到 `lib/`
 
-- **C 语言接口**：简单易用，无需 C++ 知识
-- **统一的资源管理**：创建/销毁配对，避免资源泄漏
-- **完善的文档**：所有 API 都有详细的 Doxygen 风格注释
+### Shader 文件复制
 
-## 性能优化策略
+构建完成后，CMake 自动将所有 Shader 文件复制到输出目录（`$<TARGET_FILE_DIR:SanYiRender>/`），共 15 个文件：
 
-1. **批量渲染**：使用 `glDrawArraysIndirect` 一次提交多个绘制命令
-2. **空间分区**：四叉树实现 O(log n) 可见性查询
-3. **Dirty 范围合并**：将相邻的 Dirty 范围合并，减少 GPU 数据上传
-4. **缓冲区预分配**：顶点缓冲区和实例缓冲区预分配，避免频繁重分配
-5. **Uniform 缓存**：在管线创建时缓存 Uniform 位置，避免每帧查询
-6. **状态排序**：按材质和图元类型排序，减少状态切换
+| 类别 | 文件名 |
+|------|--------|
+| 2D 场景 | `scene_2d.vert`、`scene_2d.frag` |
+| 叠加层 | `overlay.vert`、`overlay.frag`、`overlay_screen.vert`、`overlay_screen.frag` |
+| 位图 | `bitmap.vert`、`bitmap.frag` |
+| 3D 网格 | `mesh_3d.vert`、`mesh_3d.frag`、`mesh_3d_instanced.vert` |
+| 文本 | `text_sdf.vert`、`text_sdf.frag`、`text_screen.vert`、`text_screen.frag` |
+| 高亮 | `highlight_3d.vert`、`highlight_3d.frag` |
+| GPU 剔除 | `culling.comp` |
 
-## 未来规划
+### 字体文件复制
 
-- [ ] Vulkan 后端支持
-- [ ] Metal 后端支持（Apple 平台）
-- [ ] 纹理加载和管理
-- [ ] 高级光照系统
-- [ ] 渲染管线编辑器
-- [ ] 更多字体格式支持（OTF）
-- [ ] 离屏渲染支持
-- [ ] 阴影渲染
+默认屏幕字体 `default_screen_font.ttf` 在构建后自动复制到输出目录，`renderCreateDevice` 时自动加载（14px 字号）。也可通过 `renderLoadScreenFont` 在运行时加载自定义字体。
 
-## 许可证
+### 测试构建
 
-MIT License
+```bash
+# 需要 GTest 支持
+find_package(GTest QUIET)
+option(BUILD_RENDERX_TESTS "Build Renderx unit tests" ON)
+add_subdirectory(Test)
+```
+
+## API 概要
+
+### C API 函数列表
+
+#### 设备管理
+
+| 函数 | 说明 |
+|------|------|
+| `renderCreateDevice` | 创建渲染设备 |
+| `renderDestroyDevice` | 销毁渲染设备 |
+| `renderResize` | 调整渲染目标尺寸 |
+| `renderGetNativeContext` | 获取原生渲染上下文 |
+
+#### 2D 实体管理
+
+| 函数 | 说明 |
+|------|------|
+| `renderAddEntity` | 添加 2D 实体 |
+| `renderModifyEntity` | 修改 2D 实体 |
+| `renderRemoveEntity` | 删除 2D 实体 |
+| `renderSetEntityVisibility` | 设置实体可见性 |
+| `renderApplyUpdates` | 批量应用实体更新 |
+
+#### 3D 网格管理
+
+| 函数 | 说明 |
+|------|------|
+| `renderRegisterMesh` | 注册 3D 网格 |
+| `renderUnregisterMesh` | 注销 3D 网格 |
+| `renderAddInstance` | 添加 3D 网格实例 |
+| `renderModifyInstance` | 修改 3D 网格实例 |
+| `renderRemoveInstance` | 删除 3D 网格实例 |
+
+#### 材质管理
+
+| 函数 | 说明 |
+|------|------|
+| `renderAddMaterial` | 添加材质 |
+| `renderUpdateMaterial` | 更新材质 |
+
+#### 视图管理
+
+| 函数 | 说明 |
+|------|------|
+| `renderSetView2D` | 设置 2D 视图参数 |
+| `renderSetView3D` | 设置 3D 视图参数 |
+| `renderSetViewMode` | 切换 2D/3D 视图模式 |
+| `renderSetClearColor` | 设置清屏颜色 |
+
+#### 叠加层
+
+| 函数 | 说明 |
+|------|------|
+| `renderSetOverlay` | 设置叠加层数据（十字准星、捕捉指示器） |
+| `renderSubmitOverlay` | 提交单个叠加层图元 |
+| `renderSubmitOverlays` | 批量提交叠加层图元 |
+| `renderClearOverlays` | 清除所有叠加层图元 |
+| `renderClearOverlayKind` | 按类型清除叠加层图元 |
+| `renderSetPreviewLines` | 设置预览线（已废弃，改用 `renderSubmitOverlay`） |
+| `renderSetControlLines` | 设置控制线（已废弃） |
+| `renderSetPointMarkers` | 设置点标记（已废弃） |
+| `renderSetSelectionBox` | 设置选择框（已废弃） |
+| `renderSetSelectionRect` | 设置选择预览矩形（已废弃） |
+| `renderSetSelectionHandles` | 设置选择手柄（已废弃） |
+
+#### 几何提交（统一 API）
+
+| 函数 | 说明 |
+|------|------|
+| `renderSubmitGeometry` | 提交单个几何图元 |
+| `renderSubmitGeometries` | 批量提交几何图元 |
+| `renderEmitPolyline` | 发射折线（已废弃） |
+| `renderEmitCircle` | 发射圆形（已废弃） |
+| `renderEmitArc` | 发射圆弧（已废弃） |
+| `renderEmitEllipse` | 发射椭圆（已废弃） |
+| `renderEmitText` | 发射文本（已废弃） |
+| `renderEmitImage` | 发射图像（已废弃） |
+| `renderEmitTriangleSoup` | 发射三角网格（已废弃） |
+
+#### 场景环境
+
+| 函数 | 说明 |
+|------|------|
+| `renderSetSceneEnv` | 设置场景环境层（网格背景、参考线） |
+| `renderSetSceneEnvEx` | 设置场景环境层（扩展版，支持像素坐标和三角面） |
+| `renderSetBitmap` | 设置位图图像 |
+| `renderClearBitmap` | 清除位图图像 |
+
+#### 文本渲染
+
+| 函数 | 说明 |
+|------|------|
+| `renderSetTexts` | 设置文本列表（世界坐标） |
+| `renderSetScreenTexts` | 设置屏幕空间文本 |
+| `renderLoadScreenFont` | 加载屏幕字体 |
+
+#### 帧渲染与统计
+
+| 函数 | 说明 |
+|------|------|
+| `renderFrame` | 执行一帧渲染 |
+| `renderGetStats` | 获取渲染统计信息 |
+| `renderGetEntityCount` | 获取实体数量 |
+| `renderGetGPUMemoryUsage` | 获取 GPU 内存使用量 |
+| `renderBeginScene` | 开始场景（内部使用） |
+| `renderEndScene` | 结束场景（内部使用） |
+
+### 渲染流程说明
+
+```
+renderFrame 内部流程（2D 模式）:
+
+┌────────────────────────────────────────────────────────────┐
+│ 1. GPU 剔除阶段                                            │
+│    ├─ syncWorldToPersistentManager()                       │
+│    ├─ computeViewBounds()                                  │
+│    ├─ executeCulling() → culling.comp                      │
+│    └─ readBackGpuVisibility() 或 CPU 四叉树回退             │
+├────────────────────────────────────────────────────────────┤
+│ 2. BatchQueue.submit() → 构建间接绘制命令                  │
+├────────────────────────────────────────────────────────────┤
+│ 3. RenderGraph 执行 Pass 序列：                             │
+│    ├─ Pass 0: FrameSetup        (清屏/混合/深度状态)       │
+│    ├─ Pass 1: SceneEnv          (网格背景渲染)             │
+│    ├─ Pass 2: World2DCollect    (2D 图元命令收集)          │
+│    ├─ Pass 3: OverlayCollect    (叠加层命令收集)           │
+│    ├─ Pass 4: CommandExecute    (命令排序与统一执行)       │
+│    └─ Pass 5: Text              (文本渲染)                 │
+├────────────────────────────────────────────────────────────┤
+│ 4. 屏幕文本渲染                                             │
+└────────────────────────────────────────────────────────────┘
+```
+
+### Shader 列表
+
+| Shader 名称 | 类型 | 文件 | 用途 |
+|-------------|------|------|------|
+| Scene2D | 顶点+片段 | `scene_2d.vert/frag` | 2D 场景实体渲染 |
+| Overlay | 顶点+片段 | `overlay.vert/frag` | 叠加层渲染（世界坐标） |
+| OverlayScreen | 顶点+片段 | `overlay_screen.vert/frag` | 叠加层渲染（屏幕坐标） |
+| Bitmap | 顶点+片段 | `bitmap.vert/frag` | 位图图像渲染 |
+| Mesh3D | 顶点+片段 | `mesh_3d.vert/frag` | 3D 网格渲染 |
+| Mesh3DInstanced | 顶点 | `mesh_3d_instanced.vert` | 3D 网格实例化渲染 |
+| TextSDF | 顶点+片段 | `text_sdf.vert/frag` | SDF 文本渲染 |
+| TextScreen | 顶点+片段 | `text_screen.vert/frag` | 屏幕空间文本渲染 |
+| Highlight3D | 顶点+片段 | `highlight_3d.vert/frag` | 3D 高亮渲染 |
+| Culling | 计算 | `culling.comp` | GPU 视锥剔除 |
+
+## 版本信息
+
+- **当前版本**：2.0.0
+- **C++ 标准**：C++17
+- **构建类型**：支持 Debug（`_d` 后缀）和 Release
+- **编译器支持**：MSVC、GCC、Clang

@@ -19,6 +19,8 @@ namespace render::shader
     static std::string mesh3dInstancedVertSource;
     static std::string textSdfVertSource;
     static std::string textSdfFragSource;
+    static std::string textScreenVertSource;
+    static std::string textScreenFragSource;
     static std::string highlight3dVertSource;
     static std::string highlight3dFragSource;
     static std::string cullingCompSource;
@@ -36,6 +38,8 @@ namespace render::shader
     const char* MESH_3D_INSTANCED_VERT = nullptr;
     const char* TEXT_SDF_VERT = nullptr;
     const char* TEXT_SDF_FRAG = nullptr;
+    const char* TEXT_SCREEN_VERT = nullptr;
+    const char* TEXT_SCREEN_FRAG = nullptr;
     const char* HIGHLIGHT_3D_VERT = nullptr;
     const char* HIGHLIGHT_3D_FRAG = nullptr;
     const char* CULLING_COMP = nullptr;
@@ -75,6 +79,8 @@ namespace render::shader
         loadShaderFile(shaderDir, "mesh_3d_instanced.vert", mesh3dInstancedVertSource);
         loadShaderFile(shaderDir, "text_sdf.vert", textSdfVertSource);
         loadShaderFile(shaderDir, "text_sdf.frag", textSdfFragSource);
+        loadShaderFile(shaderDir, "text_screen.vert", textScreenVertSource);
+        loadShaderFile(shaderDir, "text_screen.frag", textScreenFragSource);
         loadShaderFile(shaderDir, "highlight_3d.vert", highlight3dVertSource);
         loadShaderFile(shaderDir, "highlight_3d.frag", highlight3dFragSource);
         loadShaderFile(shaderDir, "culling.comp", cullingCompSource);
@@ -92,6 +98,8 @@ namespace render::shader
         MESH_3D_INSTANCED_VERT = mesh3dInstancedVertSource.empty() ? "" : mesh3dInstancedVertSource.c_str();
         TEXT_SDF_VERT = textSdfVertSource.empty() ? "" : textSdfVertSource.c_str();
         TEXT_SDF_FRAG = textSdfFragSource.empty() ? "" : textSdfFragSource.c_str();
+        TEXT_SCREEN_VERT = textScreenVertSource.empty() ? "" : textScreenVertSource.c_str();
+        TEXT_SCREEN_FRAG = textScreenFragSource.empty() ? "" : textScreenFragSource.c_str();
         HIGHLIGHT_3D_VERT = highlight3dVertSource.empty() ? "" : highlight3dVertSource.c_str();
         HIGHLIGHT_3D_FRAG = highlight3dFragSource.empty() ? "" : highlight3dFragSource.c_str();
         CULLING_COMP = cullingCompSource.empty() ? "" : cullingCompSource.c_str();

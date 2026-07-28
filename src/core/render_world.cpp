@@ -116,6 +116,8 @@ namespace render
             uint32_t denseIdx = static_cast<uint32_t>(m_entities.size() - 1);
             m_dirtyList.push_back(denseIdx);
             m_changeCount++;
+            // 新增实体必须标记四叉树脏，否则 queryVisible 不会包含它
+            m_quadTreeDirty = true;
 
             //SY_INFOF("RenderWorld::addEntity: total=%u, vertexPool=%u",
             //    (uint32_t)m_entities.size(), (uint32_t)m_vertexPool.size());
@@ -150,6 +152,8 @@ namespace render
             uint32_t denseIdx = static_cast<uint32_t>(entry - m_entities.begin());
             m_dirtyList.push_back(denseIdx);
             m_changeCount++;
+            // 实体 bbox 可能变化，标记四叉树脏以确保下次查询重建
+            m_quadTreeDirty = true;
         }
 
         void RenderWorld::removeEntity(EntityId id)
@@ -234,12 +238,16 @@ namespace render
         {
             (void)viewWidth;
             (void)viewHeight;
+
+            // viewWidth/viewHeight 当前不直接参与视锥计算，因为 viewMatrix
+            // 已是正交投影矩阵（包含缩放）。保留参数用于未来扩展和退化矩阵兜底。
             RenderWorld* self = const_cast<RenderWorld*>(this);
 
             if (outCount)
                 *outCount = 0;
 
-            bool needsRebuild = m_changeCount >= kRebuildThreshold;
+            // 四叉树重建条件：脏标记 / 变更累积超阈值 / 视图变化
+            bool needsRebuild = m_quadTreeDirty || m_changeCount >= kRebuildThreshold;
             if (!needsRebuild)
             {
                 needsRebuild = hasViewChanged(viewMatrix);
@@ -383,6 +391,53 @@ namespace render
                 }
             }
 
+            m_dirtyList.clear();
+            m_vertexPoolResized = false;
+        }
+
+        uint32_t RenderWorld::getDirtyVertexRanges(VertexUploadRange* outRanges, uint32_t maxRanges) const
+        {
+            if (!outRanges || maxRanges == 0)
+                return 0;
+
+            uint32_t count = 0;
+            for (uint32_t denseIdx : m_dirtyList)
+            {
+                if (denseIdx >= m_entities.size())
+                    continue;
+
+                const EntityEntry& entry = *(m_entities.begin() + denseIdx);
+                if (!entry.dirty)
+                    continue;
+
+                if (count < maxRanges)
+                {
+                    outRanges[count].vertexOffset = entry.vertexOffset;
+                    outRanges[count].vertexCount = entry.vertexCount;
+                    ++count;
+                }
+            }
+
+            // 如果顶点池整体 resize，需要上传全部
+            if (m_vertexPoolResized && count < maxRanges)
+            {
+                outRanges[count].vertexOffset = 0;
+                outRanges[count].vertexCount = static_cast<uint32_t>(m_vertexPool.size());
+                ++count;
+            }
+
+            return count;
+        }
+
+        void RenderWorld::clearDirtyFlags()
+        {
+            for (uint32_t denseIdx : m_dirtyList)
+            {
+                if (denseIdx >= m_entities.size())
+                    continue;
+                EntityEntry* entry = m_entities.begin() + denseIdx;
+                entry->dirty = false;
+            }
             m_dirtyList.clear();
             m_vertexPoolResized = false;
         }

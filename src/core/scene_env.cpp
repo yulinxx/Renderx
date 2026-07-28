@@ -186,20 +186,20 @@ namespace render::core
                 continue;
 
             rhi::PipelineHandle pipe = layer.asTriangles ? m_trianglePipeline : m_linePipeline;
-            
+
             if (pipe == rhi::NullHandle)
             {
                 SY_ERRORF("SceneEnv::render: layer[%zu] pipeline is NullHandle!", idx);
                 continue;
             }
-            
+
             if (m_vertexBuffer == rhi::NullHandle)
             {
                 SY_ERROR("SceneEnv::render: vertex buffer is NullHandle!");
                 continue;
             }
 
-            // SY_TRACEF("SceneEnv::render: drawing layer[%zu], %u vertices, pipe=%u", 
+            // SY_TRACEF("SceneEnv::render: drawing layer[%zu], %u vertices, pipe=%u",
             //           idx, layer.vertexCount, pipe);
 
             device->bindPipeline(pipe);

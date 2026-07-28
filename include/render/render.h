@@ -246,8 +246,30 @@ RENDER_API void renderSetView3D(RenderDevice* dev, const float viewMatrix[16],
 RENDER_API void renderSetViewMode(RenderDevice* dev, ViewMode mode);
 
 /**
+ * @brief 加载屏幕文本渲染器的字体（可选，默认字体由 renderCreateDevice 自动加载）
+ *
+ * @param dev 渲染设备
+ * @param fontData 字体数据（TTF/OTF 二进制）
+ * @param dataSize 字体数据大小（字节）
+ * @param pixelHeight 字体像素高度（默认 16）
+ */
+RENDER_API void renderLoadScreenFont(RenderDevice* dev, const void* fontData, uint32_t dataSize, float pixelHeight);
+
+/**
+ * @brief 暂存屏幕空间文本（在 renderFrame 中统一渲染）
+ *
+ * 在 renderFrame 之前调用，文本将在帧末尾以屏幕像素坐标渲染。
+ * 视口尺寸由渲染设备内部维护，调用方无需传入。
+ *
+ * @param dev 渲染设备
+ * @param items 文本项数组
+ * @param count 文本项数量
+ */
+RENDER_API void renderSetScreenTexts(RenderDevice* dev, const ScreenTextItem* items, uint32_t count);
+
+/**
  * @brief 设置清屏颜色
- * 
+ *
  * @param dev 渲染设备
  * @param r 红色分量（0~1）
  * @param g 绿色分量（0~1）

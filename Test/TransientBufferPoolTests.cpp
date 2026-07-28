@@ -15,20 +15,21 @@
 #include "../src/rhi/rhi_device.h"
 
 #ifdef _WIN32
-  #ifndef WIN32_LEAN_AND_MEAN
-    #define WIN32_LEAN_AND_MEAN
-  #endif
-  #include <windows.h>
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
 #endif
 
 #include <cstring>
 #include <vector>
 
-// ------------------------------------------------------------------
-// Minimal GL context helper for Windows (used to load OpenGL functions)
-// ------------------------------------------------------------------
+ // ------------------------------------------------------------------
+ // Minimal GL context helper for Windows (used to load OpenGL functions)
+ // ------------------------------------------------------------------
 #ifdef _WIN32
-class MinimalGLContext {
+class MinimalGLContext
+{
     HWND m_hwnd = nullptr;
     HDC m_hdc = nullptr;
     HGLRC m_hglrc = nullptr;
@@ -43,7 +44,7 @@ public:
         RegisterClassA(&wc);
 
         m_hwnd = CreateWindowExA(0, wc.lpszClassName, "", 0,
-                                 0, 0, 1, 1, nullptr, nullptr, wc.hInstance, nullptr);
+            0, 0, 1, 1, nullptr, nullptr, wc.hInstance, nullptr);
         if (!m_hwnd)
             return false;
 
@@ -90,21 +91,34 @@ public:
         }
     }
 
-    void* nativeHandle() const { return m_hglrc; }
+    void* nativeHandle() const
+    {
+        return m_hglrc;
+    }
 };
 #else
-class MinimalGLContext {
+class MinimalGLContext
+{
 public:
-    bool create() { return false; }
-    void destroy() {}
-    void* nativeHandle() const { return nullptr; }
+    bool create()
+    {
+        return false;
+    }
+    void destroy()
+    {
+    }
+    void* nativeHandle() const
+    {
+        return nullptr;
+    }
 };
 #endif
 
 // ------------------------------------------------------------------
 // Test fixture providing a live GLDevice when possible
 // ------------------------------------------------------------------
-class TransientBufferPoolTest : public ::testing::Test {
+class TransientBufferPoolTest : public ::testing::Test
+{
 protected:
     MinimalGLContext m_glCtx;
     render::rhi::IDevice* m_device = nullptr;

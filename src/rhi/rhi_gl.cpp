@@ -1319,6 +1319,7 @@ namespace render::rhi
             case VertexFormat::P3N3:   return 6 * sizeof(float); // pos(3) + nor(3) = 24
             case VertexFormat::P3T2:   return 5 * sizeof(float); // pos(3) + uv(2) = 20
             case VertexFormat::P3T2C4: return 9 * sizeof(float); // pos(3) + uv(2) + col(4) = 36
+            case VertexFormat::P2T2C4: return 8 * sizeof(float); // pos(2) + uv(2) + col(4) = 32
         }
         return 0;
     }
@@ -1441,6 +1442,31 @@ namespace render::rhi
                     g->VertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 36, (void*)0);
                     g->VertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 36, (void*)12);
                     g->VertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, 36, (void*)20);
+                    g->EnableVertexAttribArray(0);
+                    g->EnableVertexAttribArray(1);
+                    g->EnableVertexAttribArray(2);
+                    g->BindBuffer(GL_ARRAY_BUFFER, 0);
+                }
+                break;
+            }
+            case VertexFormat::P2T2C4:
+            {
+                if (g->BindVertexBuffer)
+                {
+                    g->BindVertexBuffer(0, m_buffers[size_t(m_currentVBOs[0] - 1)].glName, 0, 32);
+                    g->VertexAttribFormat(0, 2, GL_FLOAT, GL_FALSE, 0);
+                    g->VertexAttribFormat(1, 2, GL_FLOAT, GL_FALSE, 8);
+                    g->VertexAttribFormat(2, 4, GL_FLOAT, GL_FALSE, 16);
+                    g->VertexAttribBinding(0, 0);
+                    g->VertexAttribBinding(1, 0);
+                    g->VertexAttribBinding(2, 0);
+                }
+                else
+                {
+                    g->BindBuffer(GL_ARRAY_BUFFER, m_buffers[size_t(m_currentVBOs[0] - 1)].glName);
+                    g->VertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 32, (void*)0);
+                    g->VertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 32, (void*)8);
+                    g->VertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, 32, (void*)16);
                     g->EnableVertexAttribArray(0);
                     g->EnableVertexAttribArray(1);
                     g->EnableVertexAttribArray(2);

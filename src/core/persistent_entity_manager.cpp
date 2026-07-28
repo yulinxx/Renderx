@@ -9,7 +9,6 @@ namespace render
 {
     namespace core
     {
-
         void PersistentEntityManager::initialize(rhi::IDevice* device, uint32_t maxEntities)
         {
             if (m_initialized || !device || maxEntities == 0)
@@ -175,6 +174,19 @@ namespace render
             SY_DEBUGF("[PersistentEntityManager] removeEntity index=%u", index);
         }
 
+        void PersistentEntityManager::clearEntities()
+        {
+            if (!m_initialized)
+                return;
+
+            m_entityCount = 0;
+            m_entities.clear();
+            m_dirtyFlags.clear();
+            m_lastVisibleCount = 0;
+
+            SY_DEBUG("[PersistentEntityManager] entities cleared");
+        }
+
         void PersistentEntityManager::updateEntity(uint32_t index, const PersistentEntity& entity)
         {
             if (!m_initialized || index >= m_entityCount)
@@ -268,7 +280,8 @@ namespace render
             }
         }
 
-        void PersistentEntityManager::executeCulling(const float viewProjMatrix[16])
+        void PersistentEntityManager::executeCulling(float viewMinX, float viewMinY,
+            float viewMaxX, float viewMaxY)
         {
             if (!m_initialized || !m_device || m_entityCount == 0)
                 return;
@@ -295,8 +308,9 @@ namespace render
                 m_entityCount * sizeof(DrawIndirectCmd));
             m_device->bindShaderStorageBuffer(0, 3, m_countBuffer, 0, sizeof(uint32_t));
 
-            // 上传视图投影矩阵作为 uniform
-            m_device->setUniformMatrix4("uViewProjMatrix", viewProjMatrix);
+            // 上传 2D 视图矩形作为 uniform vec4
+            float viewBounds[4] = { viewMinX, viewMinY, viewMaxX, viewMaxY };
+            m_device->setUniformVec4("uViewBounds", viewBounds);
             m_device->setUniformInt("uEntityCount", static_cast<int>(m_entityCount));
 
             // 计算 dispatch 大小（每个线程处理一个图元）
@@ -309,13 +323,15 @@ namespace render
                     rhi::BarrierFlag::ShaderStorage |
                     rhi::BarrierFlag::Command));
 
-            SY_DEBUGF("[PersistentEntityManager] culling dispatched: %u entities, %u groups",
-                m_entityCount, groupsX);
+            SY_DEBUGF("[PersistentEntityManager] culling dispatched: %u entities, %u groups, view=[%.2f,%.2f,%.2f,%.2f]",
+                m_entityCount, groupsX, viewMinX, viewMinY, viewMaxX, viewMaxY);
         }
 
         void PersistentEntityManager::generateIndirectCommands(rhi::BufferHandle outIndirectBuffer,
             uint32_t* outCommandCount)
         {
+            (void)outIndirectBuffer; // 当前实现直接读取内部 countBuffer，参数预留用于未来扩展
+
             if (!m_initialized || !m_device)
             {
                 if (outCommandCount) *outCommandCount = 0;
@@ -356,6 +372,5 @@ namespace render
             SY_DEBUGF("[PersistentEntityManager] visible count: %u / %u",
                 visibleCount, m_entityCount);
         }
-
     } // namespace core
 } // namespace render

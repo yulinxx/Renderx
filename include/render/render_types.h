@@ -536,4 +536,14 @@ struct DrawCommand
     };
 };
 
+/// 屏幕空间文本项（用于屏幕坐标文本渲染）
+struct ScreenTextItem
+{
+    const char* text;       ///< 文本内容（UTF-8）
+    float x;                 ///< 屏幕坐标 X（像素）
+    float y;                 ///< 屏幕坐标 Y（像素）
+    float color[4];          ///< RGBA 颜色
+    float fontSize;          ///< 字体大小（像素）
+};
+
 }

@@ -95,6 +95,13 @@ public:
     void removeEntity(uint32_t index);
 
     /**
+     * @brief 清空所有实体
+     *
+     * 重置实体计数，保留 GPU 缓冲容量。用于每帧从 RenderWorld 全量同步前。
+     */
+    void clearEntities();
+
+    /**
      * @brief 更新实体数据
      *
      * @param index 实体索引
@@ -113,11 +120,18 @@ public:
      * @brief 执行 GPU 视锥剔除
      *
      * 绑定 compute pipeline，dispatch compute shader 对 SSBO 中的实体
-     * 进行视锥测试，结果写入可见性缓冲。
+     * 进行 2D AABB-视图矩形测试，结果写入可见性缓冲。
      *
-     * @param viewProjMatrix 4x4 视图投影矩阵（列主序）
+     * 剔除语义与 CPU 侧四叉树 queryVisible 保持一致：
+     * 世界空间包围盒与视图矩形做 AABB 相交测试。
+     *
+     * @param viewMinX 视图矩形最小 X（世界空间）
+     * @param viewMinY 视图矩形最小 Y（世界空间）
+     * @param viewMaxX 视图矩形最大 X（世界空间）
+     * @param viewMaxY 视图矩形最大 Y（世界空间）
      */
-    void executeCulling(const float viewProjMatrix[16]);
+    void executeCulling(float viewMinX, float viewMinY,
+                        float viewMaxX, float viewMaxY);
 
     /**
      * @brief 生成间接绘制命令
@@ -140,6 +154,11 @@ public:
      * @brief 获取可见性结果缓冲句柄
      */
     rhi::BufferHandle getVisibilityBuffer() const { return m_visibilityBuffer; }
+
+    /**
+     * @brief 获取 indirect draw 缓冲句柄
+     */
+    rhi::BufferHandle getIndirectBuffer() const { return m_indirectBuffer; }
 
     /**
      * @brief 获取当前实体数量

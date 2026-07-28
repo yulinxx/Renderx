@@ -29,24 +29,7 @@ namespace render
         {
             m_device = device;
 
-            rhi::PipelineDesc lineDesc;
-            lineDesc.topology = rhi::PrimitiveTopology::LineList;
-            lineDesc.vertexShader = "overlay_vert";
-            lineDesc.fragmentShader = "overlay_frag";
-            lineDesc.computeShader = nullptr;
-            lineDesc.vertexFormat = rhi::VertexFormat::P3C4;
-            lineDesc.depthTest = false;
-            lineDesc.depthWrite = false;
-            lineDesc.blendEnable = true;
-            lineDesc.srcBlend = rhi::BlendFactor::SrcAlpha;
-            lineDesc.dstBlend = rhi::BlendFactor::OneMinusSrcAlpha;
-            lineDesc.depthFunc = rhi::CompareFunc::Always;
-            m_linePipeline = device->createPipeline(lineDesc);
-
-            rhi::PipelineDesc triDesc = lineDesc;
-            triDesc.topology = rhi::PrimitiveTopology::TriangleList;
-            m_trianglePipeline = device->createPipeline(triDesc);
-
+            // pipeline 由 CommandEncoder 统一管理，OverlayQueue 不再创建
             rhi::BufferDesc vbDesc;
             vbDesc.size = 4096 * sizeof(OverlayVertex);
             vbDesc.usage = rhi::BufferUsage::Vertex;
@@ -62,16 +45,6 @@ namespace render
             {
                 m_device->destroyBuffer(m_vertexBuffer);
                 m_vertexBuffer = rhi::NullHandle;
-            }
-            if (m_linePipeline != rhi::NullHandle)
-            {
-                m_device->destroyPipeline(m_linePipeline);
-                m_linePipeline = {};
-            }
-            if (m_trianglePipeline != rhi::NullHandle)
-            {
-                m_device->destroyPipeline(m_trianglePipeline);
-                m_trianglePipeline = {};
             }
 
             m_crosshairVerts.clear();
@@ -143,6 +116,7 @@ namespace render
         void OverlayQueue::setPreviewLines(const VertexP3C3* vertices, uint32_t count,
             uint32_t colorRGBA)
         {
+            (void)colorRGBA;
             m_previewVerts.clear();
             if (!vertices || count == 0)
             {
@@ -165,6 +139,7 @@ namespace render
         void OverlayQueue::setControlLines(const VertexP3C3* vertices, uint32_t count,
             uint32_t colorRGBA)
         {
+            (void)colorRGBA;
             m_controlVerts.clear();
             if (!vertices || count == 0)
             {
@@ -405,6 +380,8 @@ namespace render
                     m_unifiedVerts.push_back(makeVert(desc->minX, desc->maxY, z, r, g, b, a));
                     m_unifiedVerts.push_back(makeVert(desc->minX, desc->maxY, z, r, g, b, a));
                     m_unifiedVerts.push_back(makeVert(desc->minX, desc->minY, z, r, g, b, a));
+                    SY_DEBUGF("[OverlayQueue] submit Rect (%.2f,%.2f)-(%.2f,%.2f) color=#%08x",
+                        desc->minX, desc->minY, desc->maxX, desc->maxY, primitive->style.borderColor);
                     break;
                 }
                 case OverlayPrimitiveKind::FilledRect:
@@ -559,6 +536,9 @@ namespace render
                 return;
             }
 
+            uint32_t totalUnifiedVerts = static_cast<uint32_t>(m_unifiedVerts.size());
+            SY_DEBUGF("[OverlayQueue] render: unified=%u ranges=%zu", totalUnifiedVerts, m_unifiedRanges.size() / 4);
+
             uint32_t totalOldVerts =
                 static_cast<uint32_t>(m_selectionBoxVerts.size()) +
                 static_cast<uint32_t>(m_controlVerts.size()) +
@@ -570,7 +550,6 @@ namespace render
                 static_cast<uint32_t>(m_selRectFillVerts.size()) +
                 static_cast<uint32_t>(m_selRectBorderVerts.size());
 
-            uint32_t totalUnifiedVerts = static_cast<uint32_t>(m_unifiedVerts.size());
             uint32_t totalVerts = totalOldVerts + totalUnifiedVerts;
 
             if (totalVerts == 0) return;
@@ -785,27 +764,6 @@ namespace render
 
             out[6] = makeVert(x0, y1, z, r, g, b, a);
             out[7] = makeVert(x0, y0, z, r, g, b, a);
-        }
-
-        void OverlayQueue::uploadAndRender(rhi::IDevice* device, const OverlayVertex* data,
-            uint32_t vertexCount, PrimitiveType type)
-        {
-            if (vertexCount == 0) return;
-
-            device->uploadBuffer(m_vertexBuffer, 0,
-                vertexCount * sizeof(OverlayVertex), data);
-
-            if (type == PrimitiveType::TriangleList)
-            {
-                device->bindPipeline(m_trianglePipeline);
-            }
-            else
-            {
-                device->bindPipeline(m_linePipeline);
-            }
-
-            device->bindVertexBuffer(0, m_vertexBuffer, 0);
-            device->draw(vertexCount, 1, 0, 0);
         }
     } // namespace core
 } // namespace render

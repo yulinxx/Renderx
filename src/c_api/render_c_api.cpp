@@ -17,6 +17,7 @@
 #include "core/persistent_entity_manager.h"
 #include "core/mesh_manager.h"
 #include "core/text_atlas.h"
+#include "core/screen_text_renderer.h"
 #include "core/scene_env.h"
 #include "rhi/rhi_device.h"
 #include "rhi/rhi_gl.h"
@@ -28,7 +29,9 @@
 #include <cassert>
 #include <vector>
 #include <cmath>
+#include <cfloat>
 #include <filesystem>
+#include <fstream>
 
 #include "Log/SyLogger.h"
 
@@ -54,6 +57,8 @@ namespace render
         core::MeshManager    meshManager;
         /// 文本贴图管理器（文本渲染）
         core::TextAtlas      textAtlas;
+        /// 屏幕文本渲染器
+        core::ScreenTextRenderer screenTextRenderer;
         /// 场景环境渲染器（网格背景等）
         core::SceneEnv       sceneEnv;
         /// 统一命令编码器（Phase 3 新增，统一 overlay / world 绘制命令）
@@ -97,6 +102,16 @@ namespace render
             std::string textStorage;
         };
         std::vector<PendingText> pendingTextItems;
+
+        /// 暂存的屏幕文本项（在 renderFrame 中渲染）
+        struct PendingScreenText
+        {
+            std::string text;
+            float x, y;
+            float color[4];
+            float fontSize;
+        };
+        std::vector<PendingScreenText> pendingScreenTexts;
     };
 }
 
@@ -176,6 +191,34 @@ extern "C" {
         dev->persistentEntityManager.initialize(dev->rhiDevice, 65536);
         dev->meshManager.initialize(dev->rhiDevice);
         dev->textAtlas.initialize(dev->rhiDevice);
+        dev->screenTextRenderer.initialize(dev->rhiDevice);
+
+        // 自动加载默认屏幕字体（从 exe 所在目录）
+        {
+            auto fontPath = std::filesystem::path(shaderDir) / "default_screen_font.ttf";
+            if (std::filesystem::exists(fontPath))
+            {
+                std::ifstream ifs(fontPath, std::ios::binary | std::ios::ate);
+                auto fileSize = ifs.tellg();
+                if (fileSize > 0)
+                {
+                    std::vector<uint8_t> buf(static_cast<size_t>(fileSize));
+                    ifs.seekg(0);
+                    ifs.read(reinterpret_cast<char*>(buf.data()), fileSize);
+
+                    dev->screenTextRenderer.loadFont(buf.data(),
+                        static_cast<uint32_t>(buf.size()), 18.0f);
+
+                    SY_INFOF("renderCreateDevice: default screen font loaded (%.1f KB)",
+                        buf.size() / 1024.0f);
+                }
+            }
+            else
+            {
+                SY_WARNF("renderCreateDevice: default font not found: %s", fontPath.string().c_str());
+            }
+        }
+
         dev->sceneEnv.initialize(dev->rhiDevice);
 
         dev->initialized = true;
@@ -196,6 +239,7 @@ extern "C" {
         // 按逆序关闭渲染模块
         dev->sceneEnv.shutdown();
         dev->textAtlas.shutdown();
+        dev->screenTextRenderer.shutdown();
         dev->meshManager.shutdown();
         dev->persistentEntityManager.shutdown(); // Phase 9
         dev->drawBatcher.shutdown();       // Phase 8
@@ -541,7 +585,7 @@ extern "C" {
             auto f2u = [](float f) -> uint32_t {
                 int v = static_cast<int>(f * 255.0f + 0.5f);
                 return static_cast<uint32_t>(v < 0 ? 0 : (v > 255 ? 255 : v));
-            };
+                };
             rgba |= f2u(overlay->snapColor[0]) << 0;
             rgba |= f2u(overlay->snapColor[1]) << 8;
             rgba |= f2u(overlay->snapColor[2]) << 16;
@@ -918,6 +962,163 @@ extern "C" {
         (void)dev;
     }
 
+    // ============================================================================
+    // PersistentEntityManager 同步与 GPU 剔除辅助函数
+    // ============================================================================
+
+    /**
+     * @brief 将 RenderWorld 实体同步到 PersistentEntityManager
+     *
+     * 每帧调用，全量同步当前所有实体元数据到 GPU SSBO。
+     * 实体数量通常较小（几千到几万），全量同步的 CPU 开销可接受。
+     */
+    static void syncWorldToPersistentManager(RenderDevice* dev)
+    {
+        auto& pem = dev->persistentEntityManager;
+        auto& world = dev->world2D;
+
+        pem.clearEntities();
+
+        const auto* entries = world.getEntityEntries();
+        uint32_t count = world.getEntityCount();
+
+        for (uint32_t i = 0; i < count; ++i)
+        {
+            const auto& e = entries[i];
+            if (e.vertexCount == 0)
+                continue;
+
+            render::core::PersistentEntity pe{};
+            pe.id = static_cast<uint32_t>(e.entityId);
+            pe.bboxMin[0] = e.bbox[0];
+            pe.bboxMin[1] = e.bbox[1];
+            pe.bboxMin[2] = 0.0f;
+            pe.bboxMax[0] = e.bbox[2];
+            pe.bboxMax[1] = e.bbox[3];
+            pe.bboxMax[2] = 0.0f;
+            pe.worldPos[0] = (e.bbox[0] + e.bbox[2]) * 0.5f;
+            pe.worldPos[1] = (e.bbox[1] + e.bbox[3]) * 0.5f;
+            pe.worldPos[2] = 0.0f;
+            pe.vertexOffset = e.vertexOffset;
+            pe.vertexCount = e.vertexCount;
+            pe.materialIndex = e.materialIndex;
+            // bit0 = 1 表示可见（与 RenderWorld 的 kEntityFlagHidden 语义相反）
+            pe.flags = (e.flags & 1u) ? 0u : 1u;
+
+            pem.addEntity(pe);
+        }
+
+        SY_DEBUGF("[syncWorldToPM] synced %u entities to PersistentEntityManager", count);
+    }
+
+    /**
+     * @brief 从 viewMatrix 计算 2D 视图矩形（世界空间）
+     *
+     * 复用 CPU 四叉树 queryVisible 的逆矩阵逻辑，将 NDC 角点 [-1,-1]~[1,1]
+     * 变换回世界空间，得到与四叉树完全一致的视图矩形。
+     *
+     * @param viewMatrix 3x3 视图矩阵（列主序）
+     * @param outMinX 输出最小 X
+     * @param outMinY 输出最小 Y
+     * @param outMaxX 输出最大 X
+     * @param outMaxY 输出最大 Y
+     */
+    static void computeViewBounds(const float viewMatrix[9],
+        float* outMinX, float* outMinY,
+        float* outMaxX, float* outMaxY)
+    {
+        float m00 = viewMatrix[0], m01 = viewMatrix[3], m02 = viewMatrix[6];
+        float m10 = viewMatrix[1], m11 = viewMatrix[4], m12 = viewMatrix[7];
+        float m20 = viewMatrix[2], m21 = viewMatrix[5], m22 = viewMatrix[8];
+
+        float det = m00 * (m11 * m22 - m12 * m21)
+            - m01 * (m10 * m22 - m12 * m20)
+            + m02 * (m10 * m21 - m11 * m20);
+
+        if (std::abs(det) < 1e-10f)
+        {
+            *outMinX = *outMinY = -FLT_MAX;
+            *outMaxX = *outMaxY = FLT_MAX;
+            return;
+        }
+
+        float invDet = 1.0f / det;
+        float inv[9];
+        inv[0] = (m11 * m22 - m12 * m21) * invDet;
+        inv[3] = (m02 * m21 - m01 * m22) * invDet;
+        inv[6] = (m01 * m12 - m02 * m11) * invDet;
+        inv[1] = (m12 * m20 - m10 * m22) * invDet;
+        inv[4] = (m00 * m22 - m02 * m20) * invDet;
+        inv[7] = (m02 * m10 - m00 * m12) * invDet;
+        inv[2] = (m10 * m21 - m11 * m20) * invDet;
+        inv[5] = (m01 * m20 - m00 * m21) * invDet;
+        inv[8] = (m00 * m11 - m01 * m10) * invDet;
+
+        static const float kCorners[4][2] = {
+            {-1.0f, -1.0f}, {1.0f, -1.0f}, {1.0f, 1.0f}, {-1.0f, 1.0f}
+        };
+
+        float minX = FLT_MAX, minY = FLT_MAX;
+        float maxX = -FLT_MAX, maxY = -FLT_MAX;
+
+        for (int i = 0; i < 4; i++)
+        {
+            float cx = kCorners[i][0], cy = kCorners[i][1];
+            float wx = inv[0] * cx + inv[3] * cy + inv[6];
+            float wy = inv[1] * cx + inv[4] * cy + inv[7];
+            float w = inv[2] * cx + inv[5] * cy + inv[8];
+            if (std::abs(w) < 1e-10f) continue;
+            float worldX = wx / w;
+            float worldY = wy / w;
+            minX = (std::min)(minX, worldX);
+            minY = (std::min)(minY, worldY);
+            maxX = (std::max)(maxX, worldX);
+            maxY = (std::max)(maxY, worldY);
+        }
+
+        *outMinX = minX;
+        *outMinY = minY;
+        *outMaxX = maxX;
+        *outMaxY = maxY;
+    }
+
+    /**
+     * @brief 回读 GPU 剔除的可见性结果
+     *
+     * 从 PersistentEntityManager 的 visibility buffer 回读，生成可见实体索引数组。
+     * 回读会阻塞 CPU，作为基础实现可接受。后续可改为异步查询或 GPU-driven 链路。
+     *
+     * @return 可见实体数量
+     */
+    static uint32_t readBackGpuVisibility(RenderDevice* dev, uint32_t* outIndices, uint32_t maxOut)
+    {
+        auto& pem = dev->persistentEntityManager;
+        uint32_t entityCount = pem.getEntityCount();
+        if (entityCount == 0 || !outIndices || maxOut == 0)
+            return 0;
+
+        rhi::BufferHandle visBuf = pem.getVisibilityBuffer();
+        void* mapped = dev->rhiDevice->mapBuffer(visBuf, 0, entityCount * sizeof(uint32_t), 0x0001);
+        if (!mapped)
+        {
+            SY_WARN("[readBackGpuVisibility] mapBuffer failed, falling back to CPU culling");
+            return 0;
+        }
+
+        uint32_t visibleCount = 0;
+        const uint32_t* vis = static_cast<const uint32_t*>(mapped);
+        for (uint32_t i = 0; i < entityCount && visibleCount < maxOut; ++i)
+        {
+            if (vis[i])
+                outIndices[visibleCount++] = i;
+        }
+
+        dev->rhiDevice->unmapBuffer(visBuf);
+
+        SY_DEBUGF("[readBackGpuVisibility] GPU culling: %u / %u visible", visibleCount, entityCount);
+        return visibleCount;
+    }
+
     /**
      * @brief 渲染一帧
      *
@@ -953,21 +1154,51 @@ extern "C" {
         if (dev->viewMode == ViewMode::Mode2D)
         {
             // ---- CPU 侧数据准备（不涉及 RHI，放在 Pass 外）----
-            dev->world2D.update();
-
             uint32_t maxVisible = static_cast<uint32_t>(dev->world2D.getEntityCount());
             if (dev->visibleIndices.size() < maxVisible)
                 dev->visibleIndices.resize(maxVisible);
 
-            dev->world2D.queryVisible(dev->view2D.viewMatrix, dev->view2D.viewWidth,
-                dev->view2D.viewHeight, dev->visibleIndices.data(), &visibleCount, maxVisible);
+            // ---- GPU 剔除（PersistentEntityManager）----
+            // 1. 同步 RenderWorld 实体到 PersistentEntityManager
+            syncWorldToPersistentManager(dev);
+            dev->persistentEntityManager.uploadChanges();
 
-            if (maxVisible > 0 && visibleCount == 0)
+            // 2. 计算 2D 视图矩形（与 CPU 四叉树一致的语义）
+            float viewMinX, viewMinY, viewMaxX, viewMaxY;
+            computeViewBounds(dev->view2D.viewMatrix, &viewMinX, &viewMinY, &viewMaxX, &viewMaxY);
+
+            // 3. 执行 GPU 视锥剔除（2D AABB-矩形测试）
+            dev->persistentEntityManager.executeCulling(viewMinX, viewMinY, viewMaxX, viewMaxY);
+
+            // 4. 生成 indirect commands（由 compute shader 写入 indirect buffer）
+            uint32_t gpuCommandCount = 0;
+            dev->persistentEntityManager.generateIndirectCommands(
+                dev->persistentEntityManager.getIndirectBuffer(), &gpuCommandCount);
+
+            // 5. 回读 GPU 剔除的可见性结果，生成可见实体索引数组
+            uint32_t gpuVisibleCount = readBackGpuVisibility(dev,
+                dev->visibleIndices.data(), static_cast<uint32_t>(dev->visibleIndices.size()));
+
+            // 6. GPU 剔除成功则使用其结果，否则回退到 CPU 四叉树
+            if (gpuVisibleCount > 0)
             {
-                SY_DEBUGF("renderFrame: queryVisible returned 0 (total=%u), forcing all entities for debug", maxVisible);
-                visibleCount = maxVisible;
-                for (uint32_t i = 0; i < maxVisible; ++i)
-                    dev->visibleIndices[i] = i;
+                visibleCount = gpuVisibleCount;
+                SY_DEBUGF("renderFrame: using GPU culling result, visible=%u, cmds=%u",
+                    visibleCount, gpuCommandCount);
+            }
+            else
+            {
+                // GPU 剔除失败或无可见图元，回退到 CPU 四叉树
+                dev->world2D.queryVisible(dev->view2D.viewMatrix, dev->view2D.viewWidth,
+                    dev->view2D.viewHeight, dev->visibleIndices.data(), &visibleCount, maxVisible);
+
+                if (maxVisible > 0 && visibleCount == 0)
+                {
+                    SY_WARNF("renderFrame: queryVisible returned 0 (total=%u), forcing all entities", maxVisible);
+                    visibleCount = maxVisible;
+                    for (uint32_t i = 0; i < maxVisible; ++i)
+                        dev->visibleIndices[i] = i;
+                }
             }
 
             SY_INFOF("R2D:e=%u v=%u s=%.4f tx=%.2f ty=%.2f vp=%.0fx%.0f",
@@ -977,8 +1208,11 @@ extern "C" {
                 dev->view2D.viewMatrix[7],
                 dev->view2D.viewWidth, dev->view2D.viewHeight);
 
-            // 预先把 world2D 的可见图元提交给 BatchQueue（生成间接命令）
+            // 先提交给 BatchQueue（此时 dirty 标志尚未清除，增量更新可正常工作）
             dev->batchQueue.submit(dev->visibleIndices.data(), visibleCount, dev->world2D);
+
+            // 提交完成后清除 dirty 标志（不影响 BatchQueue 的增量顶点上传）
+            dev->world2D.clearDirtyFlags();
 
             // ---- Pass 0: FrameSetup ----
             // 设置清屏颜色、深度测试、混合状态，并重置命令编码器
@@ -992,7 +1226,7 @@ extern "C" {
                     d->enableDepthTest(false);
                     d->enableBlend(true);
                     dev->commandEncoder.reset();
-                };
+                    };
                 // Phase 5: 资源依赖描述（为后续自动屏障管理预留）
                 pass.outputs.push_back({ core::PassResourceType::ColorTarget,
                     core::PassResourceAccess::Write, "Backbuffer", 0 });
@@ -1009,7 +1243,7 @@ extern "C" {
                     dev->sceneEnv.render(d, dev->view2D.viewMatrix,
                         static_cast<uint32_t>(dev->view2D.viewWidth),
                         static_cast<uint32_t>(dev->view2D.viewHeight));
-                };
+                    };
                 pass.inputs.push_back({ core::PassResourceType::ColorTarget,
                     core::PassResourceAccess::Read, "Backbuffer", 0 });
                 pass.outputs.push_back({ core::PassResourceType::ColorTarget,
@@ -1026,7 +1260,7 @@ extern "C" {
                 pass.onExecute = [dev](rhi::IDevice* d) {
                     dev->batchQueue.render(d, &dev->commandEncoder,
                         dev->view2D.viewMatrix, dev->world2D);
-                };
+                    };
                 pass.inputs.push_back({ core::PassResourceType::VertexBuffer,
                     core::PassResourceAccess::Read, "World2D_VB", 0 });
                 pass.inputs.push_back({ core::PassResourceType::IndirectBuffer,
@@ -1042,7 +1276,7 @@ extern "C" {
                 pass.enabled = true;
                 pass.onExecute = [dev](rhi::IDevice* d) {
                     dev->overlayQueue.render(d, &dev->commandEncoder, dev->view2D.viewMatrix);
-                };
+                    };
                 pass.inputs.push_back({ core::PassResourceType::VertexBuffer,
                     core::PassResourceAccess::Read, "OverlayQueue_VB", 0 });
                 dev->renderGraph.addPass(pass);
@@ -1060,7 +1294,7 @@ extern "C" {
                         dev->overlayQueue.getVertexBuffer(),
                         dev->batchQueue.getIndirectBuffer(),
                         dev->view2D.viewMatrix);
-                };
+                    };
                 pass.inputs.push_back({ core::PassResourceType::VertexBuffer,
                     core::PassResourceAccess::Read, "BatchQueue_VB", 0 });
                 pass.inputs.push_back({ core::PassResourceType::VertexBuffer,
@@ -1092,7 +1326,7 @@ extern "C" {
                     list.count = static_cast<uint32_t>(items.size());
                     dev->textAtlas.renderText(&list, dev->view2D.viewMatrix, d);
                     dev->pendingTextItems.clear();
-                };
+                    };
                 pass.inputs.push_back({ core::PassResourceType::Texture,
                     core::PassResourceAccess::Read, "TextAtlas_Tex", 0 });
                 pass.inputs.push_back({ core::PassResourceType::VertexBuffer,
@@ -1115,7 +1349,7 @@ extern "C" {
                     d->setClearColor(0.12f, 0.14f, 0.20f, 1.0f);
                     d->enableDepthTest(true);
                     d->enableBlend(true);
-                };
+                    };
                 pass.outputs.push_back({ core::PassResourceType::ColorTarget,
                     core::PassResourceAccess::Write, "Backbuffer", 0 });
                 pass.outputs.push_back({ core::PassResourceType::DepthTarget,
@@ -1133,7 +1367,7 @@ extern "C" {
                     if (dev->meshManager.getInstanceCount() == 0) return;
                     dev->meshManager.update();
                     dev->meshManager.render(d, dev->view3D.viewMatrix, dev->view3D.projMatrix);
-                };
+                    };
                 pass.inputs.push_back({ core::PassResourceType::VertexBuffer,
                     core::PassResourceAccess::Read, "MeshManager_VB", 0 });
                 pass.inputs.push_back({ core::PassResourceType::IndexBuffer,
@@ -1150,6 +1384,27 @@ extern "C" {
 
         // Phase 4: 按 Pass 顺序统一执行
         dev->renderGraph.execute(rhi);
+
+        // 屏幕文本渲染（在所有场景内容之后）
+        if (!dev->pendingScreenTexts.empty())
+        {
+            dev->screenTextRenderer.beginFrame();
+            for (const auto& pst : dev->pendingScreenTexts)
+            {
+                ScreenTextItem item;
+                item.text = pst.text.c_str();
+                item.x = pst.x;
+                item.y = pst.y;
+                item.color[0] = pst.color[0];
+                item.color[1] = pst.color[1];
+                item.color[2] = pst.color[2];
+                item.color[3] = pst.color[3];
+                item.fontSize = pst.fontSize;
+                dev->screenTextRenderer.submitText(item);
+            }
+            dev->screenTextRenderer.render(rhi, dev->view2D.viewWidth, dev->view2D.viewHeight);
+            dev->pendingScreenTexts.clear();
+        }
 
         rhi->endFrame();
         rhi->present();
@@ -1724,5 +1979,38 @@ extern "C" {
         if (!dev || !primitives || count == 0) return;
         for (uint32_t i = 0; i < count; ++i)
             renderSubmitGeometry(dev, &primitives[i]);
+    }
+
+    /**
+     * @brief 加载屏幕文本渲染器的字体（可选覆盖，默认字体由 renderCreateDevice 自动加载）
+     */
+    RENDER_API void renderLoadScreenFont(RenderDevice* dev, const void* fontData, uint32_t dataSize, float pixelHeight)
+    {
+        if (!dev || !fontData || dataSize == 0) return;
+        dev->screenTextRenderer.loadFont(fontData, dataSize, pixelHeight);
+    }
+
+    /**
+     * @brief 暂存屏幕空间文本（在 renderFrame 末尾统一渲染）
+     */
+    RENDER_API void renderSetScreenTexts(RenderDevice* dev, const ScreenTextItem* items, uint32_t count)
+    {
+        if (!dev) return;
+        dev->pendingScreenTexts.clear();
+        if (!items || count == 0) return;
+        dev->pendingScreenTexts.reserve(count);
+        for (uint32_t i = 0; i < count; ++i)
+        {
+            RenderDevice::PendingScreenText pst;
+            pst.text = items[i].text;
+            pst.x = items[i].x;
+            pst.y = items[i].y;
+            pst.color[0] = items[i].color[0];
+            pst.color[1] = items[i].color[1];
+            pst.color[2] = items[i].color[2];
+            pst.color[3] = items[i].color[3];
+            pst.fontSize = items[i].fontSize;
+            dev->pendingScreenTexts.push_back(std::move(pst));
+        }
     }
 }

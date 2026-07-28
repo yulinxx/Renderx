@@ -276,11 +276,40 @@ public:
                       uint32_t* outIndices, uint32_t* outCount, uint32_t maxOut) const;
 
     /**
+     * @brief 顶点上传区间结构
+     *
+     * 描述顶点缓冲区中需要上传的连续区间。
+     */
+    struct VertexUploadRange {
+        uint32_t vertexOffset;  ///< 顶点偏移（顶点数）
+        uint32_t vertexCount;   ///< 顶点数量
+    };
+
+    /**
      * @brief 更新渲染世界状态
-     * 
+     *
      * 将脏实体的顶点数据上传到顶点池，并根据需要重建四叉树。
      */
     void update();
+
+    /**
+     * @brief 获取脏实体的顶点上传区间
+     *
+     * 返回自上次 clearDirtyFlags 以来发生变化的实体对应的顶点区间列表。
+     * 用于 BatchQueue 做增量顶点上传。
+     *
+     * @param outRanges 输出区间数组（调用方提供缓冲）
+     * @param maxRanges 最大输出区间数
+     * @return 实际区间数量
+     */
+    uint32_t getDirtyVertexRanges(VertexUploadRange* outRanges, uint32_t maxRanges) const;
+
+    /**
+     * @brief 清除脏标志
+     *
+     * 在 BatchQueue 完成增量上传后调用，重置 dirty 标记。
+     */
+    void clearDirtyFlags();
 
     /**
      * @brief 获取顶点池数据指针

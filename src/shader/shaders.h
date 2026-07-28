@@ -37,6 +37,10 @@ extern const char* MESH_3D_INSTANCED_VERT;
 extern const char* TEXT_SDF_VERT;
 /// SDF文本渲染片段着色器
 extern const char* TEXT_SDF_FRAG;
+/// 屏幕空间文本渲染顶点着色器
+extern const char* TEXT_SCREEN_VERT;
+/// 屏幕空间文本渲染片段着色器
+extern const char* TEXT_SCREEN_FRAG;
 /// 高亮渲染顶点着色器
 extern const char* HIGHLIGHT_3D_VERT;
 /// 高亮渲染片段着色器

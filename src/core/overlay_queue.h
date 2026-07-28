@@ -220,10 +220,6 @@ private:
     rhi::IDevice*       m_device           = nullptr;
     /// 顶点缓冲区
     rhi::BufferHandle   m_vertexBuffer     = rhi::NullHandle;
-    /// 线渲染管线
-    rhi::PipelineHandle m_linePipeline      = {};
-    /// 三角形渲染管线
-    rhi::PipelineHandle m_trianglePipeline  = {};
     /// 顶点缓冲区容量
     uint32_t            m_vbCapacity        = 0;
     /// 是否有脏数据需要上传
@@ -261,17 +257,6 @@ private:
      */
     void buildMarkerBorder(OverlayVertex* out, float cx, float cy,
                            float halfSize, uint32_t borderColor);
-
-    /**
-     * @brief 上传顶点数据并渲染
-     * 
-     * @param device RHI设备指针
-     * @param data 顶点数据
-     * @param vertexCount 顶点数量
-     * @param type 图元类型
-     */
-    void uploadAndRender(rhi::IDevice* device, const OverlayVertex* data,
-                         uint32_t vertexCount, PrimitiveType type);
 };
 
 } // namespace core

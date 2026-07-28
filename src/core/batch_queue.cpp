@@ -15,7 +15,7 @@ namespace render
             m_indirectCmds.reserve(512);
             m_batches.reserve(PRIMITIVE_TYPE_COUNT);
             m_dirtyRanges.reserve(64);
-            buildPipelines(device);
+            // pipeline 由 CommandEncoder 统一管理，BatchQueue 不再创建
 
             rhi::BufferDesc vbDesc;
             vbDesc.size = 1024 * 1024 * sizeof(VertexP3C3);
@@ -43,14 +43,6 @@ namespace render
                 m_device->destroyBuffer(m_vertexBuffer);
                 m_vertexBuffer = rhi::NullHandle;
             }
-            for (uint32_t i = 0; i < PRIMITIVE_TYPE_COUNT; ++i)
-            {
-                if (m_pipelines[i] != rhi::NullHandle)
-                {
-                    m_device->destroyPipeline(m_pipelines[i]);
-                    m_pipelines[i] = rhi::NullHandle;
-                }
-            }
 
             m_indirectBufferCapacity = 0;
             m_vertexBufferCapacity = 0;
@@ -64,6 +56,13 @@ namespace render
         void BatchQueue::submit(const uint32_t* visibleIndices, uint32_t count,
             const RenderWorld& world)
         {
+            // 在 submit 开始时收集顶点上传区间，避免 render 时 dirty 标志已被清除
+            m_vertexUploadRanges.clear();
+            RenderWorld::VertexUploadRange ranges[64];
+            uint32_t rangeCount = world.getDirtyVertexRanges(ranges, 64);
+            for (uint32_t i = 0; i < rangeCount; ++i)
+                m_vertexUploadRanges.push_back(ranges[i]);
+
             if (count == 0)
             {
                 m_indirectCmds.clear();
@@ -93,6 +92,8 @@ namespace render
             {
                 needsRebuild = true;
                 m_lastGeneration = currentGen;
+                // 顶点池重建后必须全量上传
+                m_needFullVertexUpload = true;
             }
 
             if (!needsRebuild)
@@ -264,11 +265,37 @@ namespace render
                 desc.debugName = "BatchQueue_VertexBuffer";
                 m_vertexBuffer = device->createBuffer(desc);
                 m_vertexBufferCapacity = newCap;
+                m_needFullVertexUpload = true;
+                SY_DEBUG("[BatchQueue] VB expanded, flag full upload");
             }
 
-            device->uploadBuffer(m_vertexBuffer, 0,
-                totalVertices * sizeof(VertexP3C3),
-                world.getVertexData());
+            // 顶点上传策略：首次渲染、扩容后或显式标记时全量上传，否则只上传 dirty 区间
+            bool vbUploaded = false;
+            if (m_needFullVertexUpload || totalVertices > m_vertexBufferCapacity)
+            {
+                // 全量上传：首次渲染、扩容后或顶点池重建
+                device->uploadBuffer(m_vertexBuffer, 0,
+                    totalVertices * sizeof(VertexP3C3),
+                    world.getVertexData());
+                vbUploaded = true;
+                m_needFullVertexUpload = false;
+                SY_DEBUGF("[BatchQueue] full VB upload: %u vertices", totalVertices);
+            }
+            else if (!m_vertexUploadRanges.empty())
+            {
+                // 增量上传：只上传 submit 时收集的 dirty 区间
+                for (const auto& range : m_vertexUploadRanges)
+                {
+                    uint64_t offset = static_cast<uint64_t>(range.vertexOffset) * sizeof(VertexP3C3);
+                    uint64_t size = static_cast<uint64_t>(range.vertexCount) * sizeof(VertexP3C3);
+                    device->uploadBuffer(m_vertexBuffer, offset, size,
+                        world.getVertexData() + range.vertexOffset);
+                }
+                vbUploaded = true;
+                SY_DEBUGF("[BatchQueue] incremental VB upload: %zu ranges", m_vertexUploadRanges.size());
+            }
+
+            (void)vbUploaded; // 保留用于调试日志
 
             if (m_dirty)
             {
@@ -322,40 +349,6 @@ namespace render
 
             m_indirectBuffer = m_device->createBuffer(desc);
             m_indirectBufferCapacity = newCap;
-        }
-
-        void BatchQueue::buildPipelines(rhi::IDevice* device)
-        {
-            static const char* kVertexShader = "passthrough_vert";
-            static const char* kFragmentShader = "passthrough_frag";
-
-            rhi::PrimitiveTopology topoMap[PRIMITIVE_TYPE_COUNT] = {
-                rhi::PrimitiveTopology::PointList,
-                rhi::PrimitiveTopology::LineList,
-                rhi::PrimitiveTopology::LineStrip,
-                rhi::PrimitiveTopology::LineLoop,
-                rhi::PrimitiveTopology::TriangleList,
-                rhi::PrimitiveTopology::TriangleStrip,
-                rhi::PrimitiveTopology::TriangleFan,
-            };
-
-            for (uint32_t i = 0; i < PRIMITIVE_TYPE_COUNT; ++i)
-            {
-                rhi::PipelineDesc desc;
-                desc.topology = topoMap[i];
-                desc.vertexShader = kVertexShader;
-                desc.fragmentShader = kFragmentShader;
-                desc.computeShader = nullptr;
-                desc.vertexFormat = rhi::VertexFormat::P3C3;
-                desc.depthTest = false;
-                desc.depthWrite = false;
-                desc.blendEnable = true;
-                desc.srcBlend = rhi::BlendFactor::SrcAlpha;
-                desc.dstBlend = rhi::BlendFactor::OneMinusSrcAlpha;
-                desc.depthFunc = rhi::CompareFunc::Always;
-
-                m_pipelines[i] = device->createPipeline(desc);
-            }
         }
 
         void BatchQueue::mergeDirtyRanges()
