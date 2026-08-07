@@ -2,6 +2,12 @@
 
 工业级 2D/3D 渲染库，基于 OpenGL 实现，为 SanYi CAD 项目提供高性能的渲染解决方案。
 
+> **当前定位**：OpenGL-first 渲染运行时。`BackendType` 中的 Vulkan / Metal / Null 仅为类型预留，尚未实现。跨平台目标需要 Metal 或等价非 OpenGL 后端。
+>
+> 多窗口支持：每窗口独立 `RenderDevice`，资源不共享。后续将引入 `RenderRuntime` / `RenderSession` 共享会话层。
+>
+> 性能约束：当前热路径仍存在每帧全量同步和 GPU 回读，大规模图元场景需进一步优化。
+
 ## 功能描述
 
 SanYiRender 是一个面向 CAD 应用的专业渲染库，核心功能包括：
@@ -64,9 +70,9 @@ renderFrame(dev);
 
 `renderFrame` 内部执行完整的渲染流程：
 
-1. **GPU 剔除**：将 RenderWorld 实体同步到 PersistentEntityManager，执行 GPU 视锥剔除，生成间接绘制命令
+1. **GPU 剔除**：将 RenderWorld 图元同步到 PersistentEntityManager，执行 GPU 视锥剔除，生成间接绘制命令
 2. **可见性查询**：优先使用 GPU 剔除结果，失败时回退到 CPU 四叉树
-3. **构建批次**：BatchQueue 将可见实体按图元类型和材质分组，构建间接绘制命令
+3. **构建批次**：BatchQueue 将可见图元按图元类型和材质分组，构建间接绘制命令
 4. **叠加层收集**：OverlayQueue 将叠加元素顶点数据提交
 5. **命令排序与执行**：CommandEncoder 按 sortKey 排序所有绘制命令，统一绑定管线和缓冲区后执行绘制
 6. **文本渲染**：TextAtlas 和 ScreenTextRenderer 渲染世界坐标文本和屏幕坐标文本
@@ -74,10 +80,10 @@ renderFrame(dev);
 
 ### 图元操作
 
-#### 2D 实体管理
+#### 2D 图元管理
 
 ```c
-// 添加实体
+// 添加图元
 VertexP3C3 vertices[] = {
     { 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f },
     { 100.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f },
@@ -85,10 +91,10 @@ VertexP3C3 vertices[] = {
 };
 uint32_t idx = renderAddEntity(dev, 1001, vertices, 3, PrimitiveType::TriangleList, 0);
 
-// 修改实体
+// 修改图元
 renderModifyEntity(dev, 1001, newVertices, newVertexCount, 0);
 
-// 删除实体
+// 删除图元
 renderRemoveEntity(dev, 1001);
 
 // 设置可见性
@@ -176,7 +182,7 @@ SanYiRender 采用分层架构设计，各模块职责清晰、松耦合：
 │                    RenderDevice                          │
 ├──────────────┬──────────────┬───────────────────────────┤
 │  RenderWorld │  RenderGraph │    CommandEncoder          │
-│  (实体管理)  │  (Pass 调度) │  (统一命令编码/排序)       │
+│  (图元管理)  │  (Pass 调度) │  (统一命令编码/排序)       │
 ├──────────────┼──────────────┼───────────────────────────┤
 │  BatchQueue  │ OverlayQueue │ PipelineStateManager       │
 │  (2D 批处理) │ (叠加层)    │    (管线缓存)              │
@@ -200,9 +206,9 @@ SanYiRender 采用分层架构设计，各模块职责清晰、松耦合：
 
 **文件**：`src/core/render_world.h` / `src/core/render_world.cpp`
 
-负责管理场景中所有 2D 实体的核心组件：
+负责管理场景中所有 2D 图元的核心组件：
 
-- **实体生命周期**：添加、修改、删除实体，基于 `SlotMap` 实现稀疏索引到稠密索引的 O(1) 映射
+- **图元生命周期**：添加、修改、删除图元，基于 `SlotMap` 实现稀疏索引到稠密索引的 O(1) 映射
 - **顶点池管理**：动态分配和释放顶点数据空间，支持脏区增量上传
 - **四叉树空间分区**：实现高效的视锥体可见性查询（CPU 端回退方案）
 - **材质管理**：添加和更新渲染材质
@@ -235,9 +241,9 @@ Phase 3 引入的统一命令收集与排序组件：
 
 **文件**：`src/core/batch_queue.h` / `src/core/batch_queue.cpp`
 
-2D 实体的批量绘制管理：
+2D 图元的批量绘制管理：
 
-- 将可见实体按图元类型和材质分组，构建间接绘制命令（`glDrawArraysIndirect`）
+- 将可见图元按图元类型和材质分组，构建间接绘制命令（`glDrawArraysIndirect`）
 - Dirty 范围合并，只增量上传修改过的顶点区间
 - 顶点缓冲区动态扩容，支持首次全量上传和后续增量更新
 
@@ -276,6 +282,104 @@ Phase 3 引入的统一命令收集与排序组件：
 | OpenGL | 跨平台图形 API，Windows 使用 opengl32，Linux/macOS 使用 OpenGL::GL |
 | Log | SanYi CAD 项目内部日志库（`../Log/Log/Include`） |
 | stb | Header-only 字体渲染库（stb_truetype），用于字体光栅化 |
+
+## 渲染精度优化
+
+### 问题描述
+
+当 CAD 场景包含大坐标数据（如 DXF 导入的工程图纸，坐标量级可达 10^5 ~ 10^6），在高倍放大时会出现以下渲染异常：
+
+- **虚线现象**：实线显示为断断续续的虚线
+- **图元消失**：部分线段或图形在高倍放大时不可见
+- **跟随异常**：平移视图时图元不跟随相机移动
+
+### 根因分析
+
+问题源于 **float32 精度限制**。顶点着色器中的视图矩阵乘法：
+
+```glsl
+vec3 pos = uViewMatrix * vec3(aPosition.xy, 1.0);
+// 展开为：ndcX = scaleX * worldX + tx
+```
+
+当 `worldX` 和 `camX` 都很大（如 200000）时：
+- `scaleX * worldX` ≈ 200000 × scaleX（极大值）
+- `tx = -scaleX * camX` ≈ -200000 × scaleX（极大值）
+- 两者差值应为小值（如 0.1），但 float32 在 200000 量级的精度仅约 0.024
+
+**灾难性抵消**（Catastrophic Cancellation）导致相邻顶点坍缩到同一 NDC 位置，形成零长度线段，OpenGL 无法渲染。
+
+### 解决方案：相机相对渲染
+
+采用 **每帧相机相对变换** 策略：
+
+1. **顶点数据保持世界坐标**：不修改顶点缓冲区中的数据
+2. **着色器每帧减去相机中心**：在顶点着色器中执行 `relPos = aPosition.xy - uCameraCenter`
+3. **World2D 使用纯缩放矩阵**：移除视图矩阵中的平移分量，避免灾难性抵消
+4. **相机中心作为 uniform 传入**：每帧更新，确保平移/缩放时精度正确
+
+#### 着色器实现（scene_2d.vert）
+
+```glsl
+uniform mat3 uViewMatrix;
+uniform vec2 uCameraCenter;
+
+void main()
+{
+    vec2 relPos = aPosition.xy - uCameraCenter;
+    vec3 pos = uViewMatrix * vec3(relPos, 1.0);
+    gl_Position = vec4(pos.xy, aPosition.z, 1.0);
+}
+```
+
+#### 渲染流程
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        CPU 端（每帧）                             │
+│                                                                 │
+│  1. ViewCamera2D::computeViewMatrix() 计算视图矩阵（含平移）      │
+│  2. 提取相机中心：camX = -viewMatrix[6] / viewMatrix[0]          │
+│                    camY = -viewMatrix[7] / viewMatrix[4]         │
+│  3. renderSetCameraCenter(dev, camX, camY) 存储相机中心           │
+│  4. renderFrame() → commandEncoder.execute() 传递相机中心         │
+├─────────────────────────────────────────────────────────────────┤
+│                        GPU 端（顶点着色器）                       │
+│                                                                 │
+│  World2D:                                                       │
+│    uViewMatrix = 纯缩放矩阵（无平移）                             │
+│    uCameraCenter = 实际相机中心                                   │
+│    relPos = worldPos - camCenter                                 │
+│    ndc = scale * relPos                                          │
+│                                                                 │
+│  SceneEnv:                                                      │
+│    uViewMatrix = 完整视图矩阵（含平移）                           │
+│    uCameraCenter = (0,0)                                         │
+│    relPos = worldPos                                             │
+│    ndc = fullMatrix * relPos                                     │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+#### 精度对比
+
+| 场景 | 原始方案（float32） | 相机相对方案（float32） |
+|------|---------------------|------------------------|
+| worldX=200000, camX=199999, scale=1000 | 灾难性抵消，误差 ~24 | 减法误差 ~0.024，放大后 ~24 |
+| worldX=200000, camX=199999.5, scale=1000 | 完全坍缩，误差 ~1000 | 减法误差 ~0.024，放大后 ~24 |
+
+> **注意**：相机相对方案使用 float32 减法，在大坐标极高倍放大时仍有精度限制，但相比原始方案有数量级提升。如需更高精度，需在细分阶段使用 double 精度做减法，但需每帧重新细分。
+
+### 新增/修改文件列表
+
+| 文件 | 修改内容 |
+|------|----------|
+| `src/c_api/render_c_api_internal.h` | 添加 `double cameraCenter[2]` 到 RenderDevice |
+| `include/render/render.h` | 声明 `renderSetCameraCenter()` API |
+| `src/c_api/render_c_api_frame.cpp` | 实现 `renderSetCameraCenter()` |
+| `src/shader/scene_2d.vert` | 添加 `uCameraCenter` uniform，相机相对变换 |
+| `src/core/command_encoder.h/.cpp` | `execute()` 增加相机中心参数，World2D 使用纯缩放矩阵 |
+| `src/core/scene_env.cpp` | 设置 `uCameraCenter = (0,0)` |
+| `UI/.../RenderWidget.cpp` | `setViewMatrix()` 和 `initializeGL()` 中调用 `renderSetCameraCenter()` |
 
 ## 依赖库安装方法
 
@@ -370,15 +474,15 @@ add_subdirectory(Test)
 | `renderResize` | 调整渲染目标尺寸 |
 | `renderGetNativeContext` | 获取原生渲染上下文 |
 
-#### 2D 实体管理
+#### 2D 图元管理
 
 | 函数 | 说明 |
 |------|------|
-| `renderAddEntity` | 添加 2D 实体 |
-| `renderModifyEntity` | 修改 2D 实体 |
-| `renderRemoveEntity` | 删除 2D 实体 |
-| `renderSetEntityVisibility` | 设置实体可见性 |
-| `renderApplyUpdates` | 批量应用实体更新 |
+| `renderAddEntity` | 添加 2D 图元 |
+| `renderModifyEntity` | 修改 2D 图元 |
+| `renderRemoveEntity` | 删除 2D 图元 |
+| `renderSetEntityVisibility` | 设置图元可见性 |
+| `renderApplyUpdates` | 批量应用图元更新 |
 
 #### 3D 网格管理
 
@@ -405,6 +509,7 @@ add_subdirectory(Test)
 | `renderSetView3D` | 设置 3D 视图参数 |
 | `renderSetViewMode` | 切换 2D/3D 视图模式 |
 | `renderSetClearColor` | 设置清屏颜色 |
+| `renderSetCameraCenter` | 设置相机中心（用于相机相对渲染，解决大坐标精度问题） |
 
 #### 叠加层
 
@@ -428,13 +533,8 @@ add_subdirectory(Test)
 |------|------|
 | `renderSubmitGeometry` | 提交单个几何图元 |
 | `renderSubmitGeometries` | 批量提交几何图元 |
-| `renderEmitPolyline` | 发射折线（已废弃） |
-| `renderEmitCircle` | 发射圆形（已废弃） |
-| `renderEmitArc` | 发射圆弧（已废弃） |
-| `renderEmitEllipse` | 发射椭圆（已废弃） |
-| `renderEmitText` | 发射文本（已废弃） |
-| `renderEmitImage` | 发射图像（已废弃） |
-| `renderEmitTriangleSoup` | 发射三角网格（已废弃） |
+
+> 早期分散的 `renderEmitPolyline / renderEmitCircle / renderEmitArc / renderEmitEllipse / renderEmitText / renderEmitImage / renderEmitTriangleSoup` 兼容包装器已移除，统一走 `renderSubmitGeometry`。
 
 #### 场景环境
 
@@ -459,7 +559,7 @@ add_subdirectory(Test)
 |------|------|
 | `renderFrame` | 执行一帧渲染 |
 | `renderGetStats` | 获取渲染统计信息 |
-| `renderGetEntityCount` | 获取实体数量 |
+| `renderGetEntityCount` | 获取图元数量 |
 | `renderGetGPUMemoryUsage` | 获取 GPU 内存使用量 |
 | `renderBeginScene` | 开始场景（内部使用） |
 | `renderEndScene` | 结束场景（内部使用） |
@@ -494,7 +594,7 @@ renderFrame 内部流程（2D 模式）:
 
 | Shader 名称 | 类型 | 文件 | 用途 |
 |-------------|------|------|------|
-| Scene2D | 顶点+片段 | `scene_2d.vert/frag` | 2D 场景实体渲染 |
+| Scene2D | 顶点+片段 | `scene_2d.vert/frag` | 2D 场景图元渲染，支持相机相对渲染（`uCameraCenter` uniform） |
 | Overlay | 顶点+片段 | `overlay.vert/frag` | 叠加层渲染（世界坐标） |
 | OverlayScreen | 顶点+片段 | `overlay_screen.vert/frag` | 叠加层渲染（屏幕坐标） |
 | Bitmap | 顶点+片段 | `bitmap.vert/frag` | 位图图像渲染 |

@@ -416,14 +416,16 @@ typedef const GLubyte* (RENDER_GLAPI *PFNGLGETSTRINGPROC)(GLenum name);
 typedef const GLubyte* (RENDER_GLAPI *PFNGLGETSTRINGIPROC)(GLenum name, GLuint index);
 typedef void           (RENDER_GLAPI *PFNGLGETBOOLEANVPROC)(GLenum pname, GLboolean* data);
 
-#ifdef _WIN32
-  #ifdef RENDER_EXPORTS
-    #define RENDER_API __declspec(dllexport)
+#ifndef RENDER_API
+  #ifdef _WIN32
+    #ifdef RENDER_EXPORTS
+      #define RENDER_API __declspec(dllexport)
+    #else
+      #define RENDER_API __declspec(dllimport)
+    #endif
   #else
-    #define RENDER_API __declspec(dllimport)
+    #define RENDER_API __attribute__((visibility("default")))
   #endif
-#else
-  #define RENDER_API __attribute__((visibility("default")))
 #endif
 
 struct GLFuncs {

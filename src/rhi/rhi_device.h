@@ -442,9 +442,19 @@ public:
 
 /**
  * @brief 创建OpenGL渲染设备实例
- * 
+ *
  * @return OpenGL设备实例指针，失败返回nullptr
  */
 IDevice* createGLDevice();
+
+/**
+ * @brief 创建Null渲染设备实例（无GPU操作，用于测试）
+ *
+ * NullDevice 不执行任何实际的 GPU 操作，所有方法都是空实现或返回默认值。
+ * 主要用于单元测试、CI/CD 自动化测试和后端抽象层验证。
+ *
+ * @return Null设备实例指针，永远不会返回nullptr
+ */
+IDevice* createNullDevice();
 
 }

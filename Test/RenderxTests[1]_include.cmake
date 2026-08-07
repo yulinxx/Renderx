@@ -1,0 +1,5 @@
+if(EXISTS "C:/Users/xx/Documents/Cpp/CAD/Renderx/Test/RenderxTests[1]_tests.cmake")
+  include("C:/Users/xx/Documents/Cpp/CAD/Renderx/Test/RenderxTests[1]_tests.cmake")
+else()
+  add_test(RenderxTests_NOT_BUILT RenderxTests_NOT_BUILT)
+endif()

@@ -46,12 +46,13 @@ public:
     /// 静态断言：OverlayVertex 大小必须为28字节
     static_assert(sizeof(OverlayVertex) == 28, "OverlayVertex must be 28 bytes");
 
-    /**
+/**
      * @brief 初始化叠加层渲染器
-     * 
+     *
      * @param device RHI设备指针
+     * @return true 初始化成功，false 初始化失败
      */
-    void initialize(rhi::IDevice* device);
+    bool initialize(rhi::IDevice* device);
 
     /**
      * @brief 关闭并释放所有资源

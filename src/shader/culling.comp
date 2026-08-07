@@ -2,14 +2,14 @@
  * @file culling.comp
  * @brief GPU 视锥剔除 Compute Shader
  *
- * Phase 9 核心 shader。每个线程处理一个实体，
- * 进行 2D AABB-视图矩形相交测试，为可见实体生成 indirect draw 命令。
+ * Phase 9 核心 shader。每个线程处理一个图元，
+ * 进行 2D AABB-视图矩形相交测试，为可见图元生成 indirect draw 命令。
  *
  * 与 CPU 侧四叉树保持一致的剔除语义：
  *   世界空间包围盒与视图矩形做 AABB 相交测试。
  *
  * SSBO 绑定：
- *   binding = 0: EntityData[]   实体元数据数组
+ *   binding = 0: EntityData[]   图元元数据数组
  *   binding = 1: uint[]         可见性结果数组（输出）
  *   binding = 2: DrawCommand[]  indirect draw 命令数组（输出）
  *   binding = 3: uint           原子计数器（输出命令数量）
@@ -77,7 +77,7 @@ layout(location = 1) uniform int  uEntityCount;
  * @brief 2D AABB-视图矩形相交测试
  *
  * 与 CPU 侧四叉树 queryVisible 保持一致的语义：
- * 检测实体包围盒是否与视图矩形相交。
+ * 检测图元包围盒是否与视图矩形相交。
  * 若完全不相交，则判定为不可见。
  */
 bool isVisible(const vec2 bboxMin, const vec2 bboxMax)
@@ -108,7 +108,7 @@ void main()
 
     EntityData e = entities[idx];
 
-    // vertexCount == 0 表示已删除/无效实体
+    // vertexCount == 0 表示已删除/无效图元
     if (e.vertexCount == 0u)
     {
         visibility[idx] = 0u;

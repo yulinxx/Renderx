@@ -2,14 +2,14 @@
  * @file render_world.h
  * @brief 渲染世界类定义
  * 
- * RenderWorld 是渲染系统的核心组件，负责管理场景中的所有实体、材质和顶点数据。
+ * RenderWorld 是渲染系统的核心组件，负责管理场景中的所有图元、材质和顶点数据。
  * 主要功能包括：
- * - 实体的添加、修改、删除和可见性管理
+ * - 图元的添加、修改、删除和可见性管理
  * - 基于四叉树的空间分区，实现高效的视锥体可见性查询
  * - 顶点缓冲区的分配和管理
  * - 材质管理
  * 
- * 使用 SlotMap 实现稀疏索引到稠密索引的映射，支持 O(1) 的实体访问和删除。
+ * 使用 SlotMap 实现稀疏索引到稠密索引的映射，支持 O(1) 的图元访问和删除。
  */
 #pragma once
 
@@ -27,8 +27,8 @@ namespace core {
 /**
  * @brief 渲染世界类
  * 
- * 负责管理场景中的所有渲染实体，包括：
- * - 实体生命周期管理（添加、修改、删除）
+ * 负责管理场景中的所有渲染图元，包括：
+ * - 图元生命周期管理（添加、修改、删除）
  * - 顶点数据管理（动态分配和释放）
  * - 基于四叉树的空间分区和可见性查询
  * - 材质管理
@@ -36,9 +36,9 @@ namespace core {
 class RenderWorld {
 private:
     /**
-     * @brief 实体条目结构
+     * @brief 图元条目结构
      * 
-     * 存储单个实体的所有属性和状态信息。
+     * 存储单个图元的所有属性和状态信息。
      */
     struct EntityEntry {
         uint32_t vertexOffset;    ///< 在顶点池中的偏移量
@@ -46,10 +46,10 @@ private:
         uint32_t allocatedSize;   ///< 分配的顶点空间大小
         uint16_t primitiveType;   ///< 图元类型
         uint16_t materialIndex;   ///< 材质索引
-        uint32_t flags;           ///< 实体标志位
+        uint32_t flags;           ///< 图元标志位
         float bbox[4];            ///< 2D边界框 [minX, minY, maxX, maxY]
         bool dirty;               ///< 是否需要更新到GPU
-        EntityId entityId;        ///< 实体唯一标识符
+        EntityId entityId;        ///< 图元唯一标识符
     };
 
     /**
@@ -60,8 +60,8 @@ private:
     struct QuadTreeNode {
         float minX, minY, maxX, maxY;  ///< 节点覆盖的区域
         uint32_t firstChild;           ///< 第一个子节点索引（非叶子节点）
-        uint32_t firstEntity;          ///< 第一个实体索引（叶子节点）
-        uint32_t entityCount;          ///< 节点内的实体数量
+        uint32_t firstEntity;          ///< 第一个图元索引（叶子节点）
+        uint32_t entityCount;          ///< 节点内的图元数量
         bool isLeaf;                   ///< 是否为叶子节点
     };
 
@@ -72,11 +72,11 @@ private:
         MaterialDesc desc;  ///< 材质描述
     };
 
-    /// 四叉树每个节点最多包含的实体数量
+    /// 四叉树每个节点最多包含的图元数量
     static constexpr uint32_t kQuadTreeMaxEntities = 64;
     /// 四叉树最大深度
     static constexpr uint32_t kQuadTreeMaxDepth = 8;
-    /// 实体隐藏标志位
+    /// 图元隐藏标志位
     static constexpr uint32_t kEntityFlagHidden = 1u << 0;
 
     /**
@@ -95,15 +95,15 @@ private:
     /**
      * @brief 重建四叉树
      * 
-     * 当实体数量变化超过阈值时调用，重新构建空间分区结构。
+     * 当图元数量变化超过阈值时调用，重新构建空间分区结构。
      */
     void rebuildQuadTree();
 
     /**
-     * @brief 插入实体到四叉树
+     * @brief 插入图元到四叉树
      * 
      * @param nodeIdx 当前节点索引
-     * @param entityDenseIdx 实体的稠密索引
+     * @param entityDenseIdx 图元的稠密索引
      * @param depth 当前递归深度
      */
     void insertQuadTree(uint32_t nodeIdx, uint32_t entityDenseIdx, uint32_t depth);
@@ -119,37 +119,37 @@ private:
                         float bMinX, float bMinY, float bMaxX, float bMaxY) const;
 
     /**
-     * @brief 检测实体是否在视锥体内可见
+     * @brief 检测图元是否在视锥体内可见
      * 
-     * @param denseIdx 实体的稠密索引
+     * @param denseIdx 图元的稠密索引
      * @param frustum 视锥体边界 [left, right, bottom, top]
      * @return 是否可见
      */
     bool isEntityVisible(uint32_t denseIdx, const float frustum[4]) const;
 
-    /// 实体存储（稀疏索引到稠密索引的映射）
+    /// 图元存储（稀疏索引到稠密索引的映射）
     SlotMap<uint64_t, EntityEntry> m_entities;
-    /// 实体ID到稀疏索引的映射
+    /// 图元ID到稀疏索引的映射
     std::unordered_map<EntityId, uint64_t> m_entityKeyMap;
-    /// 顶点池（所有实体的顶点数据存储在这里）
+    /// 顶点池（所有图元的顶点数据存储在这里）
     std::vector<VertexP3C3> m_vertexPool;
     /// 空闲顶点空间链表
     std::vector<uint32_t> m_freeList;
-    /// 需要更新的实体索引列表
+    /// 需要更新的图元索引列表
     std::vector<uint32_t> m_dirtyList;
     /// 四叉树是否需要重建
     bool m_quadTreeDirty;
     /// 顶点池是否已调整大小
     bool m_vertexPoolResized;
-    /// 实体变更计数器
+    /// 图元变更计数器
     uint32_t m_changeCount;
     /// 上一帧的视图矩阵（用于检测视图变化）
     float m_lastViewMatrix[9];
     /// 四叉树节点数组
     std::vector<QuadTreeNode> m_quadTree;
-    /// 四叉树实体索引数组
+    /// 四叉树图元索引数组
     std::vector<uint32_t> m_quadTreeEntities;
-    /// 四叉树实体链表的下一个指针数组
+    /// 四叉树图元链表的下一个指针数组
     std::vector<uint32_t> m_quadTreeEntityNext;
     /// 材质列表
     std::vector<MaterialEntry> m_materials;
@@ -202,9 +202,9 @@ public:
     void shutdown();
 
     /**
-     * @brief 添加实体到场景
+     * @brief 添加图元到场景
      * 
-     * @param id 实体唯一标识符
+     * @param id 图元唯一标识符
      * @param vertices 顶点数据
      * @param vertexCount 顶点数量
      * @param type 图元类型
@@ -214,9 +214,9 @@ public:
                    PrimitiveType type, uint16_t materialIdx);
 
     /**
-     * @brief 修改已存在的实体
+     * @brief 修改已存在的图元
      * 
-     * @param id 实体唯一标识符
+     * @param id 图元唯一标识符
      * @param vertices 新的顶点数据
      * @param vertexCount 顶点数量
      * @param materialIdx 材质索引
@@ -225,22 +225,22 @@ public:
                       uint16_t materialIdx);
 
     /**
-     * @brief 从场景中移除实体
+     * @brief 从场景中移除图元
      * 
-     * @param id 实体唯一标识符
+     * @param id 图元唯一标识符
      */
     void removeEntity(EntityId id);
 
     /**
-     * @brief 设置实体的可见性
+     * @brief 设置图元的可见性
      * 
-     * @param id 实体唯一标识符
+     * @param id 图元唯一标识符
      * @param visible 是否可见
      */
     void setEntityVisibility(EntityId id, bool visible);
 
     /**
-     * @brief 清除所有实体
+     * @brief 清除所有图元
      */
     void clearAllEntities();
 
@@ -261,15 +261,15 @@ public:
     void updateMaterial(uint16_t idx, const MaterialDesc* desc);
 
     /**
-     * @brief 查询可见实体
+     * @brief 查询可见图元
      * 
-     * 根据视图矩阵和视口尺寸，查询当前可见的实体。
+     * 根据视图矩阵和视口尺寸，查询当前可见的图元。
      * 
      * @param viewMatrix 3x3视图矩阵
      * @param viewWidth 视图宽度
      * @param viewHeight 视图高度
-     * @param outIndices 输出可见实体的稠密索引数组
-     * @param outCount 输出可见实体数量
+     * @param outIndices 输出可见图元的稠密索引数组
+     * @param outCount 输出可见图元数量
      * @param maxOut 最大输出数量
      */
     void queryVisible(const float viewMatrix[9], float viewWidth, float viewHeight,
@@ -288,14 +288,14 @@ public:
     /**
      * @brief 更新渲染世界状态
      *
-     * 将脏实体的顶点数据上传到顶点池，并根据需要重建四叉树。
+     * 将脏图元的顶点数据上传到顶点池，并根据需要重建四叉树。
      */
     void update();
 
     /**
-     * @brief 获取脏实体的顶点上传区间
+     * @brief 获取脏图元的顶点上传区间
      *
-     * 返回自上次 clearDirtyFlags 以来发生变化的实体对应的顶点区间列表。
+     * 返回自上次 clearDirtyFlags 以来发生变化的图元对应的顶点区间列表。
      * 用于 BatchQueue 做增量顶点上传。
      *
      * @param outRanges 输出区间数组（调用方提供缓冲）
@@ -326,16 +326,16 @@ public:
     uint32_t getTotalVertexCount() const { return static_cast<uint32_t>(m_vertexPool.size()); }
 
     /**
-     * @brief 获取实体条目数组指针
+     * @brief 获取图元条目数组指针
      * 
-     * @return 实体条目指针
+     * @return 图元条目指针
      */
     const EntityEntry* getEntityEntries() const;
 
     /**
-     * @brief 获取实体数量
+     * @brief 获取图元数量
      * 
-     * @return 实体数量
+     * @return 图元数量
      */
     uint32_t getEntityCount() const;
 
@@ -354,14 +354,14 @@ public:
     uint16_t getMaterialCount() const { return static_cast<uint16_t>(m_materials.size()); }
 
     /**
-     * @brief 获取可见实体数量
+     * @brief 获取可见图元数量
      * 
-     * @return 可见实体数量
+     * @return 可见图元数量
      */
     uint32_t getVisibleCount() const { return static_cast<uint32_t>(m_visibleResult.size()); }
 
     /**
-     * @brief 获取可见实体索引
+     * @brief 获取可见图元索引
      * 
      * @param outIndices 输出索引数组指针
      * @param outCount 输出索引数量

@@ -4,15 +4,17 @@
  */
 #include "persistent_entity_manager.h"
 #include "Log/SyLogger.h"
+#include <algorithm>
+#include <cstring>
 
 namespace render
 {
     namespace core
     {
-        void PersistentEntityManager::initialize(rhi::IDevice* device, uint32_t maxEntities)
+        bool PersistentEntityManager::initialize(rhi::IDevice* device, uint32_t maxEntities)
         {
             if (m_initialized || !device || maxEntities == 0)
-                return;
+                return false;
 
             m_device = device;
             m_maxEntities = maxEntities;
@@ -31,10 +33,16 @@ namespace render
                 desc.memory = rhi::MemoryType::GPU_CPU_Coherent;
                 desc.debugName = "PersistentEntity_SSBO";
                 m_entityBuffer = device->createBuffer(desc);
+
+                if (m_entityBuffer == rhi::NullHandle)
+                {
+                    SY_ERROR("[PersistentEntityManager] failed to create entity buffer");
+                    return false;
+                }
             }
 
             // ------------------------------------------------------------------------
-            // 创建可见性结果缓冲（每个图元一个 uint32，0=不可见, 1=可见）
+            // 创建可见性结果缓冲（每个图元一个 uint32：0=不可见 1=可见）
             // ------------------------------------------------------------------------
             {
                 rhi::BufferDesc desc;
@@ -43,6 +51,11 @@ namespace render
                 desc.memory = rhi::MemoryType::GPU_CPU_Coherent;
                 desc.debugName = "PersistentEntity_Visibility";
                 m_visibilityBuffer = device->createBuffer(desc);
+                if (m_visibilityBuffer == rhi::NullHandle)
+                {
+                    SY_ERROR("[PersistentEntityManager] failed to create visibility buffer");
+                    return false;
+                }
 
                 // 初始化为全 0
                 std::vector<uint32_t> zeros(maxEntities, 0);
@@ -60,6 +73,11 @@ namespace render
                 desc.memory = rhi::MemoryType::GPU_CPU_Coherent;
                 desc.debugName = "PersistentEntity_Indirect";
                 m_indirectBuffer = device->createBuffer(desc);
+                if (m_indirectBuffer == rhi::NullHandle)
+                {
+                    SY_ERROR("[PersistentEntityManager] failed to create indirect buffer");
+                    return false;
+                }
             }
 
             // ------------------------------------------------------------------------
@@ -72,15 +90,24 @@ namespace render
                 desc.memory = rhi::MemoryType::GPU_CPU_Coherent;
                 desc.debugName = "PersistentEntity_Count";
                 m_countBuffer = device->createBuffer(desc);
+                if (m_countBuffer == rhi::NullHandle)
+                {
+                    SY_ERROR("[PersistentEntityManager] failed to create count buffer");
+                    return false;
+                }
 
                 uint32_t zero = 0;
                 device->uploadBuffer(m_countBuffer, 0, sizeof(uint32_t), &zero);
             }
 
-            ensureCullingPipeline();
+            if (!ensureCullingPipeline())
+                return false;
 
             m_initialized = true;
-            SY_INFOF("[PersistentEntityManager] initialized, maxEntities=%u", maxEntities);
+
+            SY_DEBUGF("[PersistentEntityManager] initialized, maxEntities=%u", maxEntities);
+
+            return true;
         }
 
         void PersistentEntityManager::shutdown()
@@ -128,10 +155,10 @@ namespace render
             m_initialized = false;
             m_device = nullptr;
 
-            SY_INFO("[PersistentEntityManager] shutdown");
+            SY_DEBUG("[PersistentEntityManager] shutdown");
         }
 
-        uint32_t PersistentEntityManager::addEntity(const PersistentEntity& entity)
+        uint32_t PersistentEntityManager::addEntity(const PersistentEntity& entity, uint32_t renderWorldIndex)
         {
             if (!m_initialized)
             {
@@ -157,7 +184,25 @@ namespace render
                 m_dirtyFlags.push_back(true);
             }
 
-            SY_DEBUGF("[PersistentEntityManager] addEntity id=%u at index=%u", entity.id, index);
+            // 记录 PEM 索引 -> RenderWorld 索引的映射
+            if (renderWorldIndex != UINT32_MAX)
+            {
+                if (index < m_pemToRenderWorldIndex.size())
+                    m_pemToRenderWorldIndex[index] = renderWorldIndex;
+                else
+                    m_pemToRenderWorldIndex.push_back(renderWorldIndex);
+            }
+            else
+            {
+                // 兼容旧调用：以 entity.id 作为回退（不准确但能工作）
+                if (index < m_pemToRenderWorldIndex.size())
+                    m_pemToRenderWorldIndex[index] = entity.id;
+                else
+                    m_pemToRenderWorldIndex.push_back(entity.id);
+            }
+
+            //SY_DEBUGF("[PersistentEntityManager] addEntity id=%u at index=%u (rwIdx=%u)", entity.id, index, renderWorldIndex);
+
             return index;
         }
 
@@ -181,8 +226,11 @@ namespace render
 
             m_entityCount = 0;
             m_entities.clear();
+            m_pemToRenderWorldIndex.clear();
             m_dirtyFlags.clear();
             m_lastVisibleCount = 0;
+            m_readbackBuffer.clear();
+            m_visiblePemIndices.clear();
 
             SY_DEBUG("[PersistentEntityManager] entities cleared");
         }
@@ -198,43 +246,31 @@ namespace render
 
         void PersistentEntityManager::uploadChanges()
         {
-            if (!m_initialized || !m_device)
+            if (!m_initialized || !m_device || m_entityCount == 0)
                 return;
 
-            // 收集脏图元并上传
-            std::vector<EntityGpuData> gpuData;
-            gpuData.reserve(m_entityCount);
-
+            // 统计脏图元数量
             uint32_t dirtyCount = 0;
             for (uint32_t i = 0; i < m_entityCount; ++i)
             {
                 if (m_dirtyFlags[i])
-                {
-                    const PersistentEntity& e = m_entities[i];
-                    EntityGpuData gd{};
-                    gd.bboxMin[0] = e.bboxMin[0]; gd.bboxMin[1] = e.bboxMin[1]; gd.bboxMin[2] = e.bboxMin[2]; gd.bboxMin[3] = 0.0f;
-                    gd.bboxMax[0] = e.bboxMax[0]; gd.bboxMax[1] = e.bboxMax[1]; gd.bboxMax[2] = e.bboxMax[2]; gd.bboxMax[3] = 0.0f;
-                    gd.worldPos[0] = e.worldPos[0]; gd.worldPos[1] = e.worldPos[1]; gd.worldPos[2] = e.worldPos[2]; gd.worldPos[3] = 0.0f;
-                    gd.vertexOffset = e.vertexOffset;
-                    gd.vertexCount = e.vertexCount;
-                    gd.materialIndex = e.materialIndex;
-                    gd.flags = e.flags;
-                    gpuData.push_back(gd);
-                    m_dirtyFlags[i] = false;
                     ++dirtyCount;
-                }
             }
 
-            if (dirtyCount > 0)
+            if (dirtyCount == 0)
+                return;
+
+            // 脏图元超过半数时走全量上传，避免多次小批量 upload 开销
+            const bool fullUpload = (dirtyCount * 2 >= m_entityCount);
+
+            if (fullUpload)
             {
-                // 简化处理：整批上传前 m_entityCount 个图元
-                // 后续可优化为只上传 dirty 区间
-                gpuData.clear();
+                std::vector<EntityGpuData> gpuData;
                 gpuData.reserve(m_entityCount);
                 for (uint32_t i = 0; i < m_entityCount; ++i)
                 {
                     const PersistentEntity& e = m_entities[i];
-                    EntityGpuData gd;
+                    EntityGpuData gd{};
                     gd.bboxMin[0] = e.bboxMin[0]; gd.bboxMin[1] = e.bboxMin[1]; gd.bboxMin[2] = e.bboxMin[2]; gd.bboxMin[3] = 0.0f;
                     gd.bboxMax[0] = e.bboxMax[0]; gd.bboxMax[1] = e.bboxMax[1]; gd.bboxMax[2] = e.bboxMax[2]; gd.bboxMax[3] = 0.0f;
                     gd.worldPos[0] = e.worldPos[0]; gd.worldPos[1] = e.worldPos[1]; gd.worldPos[2] = e.worldPos[2]; gd.worldPos[3] = 0.0f;
@@ -249,20 +285,50 @@ namespace render
                     m_entityCount * sizeof(EntityGpuData),
                     gpuData.data());
 
-                SY_DEBUGF("[PersistentEntityManager] uploaded %u entities", m_entityCount);
+                SY_DEBUGF("[PersistentEntityManager] full upload: %u entities", m_entityCount);
             }
+            else
+            {
+                // 增量上传：只上传脏图元到其对应偏移位置
+                for (uint32_t i = 0; i < m_entityCount; ++i)
+                {
+                    if (!m_dirtyFlags[i])
+                        continue;
+
+                    const PersistentEntity& e = m_entities[i];
+                    EntityGpuData gd{};
+                    gd.bboxMin[0] = e.bboxMin[0]; gd.bboxMin[1] = e.bboxMin[1]; gd.bboxMin[2] = e.bboxMin[2]; gd.bboxMin[3] = 0.0f;
+                    gd.bboxMax[0] = e.bboxMax[0]; gd.bboxMax[1] = e.bboxMax[1]; gd.bboxMax[2] = e.bboxMax[2]; gd.bboxMax[3] = 0.0f;
+                    gd.worldPos[0] = e.worldPos[0]; gd.worldPos[1] = e.worldPos[1]; gd.worldPos[2] = e.worldPos[2]; gd.worldPos[3] = 0.0f;
+                    gd.vertexOffset = e.vertexOffset;
+                    gd.vertexCount = e.vertexCount;
+                    gd.materialIndex = e.materialIndex;
+                    gd.flags = e.flags;
+
+                    m_device->uploadBuffer(m_entityBuffer,
+                        i * sizeof(EntityGpuData),
+                        sizeof(EntityGpuData), &gd);
+                }
+
+                SY_DEBUGF("[PersistentEntityManager] incremental upload: %u / %u entities",
+                    dirtyCount, m_entityCount);
+            }
+
+            // 重置所有脏标记
+            for (uint32_t i = 0; i < m_entityCount; ++i)
+                m_dirtyFlags[i] = false;
         }
 
-        void PersistentEntityManager::ensureCullingPipeline()
+        bool PersistentEntityManager::ensureCullingPipeline()
         {
             if (!m_device || m_cullingPipeline != rhi::NullHandle)
-                return;
+                return true;
 
             rhi::PipelineDesc desc{};
             desc.computeShader = "culling_comp";
             desc.vertexShader = nullptr;
             desc.fragmentShader = nullptr;
-            desc.topology = rhi::PrimitiveTopology::PointList; // compute pipeline 不依赖 topology
+            desc.topology = rhi::PrimitiveTopology::PointList; // 计算管线不依赖拓扑类型
             desc.vertexFormat = rhi::VertexFormat::P3C3;
             desc.depthTest = false;
             desc.depthWrite = false;
@@ -273,10 +339,12 @@ namespace render
             if (m_cullingPipeline == rhi::NullHandle)
             {
                 SY_ERROR("[PersistentEntityManager] failed to create culling pipeline");
+                return false;
             }
             else
             {
-                SY_INFO("[PersistentEntityManager] culling pipeline created");
+                SY_DEBUG("[PersistentEntityManager] culling pipeline created");
+                return true;
             }
         }
 
@@ -296,7 +364,7 @@ namespace render
             uint32_t zero = 0;
             m_device->uploadBuffer(m_countBuffer, 0, sizeof(uint32_t), &zero);
 
-            // 绑定 compute pipeline
+            // 绑定计算管线
             m_device->bindPipeline(m_cullingPipeline);
 
             // 绑定 SSBO
@@ -313,64 +381,114 @@ namespace render
             m_device->setUniformVec4("uViewBounds", viewBounds);
             m_device->setUniformInt("uEntityCount", static_cast<int>(m_entityCount));
 
-            // 计算 dispatch 大小（每个线程处理一个图元）
+            // 计算调度大小（每个线程处理一个图元）
             uint32_t groupsX = (m_entityCount + 255) / 256;
             m_device->dispatchCompute(groupsX, 1, 1);
 
-            // 确保 compute shader 写入完成后，后续绘制命令才能读取
+            // 确保计算着色器写入完成后，后续绘制命令才能读取
             m_device->memoryBarrier(
                 static_cast<uint32_t>(
                     rhi::BarrierFlag::ShaderStorage |
                     rhi::BarrierFlag::Command));
-
-            SY_DEBUGF("[PersistentEntityManager] culling dispatched: %u entities, %u groups, view=[%.2f,%.2f,%.2f,%.2f]",
-                m_entityCount, groupsX, viewMinX, viewMinY, viewMaxX, viewMaxY);
         }
 
-        void PersistentEntityManager::generateIndirectCommands(rhi::BufferHandle outIndirectBuffer,
-            uint32_t* outCommandCount)
+        uint32_t PersistentEntityManager::readBackGpuVisibility(uint32_t* outIndices, uint32_t maxCount)
         {
-            (void)outIndirectBuffer; // 当前实现直接读取内部 countBuffer，参数预留用于未来扩展
+            if (!m_initialized || !m_device || m_entityCount == 0)
+                return 0;
 
-            if (!m_initialized || !m_device)
-            {
-                if (outCommandCount) *outCommandCount = 0;
-                return;
-            }
+            // 复用成员缓冲，避免每帧临时分配（全量可见性缓冲 + 可见 PEM 索引缓存）
+            m_readbackBuffer.resize(m_entityCount);
 
-            // 回读可见图元数量（原子计数器）
-            uint32_t visibleCount = 0;
-            // 注意：回读 GPU buffer 会阻塞 CPU，生产环境应使用异步查询或 GPU-driven 链路
-            // 这里作为基础实现，直接读取
-            // GL_MAP_READ_BIT = 0x0001
-            void* mapped = m_device->mapBuffer(m_countBuffer, 0, sizeof(uint32_t), 0x0001);
-            if (mapped)
+            // 全量映射可见性缓冲：visibility buffer 是逐图元稀疏标记
+            //（1=可见, 0=不可见），可见图元位置不连续，必须全量扫描
+            void* visMapped = m_device->mapBuffer(m_visibilityBuffer, 0,
+                m_entityCount * sizeof(uint32_t), 0x0001);
+            if (!visMapped)
             {
-                visibleCount = *static_cast<uint32_t*>(mapped);
-                m_device->unmapBuffer(m_countBuffer);
+                SY_ERRORF("[PersistentEntityManager] readBackGpuVisibility: map visibility buffer failed (%u bytes)",
+                    m_entityCount * sizeof(uint32_t));
+                return 0;
             }
-            else
+            std::memcpy(m_readbackBuffer.data(), visMapped, m_entityCount * sizeof(uint32_t));
+            m_device->unmapBuffer(m_visibilityBuffer);
+
+            // 收集可见 PEM 索引并转换为 RenderWorld 稠密索引写入 outIndices
+            uint32_t written = 0;
+            m_visiblePemIndices.clear();
+            for (uint32_t i = 0; i < m_entityCount; ++i)
             {
-                // 如果 map 失败，保守地回读全部可见性结果统计
-                std::vector<uint32_t> vis(m_entityCount);
-                void* visMapped = m_device->mapBuffer(m_visibilityBuffer, 0,
-                    m_entityCount * sizeof(uint32_t), 0x0001);
-                if (visMapped)
+                if (!m_readbackBuffer[i])
+                    continue;
+
+                m_visiblePemIndices.push_back(i);
+
+                if (outIndices && written < maxCount)
                 {
-                    std::memcpy(vis.data(), visMapped, m_entityCount * sizeof(uint32_t));
-                    m_device->unmapBuffer(m_visibilityBuffer);
-                    for (uint32_t v : vis)
-                        if (v) ++visibleCount;
+                    outIndices[written++] = (i < m_pemToRenderWorldIndex.size())
+                        ? m_pemToRenderWorldIndex[i] : i;
+                }
+                else if (written < maxCount)
+                {
+                    ++written;
                 }
             }
 
-            m_lastVisibleCount = visibleCount;
+            SY_DEBUGF("[PersistentEntityManager] readBackGpuVisibility: visible=%u / %u entities",
+                written, m_entityCount);
+
+            return written;
+        }
+
+        // ================================================================
+        // 间接命令生成（M8 简化版：基于回读可见性）
+        // 注意：实际绘制路径（renderFrame -> BatchQueue）并不使用此输出。
+        // 本函数保留用于未来 GPU 驱动管线的能力扩展。
+        // 不执行 mapBuffer；复用 readBackGpuVisibility 中填充的 m_visiblePemIndices。
+        // ================================================================
+
+        void PersistentEntityManager::generateIndirectCommands(
+            rhi::BufferHandle outIndirectBuffer, uint32_t* outCommandCount)
+        {
+            uint32_t count = 0;
+
+            if (m_initialized && m_device &&
+                !m_visiblePemIndices.empty() && outIndirectBuffer != rhi::NullHandle)
+            {
+                // 为每个可见 PEM 索引写入 DrawIndirectCmd
+                const uint32_t visibleCount = static_cast<uint32_t>(m_visiblePemIndices.size());
+                std::vector<DrawIndirectCmd> cmds;
+                cmds.reserve(visibleCount);
+
+                for (uint32_t i = 0; i < visibleCount; ++i)
+                {
+                    uint32_t pemIdx = m_visiblePemIndices[i];
+                    if (pemIdx >= m_entityCount)
+                        continue;
+
+                    const PersistentEntity& e = m_entities[pemIdx];
+                    DrawIndirectCmd cmd;
+                    cmd.vertexCount = e.vertexCount;
+                    cmd.instanceCount = 1u;
+                    cmd.firstVertex = e.vertexOffset;
+                    cmd.baseInstance = 0u;
+                    cmds.push_back(cmd);
+                }
+
+                if (!cmds.empty())
+                {
+                    m_device->uploadBuffer(outIndirectBuffer, 0,
+                        cmds.size() * sizeof(DrawIndirectCmd), cmds.data());
+                    count = static_cast<uint32_t>(cmds.size());
+                }
+            }
+
+            m_lastVisibleCount = count;
 
             if (outCommandCount)
-                *outCommandCount = visibleCount;
+                *outCommandCount = count;
 
-            SY_DEBUGF("[PersistentEntityManager] visible count: %u / %u",
-                visibleCount, m_entityCount);
+            SY_DEBUGF("[PersistentEntityManager] indirect commands: %u", count);
         }
     } // namespace core
 } // namespace render

@@ -1,27 +1,32 @@
 # Renderx 渲染引擎单元测试配置
+#
+# 测试分为两个目标：
+# 1. RenderxTests：Null backend，无需 GPU/OpenGL 上下文，适用于 CI/CD
+# 2. RenderxGLTests：OpenGL backend，需要 OpenGL 上下文，仅在本地开发环境运行
 
 find_package(GTest REQUIRED)
 include(GoogleTest)
 
-# Phase 0/1 验证期间，只编译通过验证的测试文件
-# 历史遗留的 BatchQueueTests/MeshManagerTests/RenderTypesTests 存在接口不匹配，待后续统一修复
-set(RENDERX_TEST_SOURCES
-    "${CMAKE_CURRENT_SOURCE_DIR}/TransientBufferPoolTests.cpp"
+# ============================================================
+# Target 1: RenderxTests (Null backend, no GPU required)
+# ============================================================
+
+set(RENDERX_NULL_TEST_SOURCES
+    "${CMAKE_CURRENT_SOURCE_DIR}/NullBackendTests.cpp"
 )
 
-# 直接编译测试所需的内部实现源文件（内部类符号未从 DLL 导出）
-set(RENDERX_INTERNAL_SOURCES
-    "${CMAKE_CURRENT_SOURCE_DIR}/../src/core/transient_buffer_pool.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/../src/rhi/rhi_gl.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/../src/platform/gl_loader.cpp"
+# Null backend 仅需要 rhi_null.cpp，不依赖 OpenGL
+# M1: 添加 render_runtime.cpp 和 shaders.cpp 以支持 RenderRuntime 初始化
+set(RENDERX_NULL_INTERNAL_SOURCES
+    "${CMAKE_CURRENT_SOURCE_DIR}/../src/rhi/rhi_null.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../src/c_api/render_runtime.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/../src/shader/shaders.cpp"
 )
 
-add_executable(RenderxTests ${RENDERX_TEST_SOURCES} ${RENDERX_INTERNAL_SOURCES})
+add_executable(RenderxTests ${RENDERX_NULL_TEST_SOURCES} ${RENDERX_NULL_INTERNAL_SOURCES})
 
 target_compile_features(RenderxTests PRIVATE cxx_std_17)
 
-# 测试直接编译内部源文件，需要以 dllexport 模式编译导出符号
 target_compile_definitions(RenderxTests PRIVATE RENDER_EXPORTS)
 
 target_include_directories(RenderxTests PRIVATE
@@ -40,14 +45,63 @@ endif()
 target_link_libraries(RenderxTests PRIVATE
     GTest::gtest
     GTest::gtest_main
-    opengl32
     Log
 )
 
 gtest_discover_tests(RenderxTests)
 
-set_property(TARGET RenderxTests PROPERTY FOLDER "Tests")
+# ============================================================
+# Target 2: RenderxGLTests (OpenGL backend, requires GPU)
+# ============================================================
+
+set(RENDERX_GL_TEST_SOURCES
+    "${CMAKE_CURRENT_SOURCE_DIR}/TransientBufferPoolTests.cpp"
+)
+
+# OpenGL tests 需要完整的 GL 栈
+set(RENDERX_GL_INTERNAL_SOURCES
+    "${CMAKE_CURRENT_SOURCE_DIR}/../src/core/transient_buffer_pool.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../src/rhi/rhi_gl.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../src/platform/gl_loader.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../src/shader/shaders.cpp"
+)
+
+add_executable(RenderxGLTests ${RENDERX_GL_TEST_SOURCES} ${RENDERX_GL_INTERNAL_SOURCES})
+
+target_compile_features(RenderxGLTests PRIVATE cxx_std_17)
+
+target_compile_definitions(RenderxGLTests PRIVATE RENDER_EXPORTS)
+
+target_include_directories(RenderxGLTests PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/.."
+    "${CMAKE_CURRENT_SOURCE_DIR}/../include"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../src"
+)
+
+if(EXISTS "${LOG_INCLUDE_DIR}/Log/SyLogger.h")
+    target_include_directories(RenderxGLTests PRIVATE ${LOG_INCLUDE_DIR})
+endif()
+
+if(WIN32)
+    target_link_libraries(RenderxGLTests PRIVATE opengl32)
+endif()
+
+target_link_libraries(RenderxGLTests PRIVATE
+    GTest::gtest
+    GTest::gtest_main
+    Log
+)
+
+gtest_discover_tests(RenderxGLTests)
+
+# ============================================================
+# Common settings
+# ============================================================
+
+set_property(TARGET RenderxTests RenderxGLTests PROPERTY FOLDER "Tests")
 
 if(MSVC)
     target_compile_options(RenderxTests PRIVATE /utf-8)
+    target_compile_options(RenderxGLTests PRIVATE /utf-8)
 endif()

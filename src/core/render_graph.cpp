@@ -18,18 +18,24 @@ namespace render
         RenderGraph::RenderGraph() = default;
         RenderGraph::~RenderGraph() = default;
 
-        void RenderGraph::initialize(rhi::IDevice* device)
-        {
-            if (m_initialized)
-            {
-                SY_WARNF("RenderGraph::initialize: already initialized");
-                return;
-            }
-            m_device = device;
-            m_initialized = true;
-            m_lastExecutedCount = 0;
-            SY_INFOF("RenderGraph::initialize: OK");
-        }
+bool RenderGraph::initialize(rhi::IDevice* device)
+{
+    if (m_initialized)
+    {
+        SY_WARNF("RenderGraph::initialize: already initialized");
+        return false;
+    }
+    if (!device)
+    {
+        SY_ERROR("RenderGraph::initialize: device is null");
+        return false;
+    }
+    m_device = device;
+    m_initialized = true;
+    m_lastExecutedCount = 0;
+    SY_DEBUGF("RenderGraph::initialize: OK");
+    return true;
+}
 
         void RenderGraph::shutdown()
         {
@@ -40,7 +46,7 @@ namespace render
             m_device = nullptr;
             m_initialized = false;
             m_lastExecutedCount = 0;
-            SY_INFOF("RenderGraph::shutdown: OK");
+            SY_DEBUGF("RenderGraph::shutdown: OK");
         }
 
         void RenderGraph::addPass(const PassDesc& desc)
@@ -87,7 +93,7 @@ namespace render
 
             if (logSummary)
             {
-                SY_INFOF("RenderGraph::execute: begin (%u passes)", passCount);
+                SY_DEBUGF("RenderGraph::execute: begin (%u passes)", passCount);
             }
 
             for (uint32_t i = 0; i < passCount; ++i)
@@ -132,7 +138,7 @@ namespace render
 
             if (logSummary)
             {
-                SY_INFOF("RenderGraph::execute: end (executed %u/%u passes)", executedCount, passCount);
+                SY_DEBUGF("RenderGraph::execute: end (executed %u/%u passes)", executedCount, passCount);
             }
         }
 
@@ -167,6 +173,42 @@ namespace render
             if (index >= m_passes.size())
                 return false;
             return m_passes[index].desc.enabled;
+        }
+
+        void RenderGraph::checkResourceConflicts() const
+        {
+            // M5: 检查相邻 Pass 之间的资源冲突
+            // 仅对已添加的 Pass 进行静态分析，输出警告日志
+            for (uint32_t i = 0; i + 1 < m_passes.size(); ++i)
+            {
+                const PassEntry& prev = m_passes[i];
+                const PassEntry& next = m_passes[i + 1];
+
+                // 检查 prev 输出的资源是否被 next 读/写
+                for (const auto& out : prev.desc.outputs)
+                {
+                    for (const auto& in : next.desc.inputs)
+                    {
+                        if (out.handle != 0 && out.handle == in.handle)
+                        {
+                            SY_DEBUGF("RenderGraph::checkResourceConflicts: [%u:%s] -> [%u:%s] resource %u (name='%s')",
+                                i, prev.desc.name ? prev.desc.name : "",
+                                i + 1, next.desc.name ? next.desc.name : "",
+                                out.handle, out.name);
+                        }
+                    }
+                    for (const auto& out2 : next.desc.outputs)
+                    {
+                        if (out.handle != 0 && out.handle == out2.handle && out.access == PassResourceAccess::Write)
+                        {
+                            SY_WARNF("RenderGraph::checkResourceConflicts: [%u:%s] writes and [%u:%s] writes same resource %u (name='%s')",
+                                i, prev.desc.name ? prev.desc.name : "",
+                                i + 1, next.desc.name ? next.desc.name : "",
+                                out.handle, out.name);
+                        }
+                    }
+                }
+            }
         }
     } // namespace core
 } // namespace render

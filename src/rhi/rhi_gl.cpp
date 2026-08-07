@@ -155,7 +155,10 @@ namespace render::rhi
             // 对于需要 CPU 持续写入的缓冲区，使用不可变存储配合持久映射标志
             if (desc.memory == MemoryType::GPU_CPU_Coherent && g->NamedBufferStorage)
             {
-                GLbitfield flags = GL_DYNAMIC_STORAGE_BIT | GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT;
+                // 注意：必须包含 GL_MAP_READ_BIT，否则后续 mapBuffer 用 GL_MAP_READ_BIT
+                // 读取该缓冲（如 GPU 剔除回读 count/visibility buffer）会失败返回 nullptr，
+                // 导致 GPU 剔除结果永远为 0，只能回退 CPU 四叉树。
+                GLbitfield flags = GL_DYNAMIC_STORAGE_BIT | GL_MAP_READ_BIT | GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT;
                 g->NamedBufferStorage(entry.glName, (GLsizeiptr)desc.size, nullptr, flags);
             }
             else
@@ -169,7 +172,7 @@ namespace render::rhi
             g->BindBuffer(GL_ARRAY_BUFFER, entry.glName);
             if (desc.memory == MemoryType::GPU_CPU_Coherent && g->BufferStorage)
             {
-                GLbitfield flags = GL_DYNAMIC_STORAGE_BIT | GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT;
+                GLbitfield flags = GL_DYNAMIC_STORAGE_BIT | GL_MAP_READ_BIT | GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT;
                 g->BufferStorage(GL_ARRAY_BUFFER, (GLsizeiptr)desc.size, nullptr, flags);
             }
             else

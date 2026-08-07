@@ -1,0 +1,11 @@
+# CMake generation dependency list for this directory.
+C:/Program Files/CMake/share/cmake-4.3/Modules/CMakeFindDependencyMacro.cmake
+C:/Program Files/CMake/share/cmake-4.3/Modules/FindGTest.cmake
+C:/Program Files/CMake/share/cmake-4.3/Modules/FindPackageHandleStandardArgs.cmake
+C:/Program Files/CMake/share/cmake-4.3/Modules/FindPackageMessage.cmake
+C:/Program Files/CMake/share/cmake-4.3/Modules/GoogleTest.cmake
+C:/Users/xx/Documents/Cpp/CAD/CMakeFiles/cmake.verify_globs
+C:/Users/xx/Documents/Cpp/CAD/Renderx/Test/CMakeLists.txt
+C:/Users/xx/vcpkg/installed/x64-windows/share/gtest/GTestConfig.cmake
+C:/Users/xx/vcpkg/installed/x64-windows/share/gtest/GTestConfigVersion.cmake
+C:/Users/xx/vcpkg/installed/x64-windows/share/gtest/GTestTargets.cmake

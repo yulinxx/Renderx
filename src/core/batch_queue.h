@@ -2,7 +2,7 @@
  * @file batch_queue.h
  * @brief 批量绘制队列类定义
  * 
- * BatchQueue 负责将可见实体按图元类型和材质分组，使用间接绘制（glDrawArraysIndirect）
+ * BatchQueue 负责将可见图元按图元类型和材质分组，使用间接绘制（glDrawArraysIndirect）
  * 减少 CPU-GPU 通信开销。核心优化包括：
  * - 按材质和图元类型排序，减少状态切换
  * - 使用间接绘制命令缓冲区，批量提交绘制命令
@@ -27,19 +27,20 @@ class CommandEncoder;
  * @brief 批量绘制队列类
  * 
  * 负责：
- * - 接收可见实体列表
+ * - 接收可见图元列表
  * - 按图元类型和材质分组
  * - 构建间接绘制命令
  * - 执行批量绘制
  */
 class BatchQueue {
 public:
-    /**
+/**
      * @brief 初始化批量绘制队列
-     * 
+     *
      * @param device RHI设备指针
+     * @return true 初始化成功，false 初始化失败
      */
-    void initialize(rhi::IDevice* device);
+    bool initialize(rhi::IDevice* device);
 
     /**
      * @brief 关闭并释放所有资源
@@ -47,12 +48,12 @@ public:
     void shutdown();
 
     /**
-     * @brief 提交可见实体进行批处理
+     * @brief 提交可见图元进行批处理
      * 
-     * 将可见实体按图元类型和材质分组，构建间接绘制命令。
+     * 将可见图元按图元类型和材质分组，构建间接绘制命令。
      * 
-     * @param visibleIndices 可见实体的稠密索引数组
-     * @param count 可见实体数量
+     * @param visibleIndices 可见图元的稠密索引数组
+     * @param count 可见图元数量
      * @param world 渲染世界引用
      */
     void submit(const uint32_t* visibleIndices, uint32_t count,
@@ -117,7 +118,7 @@ private:
     rhi::IDevice*       m_device             = nullptr;
     /// 间接命令缓冲区
     rhi::BufferHandle   m_indirectBuffer     = rhi::NullHandle;
-    /// 顶点缓冲区（存储2D实体顶点数据）
+    /// 顶点缓冲区（存储2D图元顶点数据）
     rhi::BufferHandle   m_vertexBuffer       = rhi::NullHandle;
     /// 顶点缓冲区容量
     uint32_t            m_vertexBufferCapacity = 0;
@@ -127,9 +128,9 @@ private:
     bool                m_dirty              = false;
     /// 视图是否发生变化
     bool                m_viewChanged        = false;
-    /// 上一帧的可见实体数量
+    /// 上一帧的可见图元数量
     uint32_t            m_lastVisibleCount   = 0;
-    /// 上一帧的可见实体索引（用于检测变化）
+    /// 上一帧的可见图元索引（用于检测变化）
     std::vector<uint32_t> m_lastVisibleIndices;
     /// 上一帧的 RenderWorld 代数（用于检测顶点池重建）
     uint32_t            m_lastGeneration     = 0;

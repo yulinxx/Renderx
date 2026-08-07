@@ -1,14 +1,26 @@
-#include "shaders.h"
+/**
+ * @file shaders.cpp
+ * @brief Shader 源码加载与管理
+ *
+ * @warning 当前 shader 源码使用文件级静态变量存储，属于进程级共享资源。
+ *          这意味着所有窗口和会话共享同一份 shader 源码，不是 per-window 独立资源。
+ *          后续应迁移到 RenderRuntime 管理，以支持多窗口独立 shader 主题和热更新。
+ *          （M1 已开始迁移：RenderRuntime::initialize() 目前仍调用此模块初始化）
+ */
+#include "shader/shaders.h"
 
+#include <string>
 #include <fstream>
 #include <sstream>
 #include "Log/SyLogger.h"
 
-namespace render::shader
+namespace render
 {
-    static std::string scene2dVertSource;
-    static std::string scene2dFragSource;
-    static std::string overlayVertSource;
+    namespace shader
+    {
+        static std::string scene2dVertSource;
+        static std::string scene2dFragSource;
+        static std::string overlayVertSource;
     static std::string overlayFragSource;
     static std::string overlayScreenVertSource;
     static std::string overlayScreenFragSource;
@@ -103,5 +115,6 @@ namespace render::shader
         HIGHLIGHT_3D_VERT = highlight3dVertSource.empty() ? "" : highlight3dVertSource.c_str();
         HIGHLIGHT_3D_FRAG = highlight3dFragSource.empty() ? "" : highlight3dFragSource.c_str();
         CULLING_COMP = cullingCompSource.empty() ? "" : cullingCompSource.c_str();
+    }
     }
 }

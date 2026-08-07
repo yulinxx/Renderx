@@ -98,7 +98,7 @@ namespace render
 
             if (m_entities.size() < 3)
             {
-                SY_INFOF("RenderWorld::addEntity[%llu]: type=%u, verts=%u, bbox=[%.2f,%.2f]-[%.2f,%.2f], firstVert=(%.2f,%.2f,%.2f)(%.2f,%.2f,%.2f)",
+                SY_DEBUGF("RenderWorld::addEntity[%llu]: type=%u, verts=%u, bbox=[%.2f,%.2f]-[%.2f,%.2f], firstVert=(%.2f,%.2f,%.2f)(%.2f,%.2f,%.2f)",
                     id, static_cast<uint32_t>(type), vertexCount,
                     entry.bbox[0], entry.bbox[1], entry.bbox[2], entry.bbox[3],
                     vertices[0].px, vertices[0].py, vertices[0].pz,
@@ -152,7 +152,7 @@ namespace render
             uint32_t denseIdx = static_cast<uint32_t>(entry - m_entities.begin());
             m_dirtyList.push_back(denseIdx);
             m_changeCount++;
-            // 实体 bbox 可能变化，标记四叉树脏以确保下次查询重建
+            // 图元 bbox 可能变化，标记四叉树脏以确保下次查询重建
             m_quadTreeDirty = true;
         }
 

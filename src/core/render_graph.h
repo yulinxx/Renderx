@@ -135,8 +135,11 @@ public:
 
     /**
      * @brief 初始化渲染图
+     *
+     * @param device RHI 设备指针
+     * @return true 初始化成功，false 初始化失败
      */
-    void initialize(rhi::IDevice* device);
+    bool initialize(rhi::IDevice* device);
 
     /**
      * @brief 关闭并释放资源
@@ -188,6 +191,15 @@ public:
      * @brief 获取上一帧实际执行的 Pass 数量
      */
     uint32_t getExecutedPassCount() const { return m_lastExecutedCount; }
+
+    /**
+     * @brief M5: 检查相邻 Pass 之间是否存在资源冲突
+     *
+     * 分析相邻两个 Pass 的资源访问是否有写-读或读-写冲突。
+     * 输出日志警告但不改变执行顺序。
+     * 后续将用于自动插入屏障或重新排序 Pass。
+     */
+    void checkResourceConflicts() const;
 
 private:
     struct PassEntry

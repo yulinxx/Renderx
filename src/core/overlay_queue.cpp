@@ -25,19 +25,30 @@ namespace render
             return v;
         }
 
-        void OverlayQueue::initialize(rhi::IDevice* device)
-        {
-            m_device = device;
+bool OverlayQueue::initialize(rhi::IDevice* device)
+{
+    if (!device)
+        return false;
 
-            // pipeline 由 CommandEncoder 统一管理，OverlayQueue 不再创建
-            rhi::BufferDesc vbDesc;
-            vbDesc.size = 4096 * sizeof(OverlayVertex);
-            vbDesc.usage = rhi::BufferUsage::Vertex;
-            vbDesc.memory = rhi::MemoryType::GPU_CPU_Coherent;
-            vbDesc.debugName = "OverlayQueue_VB";
-            m_vertexBuffer = device->createBuffer(vbDesc);
-            m_vbCapacity = 4096;
-        }
+    m_device = device;
+
+    // pipeline 由 CommandEncoder 统一管理，OverlayQueue 不再创建
+    rhi::BufferDesc vbDesc;
+    vbDesc.size = 4096 * sizeof(OverlayVertex);
+    vbDesc.usage = rhi::BufferUsage::Vertex;
+    vbDesc.memory = rhi::MemoryType::GPU_CPU_Coherent;
+    vbDesc.debugName = "OverlayQueue_VB";
+    m_vertexBuffer = device->createBuffer(vbDesc);
+    if (m_vertexBuffer == rhi::NullHandle)
+    {
+        SY_ERROR("[OverlayQueue] failed to create vertex buffer");
+        return false;
+    }
+    m_vbCapacity = 4096;
+
+    SY_DEBUG("[OverlayQueue] initialized");
+    return true;
+}
 
         void OverlayQueue::shutdown()
         {
@@ -328,7 +339,11 @@ namespace render
             switch (primitive->kind)
             {
                 case OverlayPrimitiveKind::LineList:
+                case OverlayPrimitiveKind::PreviewLines:
+                case OverlayPrimitiveKind::ControlLines:
+                case OverlayPrimitiveKind::SelectionOutlines:
                 {
+                    // 线段列表子类型共享同一套构建逻辑，仅 kind 标记不同以支持独立清除
                     const auto* desc = static_cast<const OverlayPolylineDesc*>(primitive->payload);
                     if (!desc || !desc->vertices || desc->vertexCount == 0)
                         break;
@@ -403,7 +418,10 @@ namespace render
                     break;
                 }
                 case OverlayPrimitiveKind::Points:
+                case OverlayPrimitiveKind::SelectionHandles:
+                case OverlayPrimitiveKind::PointMarkers:
                 {
+                    // 点集子类型共享同一套标记构建逻辑，仅 kind 标记不同以支持独立清除
                     const auto* desc = static_cast<const OverlayMarkerSetDesc*>(primitive->payload);
                     if (!desc || !desc->positions || desc->count == 0)
                         break;

@@ -412,9 +412,12 @@ namespace render
             if (m_meshBufferDirty)
                 uploadMeshBuffers(device);
 
-            uint32_t visibleIds[MAX_INSTANCES];
+            // M6: 使用动态向量替代固定大小数组，移除 MAX_INSTANCES 限制
+            std::vector<uint32_t> visibleIds(m_instances.size());
             uint32_t visibleCount = 0;
-            queryVisible(viewMatrix, projMatrix, visibleIds, &visibleCount, MAX_INSTANCES);
+            queryVisible(viewMatrix, projMatrix, visibleIds.data(), &visibleCount,
+                static_cast<uint32_t>(visibleIds.size()));
+            visibleIds.resize(visibleCount);
 
             if (visibleCount == 0) return;
 
@@ -471,7 +474,7 @@ namespace render
                     }
 
                     m_instanceBufferCapacity = requiredSize;
-                    if (m_instanceBufferCapacity == 0) m_instanceBufferCapacity = MAX_INSTANCES * sizeof(InstanceDesc);
+                    if (m_instanceBufferCapacity == 0) m_instanceBufferCapacity = 256 * sizeof(InstanceDesc);
                     while (m_instanceBufferCapacity < requiredSize) m_instanceBufferCapacity *= 2;
 
                     rhi::BufferDesc desc;

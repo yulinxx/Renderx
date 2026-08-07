@@ -59,7 +59,7 @@ namespace render::core
             }
         }
 
-        SY_INFO("ScreenTextRenderer::initialize: done");
+        SY_DEBUG("[ScreenTextRenderer] initialize: done");
         return true;
     }
 
@@ -95,7 +95,7 @@ namespace render::core
     {
         // 保存字体数据副本，stbtt_fontinfo 内部持有原始数据指针
         m_fontData.assign(static_cast<const uint8_t*>(fontData),
-                          static_cast<const uint8_t*>(fontData) + dataSize);
+            static_cast<const uint8_t*>(fontData) + dataSize);
         stbtt_fontinfo fi;
         if (!stbtt_InitFont(&fi, m_fontData.data(), 0))
             return;
@@ -109,7 +109,7 @@ namespace render::core
         // 清空图集
         std::fill(m_atlasData.begin(), m_atlasData.end(), uint8_t(0));
         m_atlasDirty = true;
-        SY_INFOF("ScreenTextRenderer::loadFont: pixelHeight=%.1f", pixelHeight);
+        SY_DEBUGF("ScreenTextRenderer::loadFont: pixelHeight=%.1f", pixelHeight);
     }
 
     void ScreenTextRenderer::beginFrame()

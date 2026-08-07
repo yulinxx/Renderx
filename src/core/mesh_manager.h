@@ -7,7 +7,7 @@
  * - 实例化渲染（Instanced Rendering）
  * - 实例变换更新
  * - 可见性查询
- * - 多种渲染模式（实体、线框、高亮）
+ * - 多种渲染模式（图元、线框、高亮）
  * 
  * 使用 SlotMap 管理网格，支持高效的插入和删除。
  */
@@ -28,8 +28,9 @@ namespace render::core {
  */
 class MeshManager {
 public:
-    /// UBO所能容纳的最大实例数（与着色器 mesh_3d_instanced.vert 中的数组大小一致）
-    static constexpr uint32_t MAX_INSTANCES = 512;
+    /// M6: 移除 MAX_INSTANCES 限制，改为动态分配 std::vector
+    /// 旧代码: MAX_INSTANCES = 512（与 shader 数组大小一致）
+    /// 新代码: 不再限制实例数量，动态调整缓冲区大小
 public:
     /**
      * @brief 初始化网格管理器
@@ -182,7 +183,7 @@ private:
     rhi::BufferHandle m_indexBuffer = rhi::NullHandle;
     /// 实例缓冲区（存储实例变换矩阵）
     rhi::BufferHandle m_instanceBuffer = rhi::NullHandle;
-    /// 实体渲染管线
+    /// 图元渲染管线
     rhi::PipelineHandle m_meshPipeline = rhi::NullHandle;
     /// 线框渲染管线
     rhi::PipelineHandle m_wireframePipeline = rhi::NullHandle;

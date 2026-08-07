@@ -24,19 +24,25 @@ namespace render
             return h;
         }
 
-        void PipelineStateManager::initialize(rhi::IDevice* device)
-        {
-            m_device = device;
-            m_currentPipeline = rhi::NullHandle;
-            SY_INFO("[PipelineStateManager] initialized");
-        }
+bool PipelineStateManager::initialize(rhi::IDevice* device)
+{
+    if (!device)
+    {
+        SY_ERROR("[PipelineStateManager] initialize: device is null");
+        return false;
+    }
+    m_device = device;
+    m_currentPipeline = rhi::NullHandle;
+    SY_DEBUG("[PipelineStateManager] initialized");
+    return true;
+}
 
         void PipelineStateManager::shutdown()
         {
             clearCache();
             m_device = nullptr;
             m_currentPipeline = rhi::NullHandle;
-            SY_INFO("[PipelineStateManager] shutdown");
+            SY_DEBUG("[PipelineStateManager] shutdown");
         }
 
         rhi::PipelineHandle PipelineStateManager::getOrCreatePipeline(const rhi::PipelineDesc& desc)

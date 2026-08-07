@@ -3,10 +3,10 @@
  * @brief Render 模块的公共类型定义
  * 
  * 本文件定义了渲染系统的核心数据结构和枚举类型，包括：
- * - 实体和网格的标识符类型
+ * - 图元和网格的标识符类型
  * - 图元类型枚举
  * - 顶点格式结构
- * - 实体更新和描述结构
+ * - 图元更新和描述结构
  * - 视图描述结构
  * - 几何图形描述结构
  */
@@ -17,12 +17,12 @@
 
 namespace render {
 
-/// 实体唯一标识符类型
+/// 图元唯一标识符类型
 using EntityId = uint64_t;
 /// 网格唯一标识符类型
 using MeshId   = uint64_t;
 
-/// 无效实体ID常量
+/// 无效图元ID常量
 constexpr EntityId INVALID_ENTITY_ID = 0;
 /// 无效网格ID常量
 constexpr MeshId   INVALID_MESH_ID   = 0;
@@ -71,24 +71,24 @@ struct VertexP3N3
 
 static_assert(sizeof(VertexP3N3) == 24, "VertexP3N3 must be 24 bytes");
 
-/// 实体更新操作类型
+/// 图元更新操作类型
 enum class UpdateOp : uint8_t
 {
-    Add    = 0,  ///< 添加新实体
-    Modify = 1,  ///< 修改现有实体
-    Remove = 2,  ///< 删除实体
+    Add    = 0,  ///< 添加新图元
+    Modify = 1,  ///< 修改现有图元
+    Remove = 2,  ///< 删除图元
 };
 
 /**
- * @brief 实体更新描述结构
+ * @brief 图元更新描述结构
  * 
- * 用于批量更新实体时传递更新信息，支持添加、修改和删除操作。
+ * 用于批量更新图元时传递更新信息，支持添加、修改和删除操作。
  */
 struct EntityUpdate
 {
     UpdateOp     op;            ///< 更新操作类型
     uint8_t      _pad[3];       ///< 对齐填充，确保结构大小为16字节
-    EntityId     entityId;      ///< 目标实体ID
+    EntityId     entityId;      ///< 目标图元ID
     uint32_t     vertexCount;   ///< 顶点数量（添加/修改时有效）
     uint16_t     primitiveType; ///< 图元类型（添加/修改时有效）
     uint16_t     materialIndex; ///< 材质索引（添加/修改时有效）
@@ -97,7 +97,7 @@ struct EntityUpdate
 /**
  * @brief 材质描述结构
  * 
- * 定义了实体使用的材质属性，包括线宽、点大小、颜色等。
+ * 定义了图元使用的材质属性，包括线宽、点大小、颜色等。
  */
 struct MaterialDesc
 {
@@ -107,28 +107,28 @@ struct MaterialDesc
     uint32_t flags;   ///< 材质标志位
 };
 
-/// 实体状态标志位枚举
+/// 图元状态标志位枚举
 enum class EntityFlags : uint32_t
 {
     None       = 0,      ///< 无特殊状态
-    Visible    = 1 << 0, ///< 实体可见
-    Selected   = 1 << 1, ///< 实体被选中
-    Highlighted = 1 << 2, ///< 实体被高亮
+    Visible    = 1 << 0, ///< 图元可见
+    Selected   = 1 << 1, ///< 图元被选中
+    Highlighted = 1 << 2, ///< 图元被高亮
 };
 
 /**
- * @brief 实体描述结构
+ * @brief 图元描述结构
  * 
- * 完整描述一个渲染实体的属性和状态。
+ * 完整描述一个渲染图元的属性和状态。
  */
 struct EntityDesc
 {
-    EntityId   entityId;      ///< 实体唯一标识符
+    EntityId   entityId;      ///< 图元唯一标识符
     uint32_t   vertexOffset;  ///< 在顶点缓冲区中的偏移量（字节）
     uint32_t   vertexCount;   ///< 顶点数量
     uint16_t   primitiveType; ///< 图元类型，对应PrimitiveType枚举值
     uint16_t   materialIndex; ///< 材质索引
-    uint32_t   flags;         ///< 实体状态标志，见EntityFlags
+    uint32_t   flags;         ///< 图元状态标志，见EntityFlags
     float      boundingBox[4]; ///< 2D边界框 [minX, minY, maxX, maxY]
 };
 
@@ -188,12 +188,15 @@ struct DrawIndexedIndirectCmd
 };
 
 /// 渲染后端类型枚举
+///
+/// 注意：当前仅 OpenGL 后端已实现。Vulkan / Metal / Null 仅为类型预留，
+/// 尚未有对应的运行时实现。跨平台目标需要 Metal 或等价非 OpenGL 后端。
 enum class BackendType : int
 {
-    OpenGL = 0,  ///< OpenGL 后端
-    Vulkan = 1,  ///< Vulkan 后端
-    Metal  = 2,  ///< Metal 后端（Apple平台）
-    Null   = 3,  ///< 空后端（用于测试）
+    OpenGL = 0,  ///< OpenGL 后端（当前唯一已实现的后端）
+    Vulkan = 1,  ///< Vulkan 后端（预留，未实现）
+    Metal  = 2,  ///< Metal 后端（Apple 平台，预留，未实现）
+    Null   = 3,  ///< 空后端（用于测试，预留）
 };
 
 /// 视图模式枚举
@@ -358,6 +361,9 @@ struct GeometryText
     const char* text;  ///< 文本内容（UTF-8）
     float color[4];    ///< RGBA颜色，默认白色
     float fontSize;    ///< 字体大小（像素），默认12
+    float rotationDeg; ///< 旋转角度（度），默认0
+    int32_t hAlign;    ///< 水平对齐：0=Left, 1=Center, 2=Right
+    int32_t vAlign;    ///< 垂直对齐：0=Baseline, 1=Top, 2=Middle, 3=Bottom
 };
 
 /**
@@ -377,12 +383,20 @@ struct GeometryImage
 /// 叠加层图元类型枚举，统一描述所有 2D overlay 元素
 enum class OverlayPrimitiveKind : uint8_t
 {
-    LineList,       ///< 线段列表（preview lines, control lines, selection box border）
-    Rect,           ///< 空心矩形（selection box, selection rect border）
-    FilledRect,     ///< 填充矩形（selection rect fill）
-    Points,         ///< 点集（point markers, selection handles）
+    // ---- 旧值（保留向后兼容，渲染逻辑与对应语义子类型相同）----
+    LineList,       ///< 通用线段列表（旧值，新代码应使用下方语义子类型）
+    Rect,           ///< 空心矩形（选择框边框）
+    FilledRect,     ///< 填充矩形（框选填充）
+    Points,         ///< 通用点集（旧值，新代码应使用下方语义子类型）
     Crosshair,      ///< 十字准星
     SnapIndicator,  ///< 捕捉指示器（圆形）
+
+    // ---- 语义子类型：渲染逻辑与父类型相同，但支持独立清除 ----
+    PreviewLines,       ///< 预览线（绘制过程中的临时线段）
+    ControlLines,       ///< 控制线（贝塞尔/NURBS 控制多边形）
+    SelectionOutlines,  ///< 选择轮廓（被选中图元的高亮轮廓线）
+    SelectionHandles,   ///< 选择手柄（缩放/移动/旋转手柄点）
+    PointMarkers,       ///< 点标记（捕捉点、特征点标记）
 };
 
 /// 叠加层绘制样式
@@ -488,6 +502,7 @@ struct GeometryPrimitive
 {
     GeometryPrimitiveKind kind;  ///< 图元类型
     uint32_t flags;              ///< 标志位（保留）
+    EntityId entityId;           ///< 图元ID，非0时直接使用；为0时由内部自动分配
 
     /// 类型明确的描述指针联合体
     union {
@@ -534,6 +549,7 @@ struct DrawCommand
             uint32_t vertexCount;   ///< 顶点数量
         } overlay;
     };
+    float lineWidth = 1.0f;  ///< 线宽（World2D 有效）
 };
 
 /// 屏幕空间文本项（用于屏幕坐标文本渲染）

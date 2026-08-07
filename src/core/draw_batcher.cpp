@@ -9,16 +9,17 @@ namespace render
 {
     namespace core
     {
-        void DrawBatcher::initialize(rhi::IDevice* device)
-        {
-            if (m_initialized || !device)
-                return;
+bool DrawBatcher::initialize(rhi::IDevice* device)
+{
+    if (m_initialized || !device)
+        return false;
 
-            m_device = device;
-            m_initialized = true;
+    m_device = device;
+    m_initialized = true;
 
-            SY_INFO("[DrawBatcher] initialized");
-        }
+    SY_DEBUG("[DrawBatcher] initialized");
+    return true;
+}
 
         void DrawBatcher::shutdown()
         {
@@ -43,7 +44,7 @@ namespace render
             m_device = nullptr;
             m_initialized = false;
 
-            SY_INFO("[DrawBatcher] shutdown");
+            SY_DEBUG("[DrawBatcher] shutdown");
         }
 
         void DrawBatcher::reset()

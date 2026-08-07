@@ -4,7 +4,7 @@
  * 
  * 本文件定义了渲染模块对外暴露的 C 接口，包括：
  * - 设备创建和销毁
- * - 实体管理（添加、修改、删除）
+ * - 图元管理（添加、修改、删除）
  * - 网格和实例管理
  * - 材质管理
  * - 视图设置
@@ -47,8 +47,8 @@ namespace render {
  */
 struct RenderStats
 {
-    uint32_t entityCount;      ///< 当前场景中的实体总数
-    uint32_t visibleCount;     ///< 当前帧可见的实体数量
+    uint32_t entityCount;      ///< 当前场景中的图元总数
+    uint32_t visibleCount;     ///< 当前帧可见的图元数量
     uint32_t drawCallCount;    ///< 当前帧的绘制调用次数
     uint32_t triangleCount;    ///< 当前帧绘制的三角形数量
     uint32_t lineCount;        ///< 当前帧绘制的线段数量
@@ -86,25 +86,25 @@ RENDER_API void          renderDestroyDevice(RenderDevice* dev);
 RENDER_API void renderResize(RenderDevice* dev, uint32_t width, uint32_t height);
 
 /**
- * @brief 添加2D实体到场景
+ * @brief 添加2D图元到场景
  * 
  * @param dev 渲染设备
- * @param id 实体唯一标识符
+ * @param id 图元唯一标识符
  * @param vertices 顶点数据数组
  * @param vertexCount 顶点数量
  * @param type 图元类型
  * @param materialIdx 材质索引
- * @return 实体在内部的索引位置
+ * @return 图元在内部的索引位置
  */
 RENDER_API uint32_t renderAddEntity(RenderDevice* dev, EntityId id,
                                     const VertexP3C3* vertices, uint32_t vertexCount,
                                     PrimitiveType type, uint16_t materialIdx);
 
 /**
- * @brief 修改已存在的2D实体
+ * @brief 修改已存在的2D图元
  * 
  * @param dev 渲染设备
- * @param id 要修改的实体ID
+ * @param id 要修改的图元ID
  * @param vertices 新的顶点数据
  * @param vertexCount 顶点数量
  * @param materialIdx 材质索引
@@ -114,24 +114,24 @@ RENDER_API void     renderModifyEntity(RenderDevice* dev, EntityId id,
                                        uint16_t materialIdx);
 
 /**
- * @brief 从场景中删除2D实体
+ * @brief 从场景中删除2D图元
  * 
  * @param dev 渲染设备
- * @param id 要删除的实体ID
+ * @param id 要删除的图元ID
  */
 RENDER_API void     renderRemoveEntity(RenderDevice* dev, EntityId id);
 
 /**
- * @brief 设置实体的可见性
+ * @brief 设置图元的可见性
  * 
  * @param dev 渲染设备
- * @param id 实体ID
+ * @param id 图元ID
  * @param visible 可见性：0=不可见，1=可见
  */
 RENDER_API void     renderSetEntityVisibility(RenderDevice* dev, EntityId id, int32_t visible);
 
 /**
- * @brief 批量应用实体更新
+ * @brief 批量应用图元更新
  * 
  * @param dev 渲染设备
  * @param packet 更新数据包指针
@@ -224,6 +224,20 @@ RENDER_API void renderSetView2D(RenderDevice* dev, const float viewMatrix[9],
                                 float viewWidth, float viewHeight);
 
 /**
+ * @brief 设置2D相机中心（用于 camera-relative 渲染）
+ *
+ * 当场景坐标值较大时（如 CAD 图纸坐标在数万量级），
+ * 顶点着色器中的 viewMatrix 乘法会因 float32 精度不足导致渲染伪影
+ * （线条断裂、虚线化等）。通过在细分阶段以 double 精度减去相机中心，
+ * 使传入 GPU 的顶点坐标保持在相机附近的小数值范围，消除精度损失。
+ *
+ * @param dev 渲染设备
+ * @param cx 相机中心 X 坐标（世界坐标系，double 精度）
+ * @param cy 相机中心 Y 坐标（世界坐标系，double 精度）
+ */
+RENDER_API void renderSetCameraCenter(RenderDevice* dev, double cx, double cy);
+
+/**
  * @brief 设置3D视图参数
  * 
  * @param dev 渲染设备
@@ -279,108 +293,12 @@ RENDER_API void renderSetScreenTexts(RenderDevice* dev, const ScreenTextItem* it
 RENDER_API void renderSetClearColor(RenderDevice* dev, float r, float g, float b, float a);
 
 /**
- * @brief 设置覆盖层数据
- * 
- * @param dev 渲染设备
- * @param overlay 覆盖层数据结构（十字准星、捕捉点等）
- */
-RENDER_API void renderSetOverlay(RenderDevice* dev, const OverlayData* overlay);
-
-/**
  * @brief 设置要渲染的文本列表
  * 
  * @param dev 渲染设备
  * @param texts 文本项列表结构
  */
 RENDER_API void renderSetTexts(RenderDevice* dev, const TextItemList* texts);
-
-/**
- * @brief 设置预览线（用于绘制正在创建的几何图形）
- *
- * @deprecated Phase 1 起已废弃，请改用 renderSubmitOverlay + OverlayPrimitiveKind::LineList。
- * 此函数保留仅用于兼容，后续版本可能移除。
- *
- * @param dev 渲染设备
- * @param vertices 顶点数据
- * @param vertexCount 顶点数量
- * @param colorRGBA 颜色（RGBA格式，每个通道8位）
- */
-RENDER_API void renderSetPreviewLines(RenderDevice* dev, const VertexP3C3* vertices,
-                                      uint32_t vertexCount, uint32_t colorRGBA);
-
-/**
- * @brief 设置控制线（用于绘制控制点连线）
- *
- * @deprecated Phase 1 起已废弃，请改用 renderSubmitOverlay + OverlayPrimitiveKind::LineList。
- * 此函数保留仅用于兼容，后续版本可能移除。
- *
- * @param dev 渲染设备
- * @param vertices 顶点数据
- * @param vertexCount 顶点数量
- * @param colorRGBA 颜色（RGBA格式，每个通道8位）
- */
-RENDER_API void renderSetControlLines(RenderDevice* dev, const VertexP3C3* vertices,
-                                      uint32_t vertexCount, uint32_t colorRGBA);
-
-/**
- * @brief 设置点标记（用于标记关键点位置）
- *
- * @deprecated Phase 6 起已废弃，请改用 renderSubmitOverlay + OverlayPrimitiveKind::Points。
- * 此函数保留仅用于兼容，后续版本可能移除。
- *
- * @param dev 渲染设备
- * @param worldPositions 世界坐标位置数组（每点2个float）
- * @param count 点数量
- * @param markerSize 标记大小（像素）
- * @param fillColor 填充颜色（RGBA格式）
- * @param borderColor 边框颜色（RGBA格式）
- */
-RENDER_API void renderSetPointMarkers(RenderDevice* dev, const float* worldPositions,
-                                      uint32_t count, float markerSize,
-                                      uint32_t fillColor, uint32_t borderColor);
-
-/**
- * @brief 设置选择框（用于显示选中区域）
- *
- * @deprecated Phase 6 起已废弃，请改用 renderSubmitOverlay + OverlayPrimitiveKind::Rect。
- * 此函数保留仅用于兼容，后续版本可能移除。
- *
- * @param dev 渲染设备
- * @param bbox 边界框
- * @param colorRGBA 颜色（RGBA格式）
- */
-RENDER_API void renderSetSelectionBox(RenderDevice* dev, const BBox2f* bbox, uint32_t colorRGBA);
-
-/**
- * @brief 设置选择预览矩形（框选/交选时的半透明填充矩形）
- *
- * @deprecated Phase 6 起已废弃，请改用 renderSubmitOverlay + OverlayPrimitiveKind::FilledRect / Rect。
- * 此函数保留仅用于兼容，后续版本可能移除。
- *
- * @param dev 渲染设备
- * @param bbox 边界框
- * @param fillColor 填充颜色（RGBA格式，alpha=0时无填充）
- * @param borderColor 边框颜色（RGBA格式）
- */
-RENDER_API void renderSetSelectionRect(RenderDevice* dev, const BBox2f* bbox,
-                                       uint32_t fillColor, uint32_t borderColor);
-
-/**
- * @brief 设置选择手柄（用于拖拽调整选中对象）
- *
- * @deprecated Phase 6 起已废弃，请改用 renderSubmitOverlay + OverlayPrimitiveKind::Points。
- * 此函数保留仅用于兼容，后续版本可能移除。
- *
- * @param dev 渲染设备
- * @param worldPositions 世界坐标位置数组（每点2个float）
- * @param count 手柄数量
- * @param handleSize 手柄大小（像素）
- * @param fillColor 填充颜色（RGBA格式）
- * @param borderColor 边框颜色（RGBA格式）
- */
-RENDER_API void renderSetSelectionHandles(RenderDevice* dev, const float* worldPositions,
-                                          uint32_t count, float handleSize,
-                                          uint32_t fillColor, uint32_t borderColor);
 
 /**
  * @brief 提交单个叠加层图元（统一 API）
@@ -409,8 +327,6 @@ RENDER_API void renderSubmitOverlays(RenderDevice* dev, const OverlayPrimitive* 
 
 /**
  * @brief 清除所有通过统一 API 提交的叠加层图元
- *
- * 不影响通过旧 API（renderSetPreviewLines 等）设置的数据。
  *
  * @param dev 渲染设备
  */
@@ -511,10 +427,10 @@ RENDER_API void renderFrame(RenderDevice* dev);
 RENDER_API void renderGetStats(RenderDevice* dev, RenderStats* stats);
 
 /**
- * @brief 获取场景中的实体数量
+ * @brief 获取场景中的图元数量
  * 
  * @param dev 渲染设备
- * @return 实体总数
+ * @return 图元总数
  */
 RENDER_API uint32_t renderGetEntityCount(RenderDevice* dev);
 
@@ -549,91 +465,6 @@ RENDER_API void renderBeginScene(RenderDevice* dev);
 RENDER_API void renderEndScene(RenderDevice* dev);
 
 /**
- * @brief 发射折线几何（用于即时渲染）
- *
- * @deprecated Phase 2 起已废弃，请改用 renderSubmitGeometry + GeometryPrimitiveKind::Polyline。
- * 此函数保留仅用于兼容，后续版本可能移除。
- *
- * @param dev 渲染设备
- * @param polyline 折线几何描述
- */
-RENDER_API void renderEmitPolyline(RenderDevice* dev, const GeometryPolyline* polyline);
-
-/**
- * @brief 发射圆形几何（用于即时渲染）
- *
- * @deprecated Phase 2 起已废弃，请改用 renderSubmitGeometry + GeometryPrimitiveKind::Circle。
- * 此函数保留仅用于兼容，后续版本可能移除。
- *
- * @param dev 渲染设备
- * @param circle 圆形几何描述
- */
-RENDER_API void renderEmitCircle(RenderDevice* dev, const GeometryCircle* circle);
-
-/**
- * @brief 发射圆弧几何（用于即时渲染）
- *
- * @deprecated Phase 2 起已废弃，请改用 renderSubmitGeometry + GeometryPrimitiveKind::Arc。
- * 此函数保留仅用于兼容，后续版本可能移除。
- *
- * @param dev 渲染设备
- * @param arc 圆弧几何描述
- */
-RENDER_API void renderEmitArc(RenderDevice* dev, const GeometryArc* arc);
-
-/**
- * @brief 发射椭圆几何（用于即时渲染）
- *
- * @deprecated Phase 2 起已废弃，请改用 renderSubmitGeometry + GeometryPrimitiveKind::Ellipse。
- * 此函数保留仅用于兼容，后续版本可能移除。
- *
- * @param dev 渲染设备
- * @param ellipse 椭圆几何描述
- */
-RENDER_API void renderEmitEllipse(RenderDevice* dev, const GeometryEllipse* ellipse);
-
-/**
- * @brief 发射文本几何（用于即时渲染）
- *
- * @deprecated Phase 2 起已废弃，请改用 renderSubmitGeometry + GeometryPrimitiveKind::Text。
- * 此函数保留仅用于兼容，后续版本可能移除。
- *
- * @param dev 渲染设备
- * @param text 文本几何描述
- */
-RENDER_API void renderEmitText(RenderDevice* dev, const GeometryText* text);
-
-/**
- * @brief 发射图像几何（用于即时渲染）
- *
- * @deprecated Phase 2 起已废弃，请改用 renderSubmitGeometry + GeometryPrimitiveKind::Image。
- * 此函数保留仅用于兼容，后续版本可能移除。
- *
- * @param dev 渲染设备
- * @param image 图像几何描述
- */
-RENDER_API void renderEmitImage(RenderDevice* dev, const GeometryImage* image);
-
-/**
- * @brief 发射三角网格（用于即时渲染）
- *
- * @deprecated Phase 2 起已废弃，请改用 renderSubmitGeometry + GeometryPrimitiveKind::TriangleSoup。
- * 此函数保留仅用于兼容，后续版本可能移除。
- *
- * 将三角网格注册到 MeshManager，并添加一个实例（单位矩阵变换）。
- * 每 3 个顶点定义一个三角形。
- *
- * @param dev 渲染设备
- * @param vertices 顶点位置数组（每顶点3个float）
- * @param normals 顶点法线数组（每顶点3个float）
- * @param vertexCount 顶点数量
- */
-RENDER_API void renderEmitTriangleSoup(RenderDevice* dev,
-                                       const float* vertices, const float* normals,
-                                       uint32_t vertexCount,
-                                       const float color[4]);
-
-/**
  * @brief 提交单个几何图元（统一 API）
  *
  * Phase 2 引入的统一几何提交入口。调用方通过 GeometryPrimitive 描述图元类型和
@@ -642,8 +473,7 @@ RENDER_API void renderEmitTriangleSoup(RenderDevice* dev,
  * - Text → 文本缓存路径（TextAtlas）
  * - TriangleSoup → 3D mesh 路径（MeshManager）
  *
- * 替代范围：renderEmitPolyline / renderEmitCircle / renderEmitArc /
- *           renderEmitEllipse / renderEmitText / renderEmitImage / renderEmitTriangleSoup
+ * 该 API 为几何提交的统一入口，替代早期分散的 renderEmit* 系列。
  *
  * @param dev 渲染设备
  * @param primitive 图元描述指针

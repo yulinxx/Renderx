@@ -9,22 +9,33 @@ namespace render
 {
     namespace core
     {
-        void BatchQueue::initialize(rhi::IDevice* device)
-        {
-            m_device = device;
-            m_indirectCmds.reserve(512);
-            m_batches.reserve(PRIMITIVE_TYPE_COUNT);
-            m_dirtyRanges.reserve(64);
-            // pipeline 由 CommandEncoder 统一管理，BatchQueue 不再创建
+bool BatchQueue::initialize(rhi::IDevice* device)
+{
+    if (!device)
+        return false;
 
-            rhi::BufferDesc vbDesc;
-            vbDesc.size = 1024 * 1024 * sizeof(VertexP3C3);
-            vbDesc.usage = rhi::BufferUsage::Vertex;
-            vbDesc.memory = rhi::MemoryType::GPU_CPU_Coherent;
-            vbDesc.debugName = "BatchQueue_VertexBuffer";
-            m_vertexBuffer = device->createBuffer(vbDesc);
-            m_vertexBufferCapacity = 1024 * 1024;
-        }
+    m_device = device;
+    m_indirectCmds.reserve(512);
+    m_batches.reserve(PRIMITIVE_TYPE_COUNT);
+    m_dirtyRanges.reserve(64);
+    // pipeline 由 CommandEncoder 统一管理，BatchQueue 不再创建
+
+    rhi::BufferDesc vbDesc;
+    vbDesc.size = 1024 * 1024 * sizeof(VertexP3C3);
+    vbDesc.usage = rhi::BufferUsage::Vertex;
+    vbDesc.memory = rhi::MemoryType::GPU_CPU_Coherent;
+    vbDesc.debugName = "BatchQueue_VertexBuffer";
+    m_vertexBuffer = device->createBuffer(vbDesc);
+    if (m_vertexBuffer == rhi::NullHandle)
+    {
+        SY_ERROR("[BatchQueue] failed to create vertex buffer");
+        return false;
+    }
+    m_vertexBufferCapacity = 1024 * 1024;
+
+    SY_DEBUG("[BatchQueue] initialized");
+    return true;
+}
 
         void BatchQueue::shutdown()
         {
@@ -217,8 +228,48 @@ namespace render
 
             flushBatch();
 
-            // SY_INFOF("BatchQueue::submit: count=%u, indirectCmds=%zu, batches=%zu, dirty=%d",
-            //     count, m_indirectCmds.size(), m_batches.size(), m_dirty ? 1 : 0);
+            // ===== 间接命令诊断（构建时临时日志）=====
+            const uint32_t dbgN = static_cast<uint32_t>(
+                m_indirectCmds.size() < 12 ? m_indirectCmds.size() : 12);
+            SY_DEBUGF("BQ:indirectCnt=%zu entriesCnt=%zu totalVert=%u batches=%zu",
+                m_indirectCmds.size(), world.getEntityCount(),
+                world.getTotalVertexCount(), m_batches.size());
+
+            for (uint32_t di = 0; di < dbgN; ++di)
+            {
+                const DrawIndirectCmd& cmd = m_indirectCmds[di];
+                SY_DEBUGF("BQ:cmd[%u] first=%u count=%u | type=%u mat=%u",
+                    di, cmd.firstVertex, cmd.vertexCount,
+                    (di < sorted.size()) ? sorted[di].primitiveType : 0xFFFF,
+                    (di < sorted.size()) ? sorted[di].materialIndex : 0xFFFF);
+            }
+
+            // 全列表校验：cmd.firstVertex 与对应 entry.vertexOffset 是否一致
+            uint32_t opVerts = 0;
+            uint32_t maxOff = 0;
+            bool mismatch = false;
+            for (uint32_t ai = 0; ai < m_indirectCmds.size(); ++ai)
+            {
+                const DrawIndirectCmd& cmdm = m_indirectCmds[ai];
+                const auto& e = entries[sorted[ai].visibleIdx];
+                opVerts += cmdm.vertexCount;
+                if (cmdm.vertexCount != e.vertexCount || cmdm.firstVertex != e.vertexOffset)
+                {
+                    mismatch = true;
+                    if (ai < 16)
+                    {
+                        SY_ERRORF("BQ:MISMATCH cmd[%u] (first=%u,cnt=%u) vs entry (offset=%u,cnt=%u) type=%u",
+                            ai, cmdm.firstVertex, cmdm.vertexCount,
+                            e.vertexOffset, e.vertexCount, e.primitiveType);
+                    }
+                }
+                if (cmdm.firstVertex > maxOff) maxOff = cmdm.firstVertex;
+            }
+            SY_DEBUGF("BQ:sumVerts=%u maxOffset=%u mismatch=%d",
+                opVerts, maxOff, mismatch ? 1 : 0);
+            // ===== end 间接命令诊断 =====
+
+            // SY_INFOF("BatchQueue::submit: REBUILD path, count=%u, entries=%zu", count, world.getEntityCount());
 
             m_lastVisibleCount = count;
             m_lastVisibleIndices.resize(count);
@@ -229,17 +280,29 @@ namespace render
         void BatchQueue::render(rhi::IDevice* device, CommandEncoder* encoder,
             const float viewMatrix[9], const RenderWorld& world)
         {
-            (void)viewMatrix; // viewMatrix 由 CommandEncoder::execute() 统一设置
+            (void)viewMatrix;
+
+            // === 临时诊断：捕获 ZOOM（放在最开头，确保最先执行） ===
+            static float lastVM0 = 0, lastVM6 = 0;
+            bool vmChanged = (std::abs(viewMatrix[0] - lastVM0) > 0.0001f ||
+                              std::abs(viewMatrix[6] - lastVM6) > 0.01f);
+            if (vmChanged) {
+                SY_DEBUGF("[BQ::render] ZOOM: vm[0]=%.6f->%.6f, vm[6]=%.2f->%.2f, batches=%zu, dirtyRanges=%zu, needFullVB=%d",
+                    lastVM0, viewMatrix[0], lastVM6, viewMatrix[6],
+                    m_batches.size(), m_dirtyRanges.size(), m_needFullVertexUpload);
+                lastVM0 = viewMatrix[0]; lastVM6 = viewMatrix[6];
+            }
+            // ============================================================
 
             if (!encoder)
             {
-                SY_ERROR("[BatchQueue] render: encoder is null, cannot submit commands");
+                SY_ERROR("[BatchQueue] render: encoder is null");
                 return;
             }
 
             if (m_batches.empty())
             {
-                SY_DEBUGF("BatchQueue::render: m_batches is EMPTY, skipping render");
+                SY_DEBUGF("[BatchQueue::render] m_batches is EMPTY");
                 return;
             }
 
@@ -263,9 +326,11 @@ namespace render
                 desc.usage = rhi::BufferUsage::Vertex;
                 desc.memory = rhi::MemoryType::GPU_CPU_Coherent;
                 desc.debugName = "BatchQueue_VertexBuffer";
+
                 m_vertexBuffer = device->createBuffer(desc);
                 m_vertexBufferCapacity = newCap;
                 m_needFullVertexUpload = true;
+
                 SY_DEBUG("[BatchQueue] VB expanded, flag full upload");
             }
 
@@ -325,7 +390,9 @@ namespace render
                     batch.type,
                     batch.materialIndex,
                     batch.firstIndirect * sizeof(DrawIndirectCmd),
-                    batch.indirectCount);
+                    batch.indirectCount,
+                    0,  // zOrder 暂时设为 0
+                    batch.lineWidth);
             }
         }
 

@@ -4,6 +4,7 @@
 #include <stb_truetype.h>
 #include <cstring>
 #include <algorithm>
+#include <cmath>
 
 namespace render::core
 {
@@ -105,9 +106,13 @@ namespace render::core
         m_atlasLineHeight = 0;
     }
 
-    void TextAtlas::renderText(const TextItemList* texts, const float viewMatrix[9], rhi::IDevice* device)
+    void TextAtlas::renderText(const TextItemList* texts, const float viewMatrix[9],
+        uint32_t viewportW, uint32_t viewportH,
+        rhi::IDevice* device)
     {
         if (!texts || !texts->items || texts->count == 0 || !m_fontLoaded)
+            return;
+        if (viewportW == 0 || viewportH == 0)
             return;
 
         std::vector<TextVertex> allQuads;
@@ -118,7 +123,7 @@ namespace render::core
             const TextItem& item = texts->items[i];
             if (!item.text || item.text[0] == '\0')
                 continue;
-            buildTextQuads(item, allQuads, viewMatrix);
+            buildTextQuads(item, allQuads, viewMatrix, viewportW, viewportH);
         }
 
         if (allQuads.empty())
@@ -140,9 +145,8 @@ namespace render::core
         // 上传图集纹理（如有脏数据）
         device->uploadTexture(m_atlasTexture, 0, m_atlasData.data(), m_atlasWidth * 4);
 
-        // 渲染
+        // 渲染：顶点已是NDC坐标，shader中不再需要viewMatrix变换
         device->bindPipeline(m_textPipeline);
-        device->setUniformMatrix3("uViewMatrix", viewMatrix);
         device->bindVertexBuffer(0, m_vertexBuffer, 0);
         device->bindTexture(0, 0, m_atlasTexture);
         device->draw(static_cast<uint32_t>(allQuads.size()), 1, 0, 0);
@@ -246,15 +250,61 @@ namespace render::core
         return true;
     }
 
-    void TextAtlas::buildTextQuads(const TextItem& item, std::vector<TextVertex>& outQuads, const float viewMatrix[9])
+    void TextAtlas::buildTextQuads(const TextItem& item, std::vector<TextVertex>& outQuads,
+        const float viewMatrix[9],
+        uint32_t viewportW, uint32_t viewportH)
     {
-        (void)viewMatrix;
-        float cursorX = item.x;
-        float cursorY = item.y;
+        // 用 viewMatrix 将文本基点从世界坐标变换到 NDC
+        float wx = item.x;
+        float wy = item.y;
+        float ndcX = viewMatrix[0] * wx + viewMatrix[3] * wy + viewMatrix[6];
+        float ndcY = viewMatrix[1] * wx + viewMatrix[4] * wy + viewMatrix[7];
+
+        // 像素到 NDC 的转换系数
+        float pxToNdcX = 2.0f / static_cast<float>(viewportW);
+        float pxToNdcY = 2.0f / static_cast<float>(viewportH);
+
         float fontSize = static_cast<float>(item.fontSize);
         if (fontSize <= 0.0f)
             fontSize = m_fontPixelHeight;
 
+        // 第一遍：计算文本总宽度和高度，用于对齐
+        float totalWidth = 0.0f;
+        float ascent = 0.0f;
+        float descent = 0.0f;
+        for (const char* p = item.text; *p != '\0'; ++p)
+        {
+            uint32_t cp = static_cast<uint32_t>(static_cast<unsigned char>(*p));
+            GlyphInfo gi = getGlyph(cp, fontSize);
+            if (!gi.valid) continue;
+            totalWidth += gi.xAdvance;
+            if (gi.y0 < descent) descent = gi.y0;
+            if (gi.y1 > ascent) ascent = gi.y1;
+        }
+        float totalHeight = ascent - descent;
+
+        // 根据对齐方式计算偏移
+        float alignOffsetX = 0.0f;
+        float alignOffsetY = 0.0f;
+        if (item.hAlign == 1)      // Center
+            alignOffsetX = -totalWidth * 0.5f;
+        else if (item.hAlign == 2) // Right
+            alignOffsetX = -totalWidth;
+
+        if (item.vAlign == 1)       // Top
+            alignOffsetY = -ascent;
+        else if (item.vAlign == 2)  // Middle
+            alignOffsetY = -totalHeight * 0.5f - descent;
+        else if (item.vAlign == 3)  // Bottom
+            alignOffsetY = -descent;
+
+        // 旋转参数
+        float rotRad = item.rotationDeg * 3.14159265358979323846f / 180.0f;
+        float cosR = std::cos(rotRad);
+        float sinR = std::sin(rotRad);
+
+        // 第二遍：构建四边形
+        float cursorX = 0.0f;
         for (const char* p = item.text; *p != '\0'; ++p)
         {
             uint32_t cp = static_cast<uint32_t>(static_cast<unsigned char>(*p));
@@ -262,15 +312,47 @@ namespace render::core
             if (!gi.valid)
                 continue;
 
-            float qx = cursorX + gi.x0;
-            float qy = cursorY + gi.y0;
-            float qw = gi.x1 - gi.x0;
-            float qh = gi.y1 - gi.y0;
+            // 字符的像素偏移（含对齐偏移）
+            float px = cursorX + gi.x0 + alignOffsetX;
+            float py = gi.y0 + alignOffsetY;
 
-            TextVertex v0 = { qx,      qy,      0.0f, gi.u0, gi.v0, item.color[0], item.color[1], item.color[2], item.color[3] };
-            TextVertex v1 = { qx + qw, qy,      0.0f, gi.u1, gi.v0, item.color[0], item.color[1], item.color[2], item.color[3] };
-            TextVertex v2 = { qx + qw, qy + qh, 0.0f, gi.u1, gi.v1, item.color[0], item.color[1], item.color[2], item.color[3] };
-            TextVertex v3 = { qx,      qy + qh, 0.0f, gi.u0, gi.v1, item.color[0], item.color[1], item.color[2], item.color[3] };
+            // 像素偏移转 NDC
+            float qx = px * pxToNdcX;
+            float qy = py * pxToNdcY;
+            float qw = (gi.x1 - gi.x0) * pxToNdcX;
+            float qh = (gi.y1 - gi.y0) * pxToNdcY;
+
+            // 如果有旋转，旋转字符的 NDC 偏移
+            float rx0, ry0, rx1, ry1, rx2, ry2, rx3, ry3;
+            if (std::fabs(rotRad) > 1e-6f)
+            {
+                // 四个角的偏移
+                float ox[4] = { qx, qx + qw, qx + qw, qx };
+                float oy[4] = { qy, qy, qy + qh, qy + qh };
+                for (int k = 0; k < 4; ++k)
+                {
+                    float rx = ox[k] * cosR - oy[k] * sinR;
+                    float ry = ox[k] * sinR + oy[k] * cosR;
+                    ox[k] = rx; oy[k] = ry;
+                }
+                rx0 = ox[0]; ry0 = oy[0];
+                rx1 = ox[1]; ry1 = oy[1];
+                rx2 = ox[2]; ry2 = oy[2];
+                rx3 = ox[3]; ry3 = oy[3];
+            }
+            else
+            {
+                rx0 = qx;       ry0 = qy;
+                rx1 = qx + qw;  ry1 = qy;
+                rx2 = qx + qw;  ry2 = qy + qh;
+                rx3 = qx;       ry3 = qy + qh;
+            }
+
+            // 最终顶点位置 = 基点NDC + 旋转后的字符NDC偏移
+            TextVertex v0 = { ndcX + rx0, ndcY + ry0, 0.0f, gi.u0, gi.v0, item.color[0], item.color[1], item.color[2], item.color[3] };
+            TextVertex v1 = { ndcX + rx1, ndcY + ry1, 0.0f, gi.u1, gi.v0, item.color[0], item.color[1], item.color[2], item.color[3] };
+            TextVertex v2 = { ndcX + rx2, ndcY + ry2, 0.0f, gi.u1, gi.v1, item.color[0], item.color[1], item.color[2], item.color[3] };
+            TextVertex v3 = { ndcX + rx3, ndcY + ry3, 0.0f, gi.u0, gi.v1, item.color[0], item.color[1], item.color[2], item.color[3] };
 
             outQuads.push_back(v0);
             outQuads.push_back(v1);

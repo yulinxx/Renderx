@@ -55,13 +55,20 @@ option(BUILD_SHARED_LIBS "Build shared libraries" ON)
 set(RENDER_PUBLIC_HEADERS
     include/render/render.h
     include/render/render_types.h
+    include/render/tess_params.h
 )
 
 # 源文件列表
 set(RENDER_SOURCES
-    src/c_api/render_c_api.cpp          # C API实现
+    # C API 实现（从 render_c_api.cpp 按功能模块拆分，共 4 个子文件）
+    src/c_api/render_c_api_device.cpp   # 设备生命周期、视图状态、统计查询、屏幕文本
+    src/c_api/render_c_api_entity.cpp   # 图元管理、3D网格管理、材质管理
+    src/c_api/render_c_api_overlay.cpp  # 叠加层包装器、统一 Overlay API、场景环境
+    src/c_api/render_c_api_frame.cpp    # 渲染帧、GPU剔除、场景模式、几何细分、统一提交
+    src/c_api/render_runtime.cpp        # RenderRuntime 实现（渲染运行时共享资源）
     src/platform/gl_loader.cpp          # OpenGL函数加载器
     src/rhi/rhi_gl.cpp                  # OpenGL RHI实现
+    src/rhi/rhi_null.cpp                 # Null RHI实现（用于测试，无GPU操作）
     src/core/render_world.cpp           # 渲染世界（图元管理）
     src/core/batch_queue.cpp            # 批量绘制队列
     src/core/overlay_queue.cpp          # 叠加层渲染队列

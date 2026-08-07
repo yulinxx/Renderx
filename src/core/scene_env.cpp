@@ -40,7 +40,7 @@ namespace render::core
                 SY_ERROR("SceneEnv::initialize: line pipeline creation failed");
                 return false;
             }
-            SY_INFOF("SceneEnv::initialize: line pipeline created, handle=%u", m_linePipeline);
+            SY_DEBUGF("SceneEnv::initialize: line pipeline created, handle=%u", m_linePipeline);
         }
 
         {
@@ -62,10 +62,10 @@ namespace render::core
                 SY_ERROR("SceneEnv::initialize: triangle pipeline creation failed");
                 return false;
             }
-            SY_INFOF("SceneEnv::initialize: triangle pipeline created, handle=%u", m_trianglePipeline);
+            SY_DEBUGF("SceneEnv::initialize: triangle pipeline created, handle=%u", m_trianglePipeline);
         }
 
-        SY_INFOF("SceneEnv::initialize: vertex buffer=%u", m_vertexBuffer);
+        SY_DEBUGF("SceneEnv::initialize: vertex buffer=%u", m_vertexBuffer);
         return true;
     }
 
@@ -141,9 +141,13 @@ namespace render::core
         render(device, viewMatrix, 0, 0);
     }
 
-    void SceneEnv::render(rhi::IDevice* device, const float viewMatrix[9],
+void SceneEnv::render(rhi::IDevice* device, const float viewMatrix[9],
         uint32_t viewportWidth, uint32_t viewportHeight)
     {
+        // Check if initialized (m_device is set in initialize())
+        if (!m_device)
+            return;
+
         // SY_TRACEF("SceneEnv::render: layers=%zu, vertices=%zu, dirty=%d, viewport=%ux%u",
         //     m_layers.size(), m_vertices.size(), m_dirty ? 1 : 0, viewportWidth, viewportHeight);
 
@@ -206,6 +210,10 @@ namespace render::core
 
             const float* matrix = layer.usePixelCoords ? pixelMatrix : viewMatrix;
             device->setUniformMatrix3("uViewMatrix", matrix);
+
+            // SceneEnv uses world coordinates, not camera-relative
+            const float zero2[2] = {0.0f, 0.0f};
+            device->setUniformVec2("uCameraCenter", zero2);
 
             device->bindVertexBuffer(0, m_vertexBuffer, layer.firstVertex * sizeof(VertexP3C3));
             device->setLineWidth(layer.lineWidth);

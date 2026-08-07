@@ -58,7 +58,7 @@ TEST(RenderTypesTest, UpdateOp_ValuesAreCorrect)
     EXPECT_EQ(static_cast<uint8_t>(render::UpdateOp::Remove), 2);
 }
 
-// 测试实体标志枚举
+// 测试图元标志枚举
 TEST(RenderTypesTest, EntityFlags_ValuesAreCorrect)
 {
     EXPECT_EQ(static_cast<uint32_t>(render::EntityFlags::None), 0);

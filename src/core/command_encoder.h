@@ -49,8 +49,9 @@ public:
      * 创建内部 pipeline 缓存。
      *
      * @param device RHI 设备指针
+     * @return true 初始化成功，false 初始化失败
      */
-    void initialize(rhi::IDevice* device);
+    bool initialize(rhi::IDevice* device);
 
     /**
      * @brief 设置管线状态管理器
@@ -98,7 +99,7 @@ public:
                        uint32_t vertexOffset, uint32_t vertexCount,
                        uint32_t zOrder = 100);
 
-    /**
+/**
      * @brief 提交 world2D 绘制命令
      *
      * 由 BatchQueue::render() 调用，把每个 batch 的绘制意图注册到编码器。
@@ -108,28 +109,31 @@ public:
      * @param indirectOffset 间接命令在 indirect buffer 中的字节偏移
      * @param indirectCount  间接命令数量
      * @param zOrder         Z 序（默认 0）
+     * @param lineWidth      线宽（默认 1.0f）
      */
     void submitWorld(PrimitiveType topology, uint16_t materialIndex,
                      uint32_t indirectOffset, uint32_t indirectCount,
-                     uint32_t zOrder = 0);
+                     uint32_t zOrder = 0, float lineWidth = 1.0f);
 
-    /**
-     * @brief 执行所有收集的命令
-     *
-     * 按 sortKey 排序后，统一绑定 pipeline / buffer 并执行绘制。
-     * 相同 topology + material + space 的命令会被连续执行，减少状态切换。
-     *
-     * @param device      RHI 设备
-     * @param worldVB     world2D 顶点 buffer（来自 BatchQueue）
-     * @param overlayVB   overlay 顶点 buffer（来自 OverlayQueue）
-     * @param indirectBuf 间接命令 buffer（来自 BatchQueue）
-     * @param viewMatrix  3x3 视图矩阵
-     */
-    void execute(rhi::IDevice* device,
-                 rhi::BufferHandle worldVB,
-                 rhi::BufferHandle overlayVB,
-                 rhi::BufferHandle indirectBuf,
-                 const float viewMatrix[9]);
+     /**
+      * @brief 执行所有收集的命令
+      *
+      * 按 sortKey 排序后，统一绑定 pipeline / buffer 并执行绘制。
+      * 相同 topology + material + space 的命令会被连续执行，减少状态切换。
+      *
+      * @param device      RHI 设备
+      * @param worldVB     world2D 顶点 buffer（来自 BatchQueue）
+      * @param overlayVB   overlay 顶点 buffer（来自 OverlayQueue）
+      * @param indirectBuf 间接命令 buffer（来自 BatchQueue）
+      * @param viewMatrix  3x3 视图矩阵
+      * @param cameraCenter 相机中心（世界坐标），用于 World2D 相机相对渲染
+      */
+     void execute(rhi::IDevice* device,
+                  rhi::BufferHandle worldVB,
+                  rhi::BufferHandle overlayVB,
+                  rhi::BufferHandle indirectBuf,
+                  const float viewMatrix[9],
+                  const float cameraCenter[2]);
 
     /**
      * @brief 获取当前命令数量

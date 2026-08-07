@@ -54,10 +54,14 @@ public:
      * @brief 渲染文本列表
      * 
      * @param texts 文本项列表
-     * @param viewMatrix 3x3视图矩阵
+     * @param viewMatrix 3x3视图矩阵（世界→NDC）
+     * @param viewportW 视口宽度（像素）
+     * @param viewportH 视口高度（像素）
      * @param device RHI设备指针
      */
-    void renderText(const TextItemList* texts, const float viewMatrix[9], rhi::IDevice* device);
+    void renderText(const TextItemList* texts, const float viewMatrix[9],
+                    uint32_t viewportW, uint32_t viewportH,
+                    rhi::IDevice* device);
 
 private:
     /**
@@ -158,12 +162,18 @@ private:
      * @brief 构建文本四边形
      * 
      * 将文本项转换为顶点数据。
+     * 文本基点通过 viewMatrix 变换到 NDC，字符像素偏移转换为 NDC 偏移，
+     * 保证文本位置随视图移动但字号不随缩放变化。
      * 
      * @param item 文本项
      * @param outQuads 输出顶点数组
-     * @param viewMatrix 3x3视图矩阵
+     * @param viewMatrix 3x3视图矩阵（世界→NDC）
+     * @param viewportW 视口宽度（像素）
+     * @param viewportH 视口高度（像素）
      */
-    void buildTextQuads(const TextItem& item, std::vector<TextVertex>& outQuads, const float viewMatrix[9]);
+    void buildTextQuads(const TextItem& item, std::vector<TextVertex>& outQuads,
+                        const float viewMatrix[9],
+                        uint32_t viewportW, uint32_t viewportH);
 };
 
 }
