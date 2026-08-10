@@ -137,10 +137,44 @@ RENDER_API void     renderSetEntityVisibility(RenderDevice* dev, EntityId id, in
  * @param packet 更新数据包指针
  * @param packetSize 数据包大小（字节）
  */
-RENDER_API void renderApplyUpdates(RenderDevice* dev, const void* packet, uint32_t packetSize);
+ RENDER_API void renderApplyUpdates(RenderDevice* dev, const void* packet, uint32_t packetSize);
 
-/**
- * @brief 注册3D网格到渲染系统
+ /**
+  * @brief 添加3D图元到渲染世界
+  *
+  * 将3D三角网格图元添加到 RenderWorld3D，用于统一渲染管线。
+  *
+  * @param dev 渲染设备
+  * @param id 图元唯一标识
+  * @param positions 顶点位置数组（每顶点3个float：x,y,z）
+  * @param normals 顶点法线数组（每顶点3个float：nx,ny,nz）
+  * @param vertices 顶点数量
+  * @param indices 索引数组（每三角形3个uint32）
+  * @param indicesCount 索引数量
+  * @param materialIndex 材质索引
+  */
+ RENDER_API void renderAddEntity3D(RenderDevice* dev, EntityId id,
+                                   const float* positions, const float* normals,
+                                   uint32_t vertices, const uint32_t* indices,
+                                   uint32_t indicesCount, uint16_t materialIndex);
+
+ /**
+  * @brief 从渲染世界删除3D图元
+  *
+  * @param dev 渲染设备
+  * @param id 要删除的图元ID
+  */
+ RENDER_API void renderRemoveEntity3D(RenderDevice* dev, EntityId id);
+
+ /**
+  * @brief 清空3D渲染世界
+  *
+  * @param dev 渲染设备
+  */
+ RENDER_API void renderClearWorld3D(RenderDevice* dev);
+
+ /**
+  * @brief 注册3D网格到渲染系统
  * 
  * @param dev 渲染设备
  * @param positions 顶点位置数组（每顶点3个float）

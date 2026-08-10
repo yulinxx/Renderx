@@ -457,4 +457,24 @@ IDevice* createGLDevice();
  */
 IDevice* createNullDevice();
 
+/**
+ * @brief 创建Vulkan渲染设备实例（Phase 3 新增）
+ *
+ * Vulkan 后端提供跨平台 GPU 加速渲染，支持 Windows/Linux/macOS。
+ * 需要安装 Vulkan SDK 才能启用编译。
+ *
+ * @return Vulkan设备实例指针，失败返回nullptr
+ */
+IDevice* createVulkanDevice();
+
+/**
+ * @brief 创建Metal渲染设备实例（Phase 3 新增）
+ *
+ * Metal 后端提供 macOS/iOS 平台的原生 GPU 渲染。
+ * 需要 Apple 平台和 Metal 框架支持。
+ *
+ * @return Metal设备实例指针，失败返回nullptr
+ */
+IDevice* createMetalDevice();
+
 }

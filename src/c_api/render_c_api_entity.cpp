@@ -224,9 +224,41 @@ extern "C" {
      * @param idx 材质索引
      * @param desc 材质描述符
      */
-    RENDER_API void renderUpdateMaterial(RenderDevice* dev, uint16_t idx, const MaterialDesc* desc)
-    {
-        if (!dev) return;
-        dev->world2D.updateMaterial(idx, desc);
-    }
-} // extern "C"
+     RENDER_API void renderUpdateMaterial(RenderDevice* dev, uint16_t idx, const MaterialDesc* desc)
+     {
+         if (!dev) return;
+         dev->world2D.updateMaterial(idx, desc);
+     }
+
+     // ==================== World3D 图元管理 ====================
+
+     RENDER_API void renderAddEntity3D(RenderDevice* dev, EntityId id,
+         const float* positions, const float* normals,
+         uint32_t vertexCount, const uint32_t* indices,
+         uint32_t indexCount, uint16_t materialIndex)
+     {
+         if (!dev) return;
+         std::vector<VertexP3N3> verts(vertexCount);
+         for (uint32_t i = 0; i < vertexCount; ++i) {
+             verts[i].px = positions[i * 3 + 0];
+             verts[i].py = positions[i * 3 + 1];
+             verts[i].pz = positions[i * 3 + 2];
+             verts[i].nx = normals ? normals[i * 3 + 0] : 0.0f;
+             verts[i].ny = normals ? normals[i * 3 + 1] : 0.0f;
+             verts[i].nz = normals ? normals[i * 3 + 2] : 1.0f;
+         }
+         dev->world3D.addEntity(id, verts.data(), vertexCount, indices, indexCount, materialIndex);
+     }
+
+     RENDER_API void renderRemoveEntity3D(RenderDevice* dev, EntityId id)
+     {
+         if (!dev) return;
+         dev->world3D.removeEntity(id);
+     }
+
+     RENDER_API void renderClearWorld3D(RenderDevice* dev)
+     {
+         if (!dev) return;
+         dev->world3D.clear();
+     }
+ } // extern "C"

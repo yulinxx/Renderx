@@ -1,10 +1,14 @@
 # SanYiRender Library (SanYiRender.dll)
 
-工业级 2D/3D 渲染库，基于 OpenGL 实现，为 SanYi CAD 项目提供高性能的渲染解决方案。
+工业级 2D/3D 渲染库，为 SanYi CAD 项目提供高性能的渲染解决方案。
 
-> **当前定位**：OpenGL-first 渲染运行时。`BackendType` 中的 Vulkan / Metal / Null 仅为类型预留，尚未实现。跨平台目标需要 Metal 或等价非 OpenGL 后端。
+> **当前定位（2026-08-10 复核 + 编译验证）**：多后端渲染运行时。`BackendType` 中的 **OpenGL / Vulkan / Metal / Null 均为已实现后端**（Vulkan 1725 行 / Metal 1076 行 / Null 249 行，见 `src/rhi/`），不再是"类型预留"。条件编译：`find_package(Vulkan QUIET)` 找到 SDK 才编入 Vulkan，无 SDK 自动跳过；Metal 依赖 Apple SDK 在 macOS 上编译。
 >
-> 多窗口支持：每窗口独立 `RenderDevice`，资源不共享。后续将引入 `RenderRuntime` / `RenderSession` 共享会话层。
+> **验证状态**：Vulkan 后端已于 2026-08-10 在 Windows（SDK 1.4.357）编译通过——修复了此前从未被编译暴露的 ~70 处 API 误用（swapchain/管线字段名、函数签名、缺失成员、内存屏障语义等）。当前构建 `SanYiRender_d.dll` / `SanYiCAD.exe` / `RenderxTests 15/15` 全部通过。渲染帧正确性仍需在带 HWND 的窗口下真机验证。
+>
+> 多窗口支持：`renderCreateDevice` 支持任意多实例，每窗口独立 `RenderDevice`，资源不共享。会话共享层 `RenderRuntime` / `RenderSession` 已落地。
+>
+> 已知待完善：Metal 目录尚无 `.metal` shader 源文件；Metal 后端需在 macOS 上编译验证；Vulkan 运行时渲染帧待真机验证。
 >
 > 性能约束：当前热路径仍存在每帧全量同步和 GPU 回读，大规模图元场景需进一步优化。
 
@@ -190,7 +194,7 @@ SanYiRender 采用分层架构设计，各模块职责清晰、松耦合：
 │  TextAtlas   │ MeshManager  │ PersistentEntityManager   │
 │  (文本图集)  │ (3D 网格)    │    (GPU 剔除)             │
 ├──────────────┴──────────────┴───────────────────────────┤
-│                    RHI Device (OpenGL)                    │
+│       RHI Device (OpenGL / Vulkan / Metal / Null)          │
 ├─────────────────────────────────────────────────────────┤
 │                    Shader Manager                         │
 └─────────────────────────────────────────────────────────┘
@@ -380,6 +384,122 @@ void main()
 | `src/core/command_encoder.h/.cpp` | `execute()` 增加相机中心参数，World2D 使用纯缩放矩阵 |
 | `src/core/scene_env.cpp` | 设置 `uCameraCenter = (0,0)` |
 | `UI/.../RenderWidget.cpp` | `setViewMatrix()` 和 `initializeGL()` 中调用 `renderSetCameraCenter()` |
+
+## 架构优化
+
+### STL 导入路径统一化
+
+**问题描述：** STL 导入原来直接使用 `StlLoader`，绕过了 `FileIOManager::importToIR()` 中立 IR 路径，与 DXF/STEP 等格式的导入架构不一致。
+
+**解决方案：** 创建 `StlParser` 实现 `IFileParser` 接口，将 STL 解析结果输出为中立 IR（`FioParseResult`），再通过 `FioEntityConverter` 转换为 `SyMeshEntity`。
+
+**改动文件：**
+
+| 文件 | 修改内容 |
+|------|----------|
+| `FileIO/FileIO/Include/FileIO/Parsers/StlParser.h` | 新建：STL 解析器声明 |
+| `FileIO/FileIO/Src/Parsers/StlParser.cpp` | 新建：STL 解析器实现（支持 ASCII/Binary） |
+| `FileIO/FileIO/Src/FileParserFactory.cpp` | 注册 STL 解析器 |
+| `Main/Src/Import/Readers/StlImportReader.cpp` | IR 路径优先 + 回退旧路径 |
+| `Main/Src/Import/FioEntityConverter.cpp` | 添加 `Mesh3D` case 转换 |
+
+### 3D 导入 Undo 支持
+
+**问题描述：** 3D 导入直接调用 `SceneManager3D::addEntity()`，不支持 Undo/Redo。
+
+**解决方案：** 创建 `AddMeshCommand3D` 撤销命令，扩展 `SceneEditService3D::addEntities()` 方法，使 3D 导入通过编辑服务添加图元时自动创建撤销命令。
+
+**改动文件：**
+
+| 文件 | 修改内容 |
+|------|----------|
+| `Engine3D/Include/Engine3D/Edit/SceneUndoCommands3D.h` | 添加 `AddMeshCommand3D` 声明 |
+| `Engine3D/Src/Edit/SceneUndoCommands3D.cpp` | 实现 `AddMeshCommand3D` |
+| `UI3D/Include/UI3D/Edit/SceneEditService3D.h` | 添加 `addEntities()` 声明 |
+| `UI3D/Src/Edit/SceneEditService3D.cpp` | 实现 `addEntities()` |
+| `UI3D/Include/UI3D/Edit/UndoCommands3D.h` | 添加 `makeAddMesh()` 声明 |
+| `UI3D/Src/Edit/UndoCommands3D.cpp` | 实现 `makeAddMesh()` 包装器 |
+| `Main/Src/Import/ImportService.h/.cpp` | 3D 导入通过 `SceneEditService3D` |
+
+### 统一渲染管线
+
+**问题描述：** 3D 渲染使用 OpenGL 固定管线（`glBegin/glEnd`），与 2D 的现代 RHI 管线架构不一致。
+
+**解决方案：** 创建 `RenderWorld3D` 作为 3D 场景数据管理组件，为后续完全迁移到统一管线奠定基础。
+
+**改动文件：**
+
+| 文件 | 修改内容 |
+|------|----------|
+| `Renderx/src/core/render_world_3d.h` | 新建：3D 渲染世界声明 |
+| `Renderx/src/core/render_world_3d.cpp` | 新建：3D 渲染世界实现 |
+
+**RenderWorld3D 接口：**
+
+```cpp
+class RenderWorld3D {
+public:
+    bool initialize(uint32_t initialVertexCapacity = 65536,
+                    uint32_t initialIndexCapacity = 65536);
+    void shutdown();
+
+    void addEntity(EntityId id, const VertexP3N3* vertices, uint32_t vertexCount,
+                   const uint32_t* indices, uint32_t indexCount,
+                   uint16_t materialIdx);
+    void removeEntity(EntityId id);
+    void clear();
+
+    const EntityEntry3D* getEntityEntries() const;
+    uint32_t getEntityCount() const;
+    // ...
+};
+```
+
+### DisplayCache 3D 化
+
+**问题描述：** 2D 有 `DisplayCache` 分块+LOD 缓存机制，3D 缺少类似机制。
+
+**解决方案：** 创建 `DisplayCache3D` 组件，支持八叉树空间分块和基于距离的 LOD 选择。
+
+**改动文件：**
+
+| 文件 | 修改内容 |
+|------|----------|
+| `Engine3D/Include/Engine3D/Render/DisplayCache3D.h` | 新建：3D 显示缓存声明 |
+| `Engine3D/Src/Render/DisplayCache3D.cpp` | 新建：3D 显示缓存实现 |
+
+**DisplayCache3D 特性：**
+- 八叉树空间分块（可配置块大小）
+- 基于距离的 LOD 选择（可配置 LOD 层级）
+- 增量更新（仅重建脏块）
+
+### 异步导入
+
+**问题描述：** 大文件导入时 UI 阻塞。
+
+**解决方案：** 在 `ImportService` 中添加 `importAsync()` 方法，Phase 1-2（格式检测+解析）在后台线程执行，Phase 3-5（文档构建+UI 刷新）回到主线程。
+
+**改动文件：**
+
+| 文件 | 修改内容 |
+|------|----------|
+| `Main/Src/Import/ImportService.h` | 添加 `importAsync()` 声明 |
+| `Main/Src/Import/ImportService.cpp` | 实现 `importAsync()` |
+
+**使用方式：**
+
+```cpp
+importService->importAsync(context, options, [](const ImportResult& result) {
+    // 导入完成回调（在主线程执行）
+    if (result.success) {
+        // 处理成功
+    }
+});
+```
+
+### 接口统一
+
+**确认：** `SceneManager3D` 已实现 `ISceneManager` 接口，2D/3D 场景管理器接口统一完成。
 
 ## 依赖库安装方法
 

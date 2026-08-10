@@ -68,7 +68,7 @@ set(RENDER_SOURCES
     src/c_api/render_runtime.cpp        # RenderRuntime 实现（渲染运行时共享资源）
     src/platform/gl_loader.cpp          # OpenGL函数加载器
     src/rhi/rhi_gl.cpp                  # OpenGL RHI实现
-    src/rhi/rhi_null.cpp                 # Null RHI实现（用于测试，无GPU操作）
+    src/rhi/rhi_null.cpp                # Null RHI实现（用于测试，无GPU操作）
     src/core/render_world.cpp           # 渲染世界（图元管理）
     src/core/batch_queue.cpp            # 批量绘制队列
     src/core/overlay_queue.cpp          # 叠加层渲染队列
@@ -79,12 +79,41 @@ set(RENDER_SOURCES
     src/core/draw_batcher.cpp           # 绘制合批器（Phase 8 新增）
     src/core/persistent_entity_manager.cpp # 持久图元管理器（Phase 9 新增）
     src/core/mesh_manager.cpp           # 3D网格管理器
+    src/core/render_world_3d.cpp        # 3D渲染世界
     src/core/text_atlas.cpp             # 文本图集管理器
     src/core/scene_env.cpp              # 场景环境渲染器
     src/core/stb_truetype_impl.cpp      # stb_truetype字体库实现
     src/core/screen_text_renderer.cpp   # 屏幕文本渲染器
     src/shader/shaders.cpp              # Shader加载管理
 )
+
+# Phase 3: Vulkan backend (optional, requires Vulkan SDK)
+option(RENDERX_ENABLE_VULKAN "Enable Vulkan backend" ON)
+if(RENDERX_ENABLE_VULKAN)
+    find_package(Vulkan QUIET)
+    if(Vulkan_FOUND)
+        list(APPEND RENDER_SOURCES
+            src/rhi/rhi_vulkan.cpp
+        )
+        list(APPEND RENDER_INCLUDE_DIRS ${Vulkan_INCLUDE_DIR})
+        list(APPEND RENDER_LINK_LIBS ${Vulkan_LIBRARY})
+        list(APPEND RENDER_COMPILE_DEFS RENDERX_HAS_VULKAN)
+        message(STATUS "[Renderx] Vulkan backend enabled")
+    else()
+        message(STATUS "[Renderx] Vulkan SDK not found, Vulkan backend disabled")
+    endif()
+endif()
+
+# Phase 3: Metal backend (macOS/iOS only)
+if(APPLE)
+    set_source_files_properties(src/rhi/rhi_metal.mm PROPERTIES LANGUAGE OBJCXX)
+    list(APPEND RENDER_SOURCES
+        src/rhi/rhi_metal.mm
+    )
+    list(APPEND RENDER_COMPILE_DEFS RENDERX_HAS_METAL)
+    # Metal framework is linked on macOS by default
+    message(STATUS "[Renderx] Metal backend enabled (macOS/iOS)")
+endif()
 
 # ==================== 依赖库配置 ====================
 
@@ -128,6 +157,8 @@ target_include_directories(${PROJECT_NAME}
     PRIVATE
         # 私有头文件路径（内部实现使用）
         ${CMAKE_CURRENT_SOURCE_DIR}/src
+        # Phase 3: Vulkan 头文件
+        ${RENDER_INCLUDE_DIRS}
 )
 
 # 编译定义
@@ -135,6 +166,8 @@ target_compile_definitions(${PROJECT_NAME}
     PRIVATE
         # 导出符号定义（用于DLL导出）
         RENDER_EXPORTS
+        # 后端启用标记（RENDERX_HAS_VULKAN / RENDERX_HAS_METAL）
+        ${RENDER_COMPILE_DEFS}
 )
 
 # 链接依赖库
@@ -144,6 +177,8 @@ target_link_libraries(${PROJECT_NAME}
         ${OPENGL_LIBRARIES}
         # Log库（项目内部日志库）
         Log
+        # Phase 3: Vulkan库
+        ${RENDER_LINK_LIBS}
 )
 
 # stb库头文件配置（用于文本渲染）

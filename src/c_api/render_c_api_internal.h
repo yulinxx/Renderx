@@ -22,12 +22,19 @@
 #include "core/draw_batcher.h"
 #include "core/persistent_entity_manager.h"
 #include "core/mesh_manager.h"
+#include "core/render_world_3d.h"
 #include "core/text_atlas.h"
 #include "core/screen_text_renderer.h"
 #include "core/scene_env.h"
 #include "rhi/rhi_device.h"
 #include "rhi/rhi_gl.h"
 #include "rhi/rhi_null.h"
+#ifdef RENDERX_HAS_VULKAN
+#include "rhi/rhi_vulkan.h"
+#endif
+#ifdef RENDERX_HAS_METAL
+#include "rhi/rhi_metal.h"
+#endif
 #include "shader/shaders.h"
 #include "render_runtime.h"
 
@@ -68,9 +75,11 @@ namespace render
         core::BatchQueue     batchQueue;
         /// 叠加层队列（UI 元素渲染）
         core::OverlayQueue   overlayQueue;
-        /// 网格管理器（3D 网格实例化渲染）
-        core::MeshManager    meshManager;
-        /// 文本贴图管理器（文本渲染）
+         /// 网格管理器（3D 网格实例化渲染）
+         core::MeshManager    meshManager;
+         /// 3D 渲染世界（3D 图元管理和渲染）
+         RenderWorld3D  world3D;
+         /// 文本贴图管理器（文本渲染）
         core::TextAtlas      textAtlas;
         /// 屏幕文本渲染器
         core::ScreenTextRenderer screenTextRenderer;

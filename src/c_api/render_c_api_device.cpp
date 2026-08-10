@@ -58,18 +58,22 @@ static bool initModules(RenderDevice* dev, const DeviceDesc* desc)
     if (!dev->persistentEntityManager.initialize(dev->rhiDevice, 65536))
         return false;
 
-    if (!dev->meshManager.initialize(dev->rhiDevice))
-        return false;
+     if (!dev->meshManager.initialize(dev->rhiDevice))
+         return false;
 
-    if (!dev->textAtlas.initialize(dev->rhiDevice))
+     if (!dev->world3D.initialize())
+         return false;
+
+     if (!dev->textAtlas.initialize(dev->rhiDevice))
         return false;
 
     if (!dev->screenTextRenderer.initialize(dev->rhiDevice))
         return false;
 
-    // SceneEnv 需要 shader，仅在 OpenGL 后端初始化
+    // SceneEnv 需要 shader，仅在 OpenGL/Vulkan 后端初始化
     // Null backend 不创建 GPU 管线，跳过 SceneEnv
-    if (desc->backend == BackendType::OpenGL)
+    // Metal backend 使用 .metal shaders，SceneEnv 初始化在 Metal backend 中处理
+    if (desc->backend == BackendType::OpenGL || desc->backend == BackendType::Vulkan)
     {
         if (!dev->sceneEnv.initialize(dev->rhiDevice))
             return false;
@@ -98,8 +102,28 @@ static bool initModules(RenderDevice* dev, const DeviceDesc* desc)
                 // Null backend: no GPU operations, for testing only
                 dev->rhiDevice = rhi::createNullDevice();
                 break;
+            case BackendType::Vulkan:
+#ifdef RENDERX_HAS_VULKAN
+                // Vulkan backend: cross-platform GPU backend
+                dev->rhiDevice = rhi::createVulkanDevice();
+#else
+                delete dev;
+                SY_ERRORF("renderCreateDevice: Vulkan backend not compiled (RENDERX_HAS_VULKAN not defined)");
+                return nullptr;
+#endif
+                break;
+            case BackendType::Metal:
+#ifdef RENDERX_HAS_METAL
+                dev->rhiDevice = rhi::createMetalDevice();
+#else
+                delete dev;
+                SY_ERRORF("renderCreateDevice: Metal backend not compiled (RENDERX_HAS_METAL not defined)");
+                return nullptr;
+#endif
+                break;
             default:
                 delete dev;
+                SY_ERRORF("renderCreateDevice: unsupported backend type");
                 return nullptr;
         }
 
@@ -116,10 +140,10 @@ static bool initModules(RenderDevice* dev, const DeviceDesc* desc)
             return nullptr;
         }
 
-        // 仅 OpenGL 后端需要加载 shader 和字体文件
-        // Null backend 不执行任何 GPU 操作，无需 shader
+        // 仅 OpenGL/Vulkan 后端需要加载 shader 和字体文件
+        // Null backend 和 Metal backend（macOS）不执行任何 GPU 操作/使用 Metal Shading Language
         // M1 改动：shader 初始化通过 RenderRuntime 管理，替代全局静态变量
-        if (desc->backend == BackendType::OpenGL)
+        if (desc->backend == BackendType::OpenGL || desc->backend == BackendType::Vulkan)
         {
             // 初始化 RenderRuntime（进程级共享资源）
             std::string shaderDir;
@@ -167,6 +191,15 @@ static bool initModules(RenderDevice* dev, const DeviceDesc* desc)
                     SY_WARNF("renderCreateDevice: default font not found: %s", fontPath.string().c_str());
                 }
             }
+        }
+        else if (desc->backend == BackendType::Metal)
+        {
+            // Metal backend: shaders are compiled from .metal files, no separate loading needed
+            SY_DEBUGF("renderCreateDevice: Metal backend - using embedded shaders");
+        }
+        else
+        {
+            SY_DEBUGF("renderCreateDevice: Null backend - skipping shader/font initialization");
         }
 
         // 初始化所有渲染模块

@@ -1,21 +1,15 @@
 #pragma once
 
 #include "render/render_types.h"
-#include "render/vertex.h"
-#include "render/render_world.h"
 
 #include <vector>
 #include <cstdint>
+#include <memory>
+#include <unordered_map>
 
-namespace render
-{
-    struct VertexP3N3
-    {
-        float px, py, pz;
-        float nx, ny, nz;
-    };
-
-    struct EntityEntry3D
+ namespace render
+ {
+     struct EntityEntry3D
     {
         EntityId entityId = 0;
         uint32_t vertexOffset = 0;
