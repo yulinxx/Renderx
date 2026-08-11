@@ -159,15 +159,14 @@ public:
     void clearUnifiedOverlays();
 
     /**
-     * @brief 按类型清除通过 submitOverlay 提交的图元
+     * @brief 按生命周期分组清除通过 submitOverlay 提交的图元
      *
-     * Phase 6 新增，支持增量式 overlay 更新。
-     * 调用方可先清除特定类型的旧数据，再 submit 新数据，
-     * 实现与旧 set* API 相同的替换语义。
+     * 只认 group，与几何形态（form）无关。渲染始终使用统一顶点缓冲，
+     * 分组仅用于增量式 overlay 更新：先清除旧分组数据，再 submit 新数据。
      *
-     * @param kind 要清除的图元类型
+     * @param group 要清除的图元分组
      */
-    void clearOverlayKind(OverlayPrimitiveKind kind);
+    void clearOverlayGroup(OverlayGroup group);
 
     /**
      * @brief 渲染所有叠加元素
@@ -211,8 +210,8 @@ private:
 
     /// 统一提交的 overlay 顶点数据（Phase 1 新增）
     std::vector<OverlayVertex> m_unifiedVerts;
-    /// 统一 overlay 的绘制子区间记录：[start, count, isTriangle, kind] x N
-    /// Phase 6 起增加 kind 字段，支持按类型清除。
+    /// 统一 overlay 的绘制子区间记录：[start, count, isTriangle, group] x N
+    /// 渲染只依赖 start/count/isTriangle；group 仅用于按分组清除。
     std::vector<uint32_t> m_unifiedRanges;
     /// unified 数据在合并缓冲区中的起始偏移（用于无脏数据时直接绘制）
     uint32_t m_unifiedStart = 0;

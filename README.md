@@ -145,17 +145,20 @@ renderSubmitGeometry(dev, &prim);
 #### 叠加层提交
 
 ```c
-// 提交叠加层图元（支持 LineList, Rect, FilledRect, Points, Crosshair, SnapIndicator）
+// 提交叠加层图元：几何形态（渲染用）× 生命周期分组（清除用）两个独立轴
+// 形态: LineList / Rect / FilledRect / Marker / SnapCircle
+// 分组: Ui / Preview / Control / SelectionBox / SelectionOutlines / SelectionHandles / PointMarkers / Snap
 OverlayPrimitive prim;
-prim.kind = OverlayPrimitiveKind::LineList;
+prim.form = OverlayForm::LineList;
+prim.group = OverlayGroup::Ui;
 prim.payload = &polylineDesc;
 prim.payloadSize = sizeof(polylineDesc);
 prim.style.borderColor = 0xFFFFFFFF;
 renderSubmitOverlay(dev, &prim);
 
-// 清除叠加层
+// 清除叠加层（按分组）
 renderClearOverlays(dev);
-renderClearOverlayKind(dev, OverlayPrimitiveKind::LineList);
+renderClearOverlayGroup(dev, OverlayGroup::Preview);
 ```
 
 #### 材质管理
@@ -259,7 +262,7 @@ Phase 3 引入的统一命令收集与排序组件：
 
 - 十字准星、捕捉指示器、预览线、控制线、点标记、选择框、选择手柄
 - 支持统一 API（`submitOverlay`）和旧 API 的兼容封装
-- 支持按类型增量清除（`clearOverlayKind`）
+- 几何形态（`OverlayForm`，渲染用）× 生命周期分组（`OverlayGroup`，清除用）两轴分离；支持按分组增量清除（`clearGroup` / `renderClearOverlayGroup`）
 - 合并所有子项到统一顶点缓冲区，批量渲染
 
 ### 文本图集 (TextAtlas)
@@ -639,7 +642,7 @@ add_subdirectory(Test)
 | `renderSubmitOverlay` | 提交单个叠加层图元 |
 | `renderSubmitOverlays` | 批量提交叠加层图元 |
 | `renderClearOverlays` | 清除所有叠加层图元 |
-| `renderClearOverlayKind` | 按类型清除叠加层图元 |
+| `renderClearOverlayGroup` | 按生命周期分组清除叠加层图元 |
 | `renderSetPreviewLines` | 设置预览线（已废弃，改用 `renderSubmitOverlay`） |
 | `renderSetControlLines` | 设置控制线（已废弃） |
 | `renderSetPointMarkers` | 设置点标记（已废弃） |

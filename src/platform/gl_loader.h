@@ -1,5 +1,7 @@
 #pragma once
 
+#include <render/render.h>
+
 #ifdef _WIN32
   #ifndef WIN32_LEAN_AND_MEAN
     #define WIN32_LEAN_AND_MEAN
@@ -415,18 +417,6 @@ typedef GLenum         (RENDER_GLAPI *PFNGLGETERRORPROC)(void);
 typedef const GLubyte* (RENDER_GLAPI *PFNGLGETSTRINGPROC)(GLenum name);
 typedef const GLubyte* (RENDER_GLAPI *PFNGLGETSTRINGIPROC)(GLenum name, GLuint index);
 typedef void           (RENDER_GLAPI *PFNGLGETBOOLEANVPROC)(GLenum pname, GLboolean* data);
-
-#ifndef RENDER_API
-  #ifdef _WIN32
-    #ifdef RENDER_EXPORTS
-      #define RENDER_API __declspec(dllexport)
-    #else
-      #define RENDER_API __declspec(dllimport)
-    #endif
-  #else
-    #define RENDER_API __attribute__((visibility("default")))
-  #endif
-#endif
 
 struct GLFuncs {
     PFNGLGENBUFFERSPROC              GenBuffers;

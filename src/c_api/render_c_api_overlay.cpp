@@ -66,12 +66,12 @@ extern "C" {
     }
 
     /**
-     * @brief 按类型清除通过统一 API 提交的叠加层图元
+     * @brief 按生命周期分组清除通过统一 API 提交的叠加层图元
      */
-    RENDER_API void renderClearOverlayKind(RenderDevice* dev, OverlayPrimitiveKind kind)
+    RENDER_API void renderClearOverlayGroup(RenderDevice* dev, OverlayGroup group)
     {
         if (!dev) return;
-        dev->overlayQueue.clearOverlayKind(kind);
+        dev->overlayQueue.clearOverlayGroup(group);
     }
 
     // ==================== 场景环境 ====================

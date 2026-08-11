@@ -337,8 +337,9 @@ RENDER_API void renderSetTexts(RenderDevice* dev, const TextItemList* texts);
 /**
  * @brief 提交单个叠加层图元（统一 API）
  *
- * Phase 1 引入的统一 overlay 提交入口。调用方通过 OverlayPrimitive 描述图元类型、
- * 几何数据和样式，渲染器内部转换为顶点数据并批量渲染。
+ * Phase 1 引入的统一 overlay 提交入口。调用方通过 OverlayPrimitive 描述几何形态(form)、
+ * 生命周期分组(group)、几何数据和样式，渲染器内部转换为顶点数据并批量渲染。
+ * 渲染只认 form，清除只认 group，视觉差异走 style。
  *
  * 替代范围：renderSetPreviewLines / renderSetControlLines / renderSetSelectionBox /
  *           renderSetSelectionRect / renderSetSelectionHandles / renderSetPointMarkers
@@ -367,16 +368,18 @@ RENDER_API void renderSubmitOverlays(RenderDevice* dev, const OverlayPrimitive* 
 RENDER_API void renderClearOverlays(RenderDevice* dev);
 
 /**
- * @brief 按类型清除通过统一 API 提交的叠加层图元
+ * @brief 按生命周期分组清除通过统一 API 提交的叠加层图元
  *
- * Phase 6 新增，支持增量式 overlay 更新。
- * 与 renderClearOverlays 不同，此方法只清除指定类型的统一 overlay，
- * 其他类型的统一 overlay 保留。
+ * overlay 采用 几何形态(form) × 生命周期分组(group) 两个独立轴：
+ * 渲染只认 form（几何如何生成顶点/使用哪种拓扑），清除只认 group。
  *
- * @param dev  渲染设备
- * @param kind 要清除的 overlay 类型
+ * 与 renderClearOverlays 不同，此方法只清除指定分组的统一 overlay，
+ * 其他分组的统一 overlay 保留。
+ *
+ * @param dev   渲染设备
+ * @param group 要清除的 overlay 分组
  */
-RENDER_API void renderClearOverlayKind(RenderDevice* dev, OverlayPrimitiveKind kind);
+RENDER_API void renderClearOverlayGroup(RenderDevice* dev, OverlayGroup group);
 
 /**
  * @brief 设置场景环境层（如网格背景、参考线等）

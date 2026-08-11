@@ -20,6 +20,13 @@ project(SanYiRender
     LANGUAGES CXX
 )
 
+# 模块路径（引入统一入口 sanyi_add_shared_library）
+if(NOT SANYI_ROOT)
+    get_filename_component(SANYI_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
+endif()
+include("${SANYI_ROOT}/CMake/SanYiPaths.cmake")
+include("${SANYI_ROOT}/CMake/Utils.cmake")
+
 # 设置C++标准为17，并强制要求支持该标准
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -115,6 +122,25 @@ if(APPLE)
     message(STATUS "[Renderx] Metal backend enabled (macOS/iOS)")
 endif()
 
+# 统一入口要求源文件使用绝对路径（内部 source_group 用 RELATIVE_PATH 拆分），
+# 将上面的相对路径统一归一化
+set(RENDER_SOURCES_NORM)
+foreach(_src IN LISTS RENDER_SOURCES)
+    if(NOT IS_ABSOLUTE "${_src}")
+        get_filename_component(_src "${CMAKE_CURRENT_SOURCE_DIR}/${_src}" ABSOLUTE)
+    endif()
+    list(APPEND RENDER_SOURCES_NORM "${_src}")
+endforeach()
+set(RENDER_SOURCES ${RENDER_SOURCES_NORM})
+set(RENDER_HEADERS_NORM)
+foreach(_hdr IN LISTS RENDER_PUBLIC_HEADERS)
+    if(NOT IS_ABSOLUTE "${_hdr}")
+        get_filename_component(_hdr "${CMAKE_CURRENT_SOURCE_DIR}/${_hdr}" ABSOLUTE)
+    endif()
+    list(APPEND RENDER_HEADERS_NORM "${_hdr}")
+endforeach()
+set(RENDER_PUBLIC_HEADERS ${RENDER_HEADERS_NORM})
+
 # ==================== 依赖库配置 ====================
 
 # OpenGL库配置（跨平台）
@@ -142,43 +168,28 @@ endif()
 
 # ==================== 库目标配置 ====================
 
-# 创建渲染库目标
-add_library(${PROJECT_NAME} ${RENDER_SOURCES})
-
-set_target_properties(${PROJECT_NAME} PROPERTIES
-    DEBUG_POSTFIX "_d"
-)
-
-# 设置头文件搜索路径
-target_include_directories(${PROJECT_NAME}
-    PUBLIC
-        # 构建时的公开头文件路径
+# 创建渲染库目标（统一入口，显式 SHARED，不依赖 BUILD_SHARED_LIBS 全局选项）
+sanyi_add_shared_library(${PROJECT_NAME}
+    FOLDER "Render"
+    DESCRIPTION "SanYi CAD Render Library (Industrial-Grade 2D/3D Rendering)"
+    EXPORT_MACRO "RENDER_EXPORTS"
+    SOURCES ${RENDER_SOURCES}
+    HEADERS ${RENDER_PUBLIC_HEADERS}
+    PUBLIC_INCLUDE_DIRS
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    PRIVATE
-        # 私有头文件路径（内部实现使用）
+    PRIVATE_INCLUDE_DIRS
         ${CMAKE_CURRENT_SOURCE_DIR}/src
-        # Phase 3: Vulkan 头文件
         ${RENDER_INCLUDE_DIRS}
-)
-
-# 编译定义
-target_compile_definitions(${PROJECT_NAME}
-    PRIVATE
-        # 导出符号定义（用于DLL导出）
-        RENDER_EXPORTS
-        # 后端启用标记（RENDERX_HAS_VULKAN / RENDERX_HAS_METAL）
+    COMPILE_DEFINITIONS
         ${RENDER_COMPILE_DEFS}
-)
-
-# 链接依赖库
-target_link_libraries(${PROJECT_NAME}
-    PRIVATE
-        # OpenGL库
-        ${OPENGL_LIBRARIES}
-        # Log库（项目内部日志库）
-        Log
-        # Phase 3: Vulkan库
-        ${RENDER_LINK_LIBS}
+    COMPILE_OPTIONS
+        $<$<CXX_COMPILER_ID:MSVC>:/W4>
+        $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wno-conversion;-Wno-float-conversion>
+    LINK_LIBRARIES
+        PRIVATE
+            ${OPENGL_LIBRARIES}
+            Log
+            ${RENDER_LINK_LIBS}
 )
 
 # stb库头文件配置（用于文本渲染）

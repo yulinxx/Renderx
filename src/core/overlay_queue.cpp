@@ -336,14 +336,11 @@ bool OverlayQueue::initialize(rhi::IDevice* device)
             uint32_t isTriangle = 0;
             float z = 0.0f;
 
-            switch (primitive->kind)
+            switch (primitive->form)
             {
-                case OverlayPrimitiveKind::LineList:
-                case OverlayPrimitiveKind::PreviewLines:
-                case OverlayPrimitiveKind::ControlLines:
-                case OverlayPrimitiveKind::SelectionOutlines:
+                case OverlayForm::LineList:
                 {
-                    // 线段列表子类型共享同一套构建逻辑，仅 kind 标记不同以支持独立清除
+                    // 线段列表：预览线/控制线/选择轮廓等所有 LineList 形态图元共用此分支
                     const auto* desc = static_cast<const OverlayPolylineDesc*>(primitive->payload);
                     if (!desc || !desc->vertices || desc->vertexCount == 0)
                         break;
@@ -378,7 +375,7 @@ bool OverlayQueue::initialize(rhi::IDevice* device)
                     }
                     break;
                 }
-                case OverlayPrimitiveKind::Rect:
+                case OverlayForm::Rect:
                 {
                     const auto* desc = static_cast<const OverlayRectDesc*>(primitive->payload);
                     if (!desc)
@@ -399,7 +396,7 @@ bool OverlayQueue::initialize(rhi::IDevice* device)
                         desc->minX, desc->minY, desc->maxX, desc->maxY, primitive->style.borderColor);
                     break;
                 }
-                case OverlayPrimitiveKind::FilledRect:
+                case OverlayForm::FilledRect:
                 {
                     const auto* desc = static_cast<const OverlayRectDesc*>(primitive->payload);
                     if (!desc)
@@ -417,11 +414,9 @@ bool OverlayQueue::initialize(rhi::IDevice* device)
                     m_unifiedVerts.push_back(makeVert(desc->minX, desc->maxY, z, r, g, b, a));
                     break;
                 }
-                case OverlayPrimitiveKind::Points:
-                case OverlayPrimitiveKind::SelectionHandles:
-                case OverlayPrimitiveKind::PointMarkers:
+                case OverlayForm::Marker:
                 {
-                    // 点集子类型共享同一套标记构建逻辑，仅 kind 标记不同以支持独立清除
+                    // 点标记：选择手柄/标记点等所有 Marker 形态图元共用此分支
                     const auto* desc = static_cast<const OverlayMarkerSetDesc*>(primitive->payload);
                     if (!desc || !desc->positions || desc->count == 0)
                         break;
@@ -446,25 +441,7 @@ bool OverlayQueue::initialize(rhi::IDevice* device)
                     }
                     break;
                 }
-                case OverlayPrimitiveKind::Crosshair:
-                {
-                    const auto* desc = static_cast<const OverlayMarkerSetDesc*>(primitive->payload);
-                    if (!desc || desc->count == 0)
-                        break;
-                    float cx = desc->positions[0];
-                    float cy = desc->positions[1];
-                    float len = primitive->style.pointSize;
-                    float r, g, b, a;
-                    unpackRGBA(primitive->style.borderColor, r, g, b, a);
-                    count = 4;
-                    m_unifiedVerts.reserve(start + count);
-                    m_unifiedVerts.push_back(makeVert(cx - len, cy, z, r, g, b, a));
-                    m_unifiedVerts.push_back(makeVert(cx + len, cy, z, r, g, b, a));
-                    m_unifiedVerts.push_back(makeVert(cx, cy - len, z, r, g, b, a));
-                    m_unifiedVerts.push_back(makeVert(cx, cy + len, z, r, g, b, a));
-                    break;
-                }
-                case OverlayPrimitiveKind::SnapIndicator:
+                case OverlayForm::SnapCircle:
                 {
                     const auto* desc = static_cast<const OverlayMarkerSetDesc*>(primitive->payload);
                     if (!desc || desc->count == 0)
@@ -486,6 +463,8 @@ bool OverlayQueue::initialize(rhi::IDevice* device)
                     }
                     break;
                 }
+                case OverlayForm::Count:
+                    break;
             }
 
             if (count > 0)
@@ -493,7 +472,7 @@ bool OverlayQueue::initialize(rhi::IDevice* device)
                 m_unifiedRanges.push_back(start);
                 m_unifiedRanges.push_back(count);
                 m_unifiedRanges.push_back(isTriangle);
-                m_unifiedRanges.push_back(static_cast<uint32_t>(primitive->kind));
+                m_unifiedRanges.push_back(static_cast<uint32_t>(primitive->group));
                 m_dirty = true;
             }
         }
@@ -505,7 +484,7 @@ bool OverlayQueue::initialize(rhi::IDevice* device)
             m_dirty = true;
         }
 
-        void OverlayQueue::clearOverlayKind(OverlayPrimitiveKind kind)
+        void OverlayQueue::clearOverlayGroup(OverlayGroup group)
         {
             if (m_unifiedRanges.empty())
                 return;
@@ -521,9 +500,9 @@ bool OverlayQueue::initialize(rhi::IDevice* device)
                 uint32_t oldStart = m_unifiedRanges[i];
                 uint32_t count = m_unifiedRanges[i + 1];
                 uint32_t isTriangle = m_unifiedRanges[i + 2];
-                OverlayPrimitiveKind rangeKind = static_cast<OverlayPrimitiveKind>(m_unifiedRanges[i + 3]);
+                OverlayGroup rangeGroup = static_cast<OverlayGroup>(m_unifiedRanges[i + 3]);
 
-                if (rangeKind == kind)
+                if (rangeGroup == group)
                     continue;
 
                 newVerts.insert(newVerts.end(),
@@ -533,7 +512,7 @@ bool OverlayQueue::initialize(rhi::IDevice* device)
                 newRanges.push_back(newOffset);
                 newRanges.push_back(count);
                 newRanges.push_back(isTriangle);
-                newRanges.push_back(static_cast<uint32_t>(rangeKind));
+                newRanges.push_back(static_cast<uint32_t>(rangeGroup));
 
                 newOffset += count;
             }

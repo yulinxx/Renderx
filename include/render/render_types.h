@@ -199,6 +199,18 @@ enum class BackendType : int
     Null   = 3,  ///< 空后端（用于测试，预留）
 };
 
+inline const char* backendName(BackendType b)
+{
+    switch (b)
+    {
+        case BackendType::OpenGL: return "OpenGL";
+        case BackendType::Vulkan: return "Vulkan";
+        case BackendType::Metal:  return "Metal";
+        case BackendType::Null:   return "Null";
+        default:                  return "Unknown";
+    }
+}
+
 /// 视图模式枚举
 enum class ViewMode : int
 {
@@ -380,23 +392,29 @@ struct GeometryImage
     float color[4];    ///< RGBA边框颜色，默认白色
 };
 
-/// 叠加层图元类型枚举，统一描述所有 2D overlay 元素
-enum class OverlayPrimitiveKind : uint8_t
+/// 叠加层几何形态。渲染只认此轴：决定如何解析 payload 生成顶点、使用何种拓扑。
+enum class OverlayForm : uint8_t
 {
-    // ---- 旧值（保留向后兼容，渲染逻辑与对应语义子类型相同）----
-    LineList,       ///< 通用线段列表（旧值，新代码应使用下方语义子类型）
-    Rect,           ///< 空心矩形（选择框边框）
-    FilledRect,     ///< 填充矩形（框选填充）
-    Points,         ///< 通用点集（旧值，新代码应使用下方语义子类型）
-    Crosshair,      ///< 十字准星
-    SnapIndicator,  ///< 捕捉指示器（圆形）
+    LineList,       ///< 线段列表（GL_LINES，逐段独立）
+    Rect,           ///< 空心矩形边框（4 边 8 顶点线段）
+    FilledRect,     ///< 填充矩形（2 三角形）
+    Marker,         ///< 点标记（填充方块 + 边框，用于手柄/标记点）
+    SnapCircle,     ///< 捕捉指示器（圆形线框）
+    Count,
+};
 
-    // ---- 语义子类型：渲染逻辑与父类型相同，但支持独立清除 ----
-    PreviewLines,       ///< 预览线（绘制过程中的临时线段）
-    ControlLines,       ///< 控制线（贝塞尔/NURBS 控制多边形）
+/// 叠加层生命周期分组。清除只认此轴：任意时刻按分组整体清空，与几何形态无关。
+enum class OverlayGroup : uint8_t
+{
+    Ui,                 ///< 通用 UI overlay（默认分组）
+    Preview,            ///< 预览线（绘制过程中的临时线段）
+    Control,            ///< 控制线（贝塞尔/NURBS 控制多边形）
+    SelectionBox,       ///< 选择框（边框 + 填充）
     SelectionOutlines,  ///< 选择轮廓（被选中图元的高亮轮廓线）
     SelectionHandles,   ///< 选择手柄（缩放/移动/旋转手柄点）
     PointMarkers,       ///< 点标记（捕捉点、特征点标记）
+    Snap,               ///< 捕捉指示器
+    Count,
 };
 
 /// 叠加层绘制样式
@@ -407,6 +425,18 @@ struct OverlayStyle
     float lineWidth = 1.0f;     ///< 线宽（像素）
     float pointSize = 8.0f;     ///< 点/标记大小（像素）
     float zOrder = 0.0f;        ///< Z序（用于叠加层排序）
+};
+
+/// 叠加层图元：几何形态(渲染用) × 生命周期分组(清除用) 两个独立轴。
+/// 需要视觉差异（虚实/线宽/颜色）时扩展 OverlayStyle，而不是枚举增殖。
+struct OverlayPrimitive
+{
+    OverlayForm form;       ///< 几何形态 —— 渲染只认此字段
+    OverlayGroup group;     ///< 生命周期分组 —— 清除只认此字段
+    uint32_t flags;         ///< 标志位（保留）
+    const void* payload;    ///< 类型相关的数据指针
+    uint32_t payloadSize;   ///< payload 大小（字节）
+    OverlayStyle style;     ///< 绘制样式
 };
 
 /// 线段列表描述（对应 LineList）
@@ -425,21 +455,11 @@ struct OverlayRectDesc
     float maxX, maxY;           ///< 右下角坐标
 };
 
-/// 点集描述（对应 Points）
+/// 点集描述（对应 OverlayForm::Marker / SnapCircle）
 struct OverlayMarkerSetDesc
 {
     const float* positions;     ///< 位置数组（每点2个float: x,y）
     uint32_t count;             ///< 点数量
-};
-
-/// 统一的叠加层图元描述
-struct OverlayPrimitive
-{
-    OverlayPrimitiveKind kind;  ///< 图元类型
-    uint32_t flags;             ///< 标志位（保留）
-    const void* payload;        ///< 类型相关的数据指针
-    uint32_t payloadSize;       ///< payload 大小（字节）
-    OverlayStyle style;         ///< 绘制样式
 };
 
 // ============================================================================
