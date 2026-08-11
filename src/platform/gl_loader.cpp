@@ -1,9 +1,13 @@
 #include "gl_loader.h"
 
+#include <cstring>
+
 #ifdef _WIN32
 #include <windows.h>
 #elif defined(__linux__)
 #include <GL/glx.h>
+#elif defined(__APPLE__)
+#include <dlfcn.h>
 #endif
 
 static GLFuncs g_funcs;
@@ -28,6 +32,10 @@ static void* default_get_proc_address(const char* name)
     return ptr;
 #elif defined(__linux__)
     return (void*)glXGetProcAddress((const GLubyte*)name);
+#elif defined(__APPLE__)
+    // macOS 没有 glXGetProcAddress/wglGetProcAddress。
+    // OpenGL.framework 导出了全部 GL 符号，直接通过 dlsym 解析。
+    return dlsym(RTLD_DEFAULT, name);
 #else
     (void)name;
     return nullptr;

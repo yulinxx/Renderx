@@ -2,7 +2,7 @@
 cmake_minimum_required(VERSION 4.3)
 
 # 包含上级目录的配置文件（通常包含全局变量定义）
-include(${CMAKE_CURRENT_SOURCE_DIR}/../Config.txt)
+include(${CMAKE_CURRENT_SOURCE_DIR}/../Config.cmake)
 
 # 如果定义了VCPKG_DIR环境变量且路径存在，则使用vcpkg作为包管理器
 if(DEFINED VCPKG_DIR AND EXISTS "${VCPKG_DIR}")
@@ -111,15 +111,28 @@ if(RENDERX_ENABLE_VULKAN)
     endif()
 endif()
 
-# Phase 3: Metal backend (macOS/iOS only)
+# Phase 3: Metal backend (macOS/iOS only, optional like Vulkan)
+# Metal.hpp 是独立的 Metal C++ 绑定组件，可能未随 Xcode SDK 提供；
+# 未找到时跳过该后端。
 if(APPLE)
-    set_source_files_properties(src/rhi/rhi_metal.mm PROPERTIES LANGUAGE OBJCXX)
-    list(APPEND RENDER_SOURCES
-        src/rhi/rhi_metal.mm
-    )
-    list(APPEND RENDER_COMPILE_DEFS RENDERX_HAS_METAL)
-    # Metal framework is linked on macOS by default
-    message(STATUS "[Renderx] Metal backend enabled (macOS/iOS)")
+    find_path(RENDERX_METAL_HPP_DIR "Metal/Metal.hpp")
+    if(RENDERX_METAL_HPP_DIR)
+        enable_language(OBJCXX)
+        set_source_files_properties(src/rhi/rhi_metal.mm PROPERTIES LANGUAGE OBJCXX)
+        list(APPEND RENDER_SOURCES
+            src/rhi/rhi_metal.mm
+        )
+        list(APPEND RENDER_INCLUDE_DIRS ${RENDERX_METAL_HPP_DIR})
+        list(APPEND RENDER_COMPILE_DEFS RENDERX_HAS_METAL)
+        find_library(METAL_FRAMEWORK Metal)
+        if(METAL_FRAMEWORK)
+            list(APPEND RENDER_LINK_LIBS ${METAL_FRAMEWORK})
+        endif()
+        # Metal framework is linked on macOS by default
+        message(STATUS "[Renderx] Metal backend enabled (macOS/iOS)")
+    else()
+        message(STATUS "[Renderx] Metal C++ bindings (Metal/Metal.hpp) not found, Metal backend disabled")
+    endif()
 endif()
 
 # 统一入口要求源文件使用绝对路径（内部 source_group 用 RELATIVE_PATH 拆分），
@@ -193,13 +206,19 @@ sanyi_add_shared_library(${PROJECT_NAME}
 )
 
 # stb库头文件配置（用于文本渲染）
-if(Stb_FOUND)
+find_path(STB_TRUETYPE_INCLUDE_DIR stb_truetype.h QUIET)
+if(STB_TRUETYPE_INCLUDE_DIR)
+    target_include_directories(${PROJECT_NAME} PRIVATE ${STB_TRUETYPE_INCLUDE_DIR})
+elseif(Stb_FOUND)
     # 如果通过find_package找到Stb，使用其路径
     target_include_directories(${PROJECT_NAME} PRIVATE ${Stb_INCLUDE_DIR})
-elseif(DEFINED VCPKG_DIR AND EXISTS "${VCPKG_DIR}/installed/x64-windows/include")
-    # 如果使用vcpkg，从vcpkg安装目录查找
-    target_include_directories(${PROJECT_NAME} PRIVATE
-        "${VCPKG_DIR}/installed/x64-windows/include")
+elseif(DEFINED VCPKG_DIR)
+    # vcpkg: 头文件位于 <triplet>/include 下（兼容不同平台 triplet）
+    file(GLOB _vcpkg_stb_incs "${VCPKG_DIR}/installed/*/include")
+    list(REMOVE_DUPLICATES _vcpkg_stb_incs)
+    if(_vcpkg_stb_incs)
+        target_include_directories(${PROJECT_NAME} PRIVATE ${_vcpkg_stb_incs})
+    endif()
 endif()
 
 # Linux平台下GCC编译器需要链接stdc++fs（用于std::filesystem）
