@@ -663,8 +663,7 @@ add_subdirectory(Test)
 
 | 函数 | 说明 |
 |------|------|
-| `renderSetSceneEnv` | 设置场景环境层（网格背景、参考线） |
-| `renderSetSceneEnvEx` | 设置场景环境层（扩展版，支持像素坐标和三角面） |
+| `renderSetSceneEnvEx` | 设置场景环境层（网格背景、标尺、参考线），支持像素坐标和三角面 |
 | `renderSetBitmap` | 设置位图图像 |
 | `renderClearBitmap` | 清除位图图像 |
 

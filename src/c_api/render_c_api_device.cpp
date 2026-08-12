@@ -360,7 +360,7 @@ static bool initModules(RenderDevice* dev, const DeviceDesc* desc)
     RENDER_API uint32_t renderGetEntityCount(RenderDevice* dev)
     {
         if (!dev) return 0;
-        return dev->world2D.getEntityCount();
+        return dev->getEntityCount();
     }
 
     /**
@@ -406,21 +406,6 @@ static bool initModules(RenderDevice* dev, const DeviceDesc* desc)
     RENDER_API void renderSetScreenTexts(RenderDevice* dev, const ScreenTextItem* items, uint32_t count)
     {
         if (!dev) return;
-        dev->pendingScreenTexts.clear();
-        if (!items || count == 0) return;
-        dev->pendingScreenTexts.reserve(count);
-        for (uint32_t i = 0; i < count; ++i)
-        {
-            RenderDevice::PendingScreenText pst;
-            pst.text = items[i].text;
-            pst.x = items[i].x;
-            pst.y = items[i].y;
-            pst.color[0] = items[i].color[0];
-            pst.color[1] = items[i].color[1];
-            pst.color[2] = items[i].color[2];
-            pst.color[3] = items[i].color[3];
-            pst.fontSize = items[i].fontSize;
-            dev->pendingScreenTexts.push_back(std::move(pst));
-        }
+        dev->submitScreenTexts(items, count);
     }
 } // extern "C"

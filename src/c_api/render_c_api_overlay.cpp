@@ -20,81 +20,39 @@ using namespace render;
 extern "C" {
     // ==================== 文本渲染 ====================
 
-    /**
-     * @brief 设置要渲染的文本列表
-     *
-     * @param dev 渲染设备指针
-     * @param texts 文本项列表
-     */
     RENDER_API void renderSetTexts(RenderDevice* dev, const TextItemList* texts)
     {
         if (!dev) return;
-        dev->textAtlas.renderText(texts, dev->view2D.viewMatrix,
-            static_cast<uint32_t>(dev->view2D.viewWidth),
-            static_cast<uint32_t>(dev->view2D.viewHeight),
-            dev->rhiDevice);
+        dev->renderTexts(texts);
     }
 
     // ==================== Overlay 统一 API ====================
 
-    /**
-     * @brief 提交单个叠加层图元（统一 API）
-     */
     RENDER_API void renderSubmitOverlay(RenderDevice* dev, const OverlayPrimitive* primitive)
     {
         if (!dev || !primitive) return;
-        dev->overlayQueue.submitOverlay(primitive);
+        dev->submitOverlay(primitive);
     }
 
-    /**
-     * @brief 批量提交叠加层图元（统一 API）
-     */
     RENDER_API void renderSubmitOverlays(RenderDevice* dev, const OverlayPrimitive* primitives, uint32_t count)
     {
         if (!dev || !primitives || count == 0) return;
-        for (uint32_t i = 0; i < count; ++i)
-            dev->overlayQueue.submitOverlay(&primitives[i]);
+        dev->submitOverlays(primitives, count);
     }
 
-    /**
-     * @brief 清除所有通过统一 API 提交的叠加层图元
-     */
     RENDER_API void renderClearOverlays(RenderDevice* dev)
     {
         if (!dev) return;
-        dev->overlayQueue.clearUnifiedOverlays();
+        dev->clearOverlays();
     }
 
-    /**
-     * @brief 按生命周期分组清除通过统一 API 提交的叠加层图元
-     */
     RENDER_API void renderClearOverlayGroup(RenderDevice* dev, OverlayGroup group)
     {
         if (!dev) return;
-        dev->overlayQueue.clearOverlayGroup(group);
+        dev->clearOverlayGroup(group);
     }
 
     // ==================== 场景环境 ====================
-
-    /**
-     * @brief 设置场景环境几何数据
-     *
-     * @param dev 渲染设备指针
-     * @param vertices 顶点数据
-     * @param vertexCount 顶点数量
-     * @param layerOffsets 各层的顶点偏移数组
-     * @param layerCount 层数
-     * @param layerColors 各层的颜色数组（RGBA格式）
-     * @param layerWidths 各层的线宽数组
-     */
-    RENDER_API void renderSetSceneEnv(RenderDevice* dev, const VertexP3C3* vertices,
-        uint32_t vertexCount, const uint32_t* layerOffsets,
-        uint32_t layerCount, const uint32_t* layerColors,
-        const float* layerWidths)
-    {
-        if (!dev) return;
-        dev->sceneEnv.setGeometry(vertices, vertexCount, layerOffsets, layerCount, layerColors, layerWidths);
-    }
 
     RENDER_API void renderSetSceneEnvEx(RenderDevice* dev, const VertexP3C3* vertices,
         uint32_t vertexCount, const uint32_t* layerOffsets,
@@ -103,13 +61,18 @@ extern "C" {
         const bool* triangleFlags, const float* zDepths)
     {
         if (!dev) return;
-        dev->sceneEnv.setGeometryEx(vertices, vertexCount, layerOffsets, layerCount,
+        dev->setSceneEnvEx(vertices, vertexCount, layerOffsets, layerCount,
             layerColors, layerWidths, pixelFlags, triangleFlags, zDepths);
     }
 
-    /**
-     * @brief 设置位图（预留接口，尚未实现）
-     */
+    RENDER_API void renderSetSceneEnvDirect(RenderDevice* dev, const SceneEnvGeometryDesc* desc)
+    {
+        if (!dev) return;
+        dev->setSceneEnvDirect(desc);
+    }
+
+    // ==================== 位图（预留） ====================
+
     RENDER_API void renderSetBitmap(RenderDevice* dev, const uint8_t* rgba, int32_t w, int32_t h,
         float tlX, float tlY, float trX, float trY,
         float blX, float blY, float brX, float brY)
@@ -119,9 +82,6 @@ extern "C" {
         (void)blX; (void)blY; (void)brX; (void)brY;
     }
 
-    /**
-     * @brief 清除位图（预留接口，尚未实现）
-     */
     RENDER_API void renderClearBitmap(RenderDevice* dev)
     {
         (void)dev;

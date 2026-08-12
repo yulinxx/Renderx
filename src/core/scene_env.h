@@ -41,20 +41,6 @@ public:
     void shutdown();
 
     /**
-     * @brief 设置场景环境几何数据（世界坐标版本）
-     * 
-     * @param vertices 顶点数据
-     * @param vertexCount 顶点数量
-     * @param layerOffsets 各层的顶点偏移数组
-     * @param layerCount 层数
-     * @param layerColors 各层的颜色数组（RGBA格式，每个通道8位）
-     * @param lineWidths 各层的线宽数组
-     */
-    void setGeometry(const VertexP3C3* vertices, uint32_t vertexCount,
-                     const uint32_t* layerOffsets, uint32_t layerCount,
-                     const uint32_t* layerColors, const float* lineWidths);
-
-    /**
      * @brief 设置场景环境几何数据（完整版本，支持像素坐标和深度排序）
      * 
      * @param vertices 顶点数据
@@ -72,6 +58,17 @@ public:
                        const uint32_t* layerColors, const float* lineWidths,
                        const bool* pixelFlags, const bool* triangleFlags,
                        const float* zDepths);
+
+    /**
+     * @brief 设置场景环境几何数据（描述符直通版本）
+     * 
+     * 直接消费 SceneEnvGeometryDesc（纯 POD），内部完成 xy 坐标对到
+     * VertexP3C3 的转换与层颜色填充。标尺文字不进此接口。
+     * 
+     * @param desc 场景环境几何描述符（layers/vertices 指针在本调用同步拷贝，
+     *             之后不再持有）
+     */
+    void setGeometryDirect(const SceneEnvGeometryDesc* desc);
 
     /**
      * @brief 渲染场景环境（简化版本）

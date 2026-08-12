@@ -382,23 +382,7 @@ RENDER_API void renderClearOverlays(RenderDevice* dev);
 RENDER_API void renderClearOverlayGroup(RenderDevice* dev, OverlayGroup group);
 
 /**
- * @brief 设置场景环境层（如网格背景、参考线等）
- * 
- * @param dev 渲染设备
- * @param vertices 顶点数据
- * @param vertexCount 顶点数量
- * @param layerOffsets 各层的顶点偏移数组
- * @param layerCount 层数
- * @param layerColors 各层的颜色数组（RGBA格式）
- * @param layerWidths 各层的线宽数组
- */
-RENDER_API void renderSetSceneEnv(RenderDevice* dev, const VertexP3C3* vertices,
-                                  uint32_t vertexCount, const uint32_t* layerOffsets,
-                                  uint32_t layerCount, const uint32_t* layerColors,
-                                  const float* layerWidths);
-
-/**
- * @brief 设置场景环境层（完整版本，支持像素坐标）
+ * @brief 设置场景环境层（完整版本，支持像素坐标、三角形标志、深度）
  * 
  * @param dev 渲染设备
  * @param vertices 顶点数据
@@ -414,6 +398,19 @@ RENDER_API void renderSetSceneEnvEx(RenderDevice* dev, const VertexP3C3* vertice
                                     uint32_t layerCount, const uint32_t* layerColors,
                                     const float* layerWidths, const bool* pixelFlags,
                                     const bool* triangleFlags, const float* zDepths);
+
+/**
+ * @brief 设置场景环境几何（描述符直通版本）
+ *
+ * 直接消费 SceneEnvGeometryDesc（纯 POD，无 Engine 依赖），Renderx 内部完成
+ * xy 坐标对到 VertexP3C3 的转换与层颜色填充。标尺文字不在此 API 内，继续走
+ * renderSetScreenTexts。
+ * 
+ * @param dev 渲染设备
+ * @param desc 场景环境几何描述符（vertices/layers 指针在调用期间保持有效即可，
+ *             Renderx 内部同步拷贝，不持有悬垂引用）
+ */
+RENDER_API void renderSetSceneEnvDirect(RenderDevice* dev, const SceneEnvGeometryDesc* desc);
 
 /**
  * @brief 设置位图图像（用于显示图片覆盖层）

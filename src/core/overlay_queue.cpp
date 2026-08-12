@@ -17,9 +17,9 @@ namespace render
             a = ((rgba >> 24) & 0xFF) / 255.0f;
         }
 
-        static OverlayQueue::OverlayVertex makeVert(float x, float y, float z, float r, float g, float b, float a)
+        static OverlayVertex makeVert(float x, float y, float z, float r, float g, float b, float a)
         {
-            OverlayQueue::OverlayVertex v;
+            OverlayVertex v;
             v.px = x; v.py = y; v.pz = z;
             v.cr = r; v.cg = g; v.cb = b; v.ca = a;
             return v;
@@ -346,7 +346,12 @@ bool OverlayQueue::initialize(rhi::IDevice* device)
                         break;
                     count = desc->vertexCount;
                     m_unifiedVerts.reserve(start + count);
-                    if (desc->usePerVertexColor && desc->colors)
+                    if (desc->usePerVertexColor && !desc->colors)
+                    {
+                        const auto* ov = reinterpret_cast<const OverlayVertex*>(desc->vertices);
+                        m_unifiedVerts.insert(m_unifiedVerts.end(), ov, ov + count);
+                    }
+                    else if (desc->usePerVertexColor && desc->colors)
                     {
                         for (uint32_t i = 0; i < count; ++i)
                         {
@@ -469,10 +474,7 @@ bool OverlayQueue::initialize(rhi::IDevice* device)
 
             if (count > 0)
             {
-                m_unifiedRanges.push_back(start);
-                m_unifiedRanges.push_back(count);
-                m_unifiedRanges.push_back(isTriangle);
-                m_unifiedRanges.push_back(static_cast<uint32_t>(primitive->group));
+                m_unifiedRanges.push_back({start, count, isTriangle, static_cast<uint32_t>(primitive->group)});
                 m_dirty = true;
             }
         }
@@ -490,31 +492,22 @@ bool OverlayQueue::initialize(rhi::IDevice* device)
                 return;
 
             std::vector<OverlayVertex> newVerts;
-            std::vector<uint32_t> newRanges;
+            std::vector<Range> newRanges;
             newVerts.reserve(m_unifiedVerts.size());
             newRanges.reserve(m_unifiedRanges.size());
 
             uint32_t newOffset = 0;
-            for (size_t i = 0; i < m_unifiedRanges.size(); i += 4)
+            for (const auto& range : m_unifiedRanges)
             {
-                uint32_t oldStart = m_unifiedRanges[i];
-                uint32_t count = m_unifiedRanges[i + 1];
-                uint32_t isTriangle = m_unifiedRanges[i + 2];
-                OverlayGroup rangeGroup = static_cast<OverlayGroup>(m_unifiedRanges[i + 3]);
-
-                if (rangeGroup == group)
+                if (range.group == static_cast<uint32_t>(group))
                     continue;
 
                 newVerts.insert(newVerts.end(),
-                    m_unifiedVerts.begin() + oldStart,
-                    m_unifiedVerts.begin() + oldStart + count);
+                    m_unifiedVerts.begin() + range.start,
+                    m_unifiedVerts.begin() + range.start + range.count);
 
-                newRanges.push_back(newOffset);
-                newRanges.push_back(count);
-                newRanges.push_back(isTriangle);
-                newRanges.push_back(static_cast<uint32_t>(rangeGroup));
-
-                newOffset += count;
+                newRanges.push_back({newOffset, range.count, range.isTriangle, range.group});
+                newOffset += range.count;
             }
 
             m_unifiedVerts = std::move(newVerts);
@@ -534,7 +527,7 @@ bool OverlayQueue::initialize(rhi::IDevice* device)
             }
 
             uint32_t totalUnifiedVerts = static_cast<uint32_t>(m_unifiedVerts.size());
-            SY_DEBUGF("[OverlayQueue] render: unified=%u ranges=%zu", totalUnifiedVerts, m_unifiedRanges.size() / 4);
+            SY_DEBUGF("[OverlayQueue] render: unified=%u ranges=%zu", totalUnifiedVerts, m_unifiedRanges.size());
 
             uint32_t totalOldVerts =
                 static_cast<uint32_t>(m_selectionBoxVerts.size()) +
@@ -704,19 +697,15 @@ bool OverlayQueue::initialize(rhi::IDevice* device)
             // 统一提交的 overlay 图元
             if (!m_unifiedRanges.empty() && totalUnifiedVerts > 0)
             {
-                for (size_t i = 0; i < m_unifiedRanges.size(); i += 4)
+                for (const auto& range : m_unifiedRanges)
                 {
-                    uint32_t start = m_unifiedRanges[i];
-                    uint32_t count = m_unifiedRanges[i + 1];
-                    uint32_t isTriangle = m_unifiedRanges[i + 2];
-
-                    if (count == 0)
+                    if (range.count == 0)
                         continue;
 
-                    PrimitiveType topo = isTriangle
+                    PrimitiveType topo = range.isTriangle
                         ? PrimitiveType::TriangleList
                         : PrimitiveType::LineList;
-                    encoder->submitOverlay(topo, m_unifiedStart + start, count);
+                    encoder->submitOverlay(topo, m_unifiedStart + range.start, range.count);
                 }
             }
         }

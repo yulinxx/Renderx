@@ -34,19 +34,6 @@ class CommandEncoder;
 class OverlayQueue {
 public:
     /**
-     * @brief 叠加层顶点结构
-     * 
-     * 包含位置和颜色信息，用于渲染叠加元素。
-     */
-    struct OverlayVertex {
-        float px, py, pz;    ///< 位置坐标（世界空间）
-        float cr, cg, cb, ca; ///< 颜色（RGBA，范围0-1）
-    };
-
-    /// 静态断言：OverlayVertex 大小必须为28字节
-    static_assert(sizeof(OverlayVertex) == 28, "OverlayVertex must be 28 bytes");
-
-/**
      * @brief 初始化叠加层渲染器
      *
      * @param device RHI设备指针
@@ -189,6 +176,18 @@ public:
     rhi::BufferHandle getVertexBuffer() const { return m_vertexBuffer; }
 
 private:
+    /**
+     * @brief 统一 overlay 的绘制子区间记录
+     *
+     * 渲染只依赖 start/count/isTriangle；group 仅用于按分组清除。
+     */
+    struct Range {
+        uint32_t start = 0;
+        uint32_t count = 0;
+        uint32_t isTriangle = 0;
+        uint32_t group = 0;
+    };
+
     /// 十字准星顶点数据
     std::vector<OverlayVertex> m_crosshairVerts;
     /// 捕捉指示器顶点数据
@@ -210,9 +209,7 @@ private:
 
     /// 统一提交的 overlay 顶点数据（Phase 1 新增）
     std::vector<OverlayVertex> m_unifiedVerts;
-    /// 统一 overlay 的绘制子区间记录：[start, count, isTriangle, group] x N
-    /// 渲染只依赖 start/count/isTriangle；group 仅用于按分组清除。
-    std::vector<uint32_t> m_unifiedRanges;
+    std::vector<Range> m_unifiedRanges;
     /// unified 数据在合并缓冲区中的起始偏移（用于无脏数据时直接绘制）
     uint32_t m_unifiedStart = 0;
 

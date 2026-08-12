@@ -144,6 +144,115 @@ namespace render
 
         /// 相机中心世界坐标（double 精度，用于 camera-relative 渲染消除大坐标浮点精度问题）
         double cameraCenter[2] = { 0.0, 0.0 };
+
+        // === C API 封装方法：避免 C API 层直接访问内部组件 ===
+
+        void submitOverlay(const OverlayPrimitive* primitive)
+        {
+            overlayQueue.submitOverlay(primitive);
+        }
+
+        void submitOverlays(const OverlayPrimitive* primitives, uint32_t count)
+        {
+            for (uint32_t i = 0; i < count; ++i)
+                overlayQueue.submitOverlay(&primitives[i]);
+        }
+
+        void clearOverlays()
+        {
+            overlayQueue.clearUnifiedOverlays();
+        }
+
+        void clearOverlayGroup(OverlayGroup group)
+        {
+            overlayQueue.clearOverlayGroup(group);
+        }
+
+        void setSceneEnvEx(const VertexP3C3* vertices, uint32_t vertexCount,
+            const uint32_t* layerOffsets, uint32_t layerCount,
+            const uint32_t* layerColors, const float* lineWidths,
+            const bool* pixelFlags, const bool* triangleFlags, const float* zDepths)
+        {
+            sceneEnv.setGeometryEx(vertices, vertexCount, layerOffsets, layerCount,
+                layerColors, lineWidths, pixelFlags, triangleFlags, zDepths);
+        }
+
+        void setSceneEnvDirect(const SceneEnvGeometryDesc* desc)
+        {
+            sceneEnv.setGeometryDirect(desc);
+        }
+
+        void renderTexts(const TextItemList* texts)
+        {
+            textAtlas.renderText(texts, view2D.viewMatrix,
+                static_cast<uint32_t>(view2D.viewWidth),
+                static_cast<uint32_t>(view2D.viewHeight),
+                rhiDevice);
+        }
+
+        void submitScreenTexts(const ScreenTextItem* items, uint32_t count)
+        {
+            pendingScreenTexts.clear();
+            if (!items || count == 0) return;
+            pendingScreenTexts.reserve(count);
+            for (uint32_t i = 0; i < count; ++i)
+            {
+                PendingScreenText pst;
+                pst.text = items[i].text;
+                pst.x = items[i].x;
+                pst.y = items[i].y;
+                pst.color[0] = items[i].color[0];
+                pst.color[1] = items[i].color[1];
+                pst.color[2] = items[i].color[2];
+                pst.color[3] = items[i].color[3];
+                pst.fontSize = items[i].fontSize;
+                pendingScreenTexts.push_back(std::move(pst));
+            }
+        }
+
+        // === 图元管理 ===
+
+        void addEntity(EntityId id, const VertexP3C3* vertices, uint32_t vertexCount,
+            PrimitiveType type, uint32_t materialIdx)
+        {
+            world2D.addEntity(id, vertices, vertexCount, type, static_cast<uint16_t>(materialIdx));
+        }
+
+        void modifyEntity(EntityId id, const VertexP3C3* vertices, uint32_t vertexCount,
+            uint32_t materialIdx)
+        {
+            world2D.modifyEntity(id, vertices, vertexCount, materialIdx);
+        }
+
+        void removeEntity(EntityId id)
+        {
+            world2D.removeEntity(id);
+        }
+
+        void setEntityVisibility(EntityId id, bool visible)
+        {
+            world2D.setEntityVisibility(id, visible);
+        }
+
+        uint32_t getEntityCount() const
+        {
+            return world2D.getEntityCount();
+        }
+
+        uint32_t addMaterial(const MaterialDesc& desc)
+        {
+            return world2D.addMaterial(&desc);
+        }
+
+        void updateMaterial(uint32_t idx, const MaterialDesc& desc)
+        {
+            world2D.updateMaterial(static_cast<uint16_t>(idx), &desc);
+        }
+
+        void clearAllEntities()
+        {
+            world2D.clearAllEntities();
+        }
     };
 
     /// M2: RenderSession = RenderDevice 的别名

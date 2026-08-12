@@ -96,14 +96,6 @@ namespace render::core
         m_device = nullptr;
     }
 
-    void SceneEnv::setGeometry(const VertexP3C3* vertices, uint32_t vertexCount,
-        const uint32_t* layerOffsets, uint32_t layerCount,
-        const uint32_t* layerColors, const float* lineWidths)
-    {
-        setGeometryEx(vertices, vertexCount, layerOffsets, layerCount,
-            layerColors, lineWidths, nullptr, nullptr, nullptr);
-    }
-
     void SceneEnv::setGeometryEx(const VertexP3C3* vertices, uint32_t vertexCount,
         const uint32_t* layerOffsets, uint32_t layerCount,
         const uint32_t* layerColors, const float* lineWidths,
@@ -131,6 +123,57 @@ namespace render::core
             layer.zDepth = zDepths ? zDepths[i] : 0.0f;
             layer.asTriangles = triangleFlags ? triangleFlags[i] : ((layer.vertexCount % 3 == 0) && (layer.vertexCount > 0));
             layer.usePixelCoords = pixelFlags ? pixelFlags[i] : false;
+        }
+
+        m_dirty = true;
+    }
+
+    void SceneEnv::setGeometryDirect(const SceneEnvGeometryDesc* desc)
+    {
+        m_vertices.clear();
+        m_layers.clear();
+
+        if (!desc || !desc->layers || desc->layerCount == 0)
+        {
+            m_dirty = true;
+            return;
+        }
+
+        m_layers.resize(desc->layerCount);
+        m_vertices.reserve(desc->layers[0].vertexCount * desc->layerCount);
+
+        uint32_t offset = 0;
+        for (uint32_t i = 0; i < desc->layerCount; ++i)
+        {
+            const EnvLayerDesc& src = desc->layers[i];
+            EnvLayer& layer = m_layers[i];
+
+            layer.firstVertex = offset;
+            layer.vertexCount = (src.vertices && src.vertexCount > 0) ? src.vertexCount : 0;
+
+            layer.color[0] = src.color[0];
+            layer.color[1] = src.color[1];
+            layer.color[2] = src.color[2];
+            layer.color[3] = src.color[3];
+
+            layer.lineWidth = src.lineWidth;
+            layer.zDepth = src.zDepth;
+            layer.asTriangles = src.asTriangles != 0;
+            layer.usePixelCoords = src.usePixelCoords != 0;
+
+            for (uint32_t v = 0; v < src.vertexCount; ++v)
+            {
+                VertexP3C3 vert;
+                vert.px = src.vertices[v * 2 + 0];
+                vert.py = src.vertices[v * 2 + 1];
+                vert.pz = src.zDepth;
+                vert.cr = src.color[0];
+                vert.cg = src.color[1];
+                vert.cb = src.color[2];
+                m_vertices.push_back(vert);
+            }
+
+            offset += layer.vertexCount;
         }
 
         m_dirty = true;

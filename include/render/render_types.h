@@ -58,6 +58,20 @@ struct VertexP3C3
 static_assert(sizeof(VertexP3C3) == 24, "VertexP3C3 must be 24 bytes");
 
 /**
+ * @brief 叠加层顶点格式：位置 + RGBA 颜色
+ *
+ * 与 VertexP3C3 共享位置 + RGB 布局，仅多出 alpha 通道。
+ * overlay 管线统一使用此格式，避免与 VertexP3C3 之间的反复转换。
+ */
+struct OverlayVertex
+{
+    float px, py, pz;    ///< 位置坐标 (x, y, z)
+    float cr, cg, cb, ca; ///< 颜色 (RGBA)，范围[0,1]
+};
+
+static_assert(sizeof(OverlayVertex) == 28, "OverlayVertex must be 28 bytes");
+
+/**
  * @brief 3D位置 + 3通道法向量顶点格式
  *
  * 每个顶点包含3个浮点数的位置坐标和3个浮点数的法向量。
@@ -448,10 +462,10 @@ struct OverlayPrimitive
 /// 线段列表描述（对应 LineList）
 struct OverlayPolylineDesc
 {
-    const float *vertices;  ///< 顶点位置数组（每顶点3个float: x,y,z）
+    const float* vertices;  ///< 顶点位置数组（每顶点3个float: x,y,z）；当 usePerVertexColor=true 且 colors=nullptr 时，解释为 OverlayVertex*（7 floats per vertex，自带 RGBA）
     uint32_t vertexCount;   ///< 顶点数量
-    bool usePerVertexColor; ///< 是否使用逐顶点颜色（为true时colors字段有效）
-    const float *colors;    ///< 逐顶点颜色数组（每顶点3个float: r,g,b），可选
+    bool usePerVertexColor; ///< 是否使用逐顶点颜色（为true且colors有效时读float RGB；为true且colors为空时读OverlayVertex）
+    const float* colors;    ///< 逐顶点颜色数组（每顶点3个float: r,g,b），可选；为空时 vertices 解释为 OverlayVertex 格式
 };
 
 /// 矩形描述（对应 Rect / FilledRect）
@@ -593,5 +607,34 @@ struct ScreenTextItem
     float color[4];   ///< RGBA 颜色
     float fontSize;   ///< 字体大小（像素）
 };
+
+/// 场景环境单层描述（纯 POD，零 Engine 依赖）
+///
+/// 直接映射 Engine 侧 SceneEnvLayer 字段，供 UI 侧组装后经
+/// renderSetSceneEnvDirect 直通传至 Renderx。顶点为 xy 坐标对，无逐顶点颜色
+/// —— 层颜色由 Renderx 内部填充到该层每个顶点的 RGB。
+struct EnvLayerDesc
+{
+    const float* vertices;      ///< 顶点坐标对（x0,y0, x1,y1, ...）
+    uint32_t     vertexCount;   ///< 顶点数（坐标对个数，非分量数）
+    float        color[4];      ///< 整层颜色 RGBA（Renderx 内部填充到逐顶点 RGB）
+    float        lineWidth;     ///< 线宽（像素）
+    uint8_t      usePixelCoords;///< 是否像素坐标（0 世界坐标 / 1 像素坐标）
+    uint8_t      asTriangles;   ///< 是否三角形拓扑（0 线 / 1 三角形）
+    float        zDepth;        ///< 深度值，用于层间排序
+};
+
+static_assert(sizeof(EnvLayerDesc) == 40, "EnvLayerDesc must be 40 bytes");
+
+/// 场景环境几何直通描述符（纯 POD，零 Engine 依赖）
+///
+/// 标尺文字不进此描述符 —— UI 侧继续走 renderSetScreenTexts(ScreenTextItem*, count)。
+struct SceneEnvGeometryDesc
+{
+    const EnvLayerDesc* layers;     ///< 层数组
+    uint32_t            layerCount; ///< 层数
+};
+
+static_assert(sizeof(SceneEnvGeometryDesc) == 16, "SceneEnvGeometryDesc must be 16 bytes");
 
 } // namespace render
