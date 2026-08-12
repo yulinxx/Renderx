@@ -28,67 +28,67 @@ extern "C" {
  *
  * 返回 false 时已打印错误日志，调用方负责清理已分配的资源。
  */
-static bool initModules(RenderDevice* dev, const DeviceDesc* desc)
-{
-    // 初始化顺序：基础模块 -> 高级模块 -> 依赖 PSM 的模块 -> 特殊模块
-    // Null backend: 仅分配内部数据结构，不创建 GPU 资源
-
-    if (!dev->world2D.initialize())
-        return false;
-
-    if (!dev->batchQueue.initialize(dev->rhiDevice))
-        return false;
-
-    if (!dev->overlayQueue.initialize(dev->rhiDevice))
-        return false;
-
-    if (!dev->pipelineStateManager.initialize(dev->rhiDevice))
-        return false;
-
-    if (!dev->commandEncoder.initialize(dev->rhiDevice))
-        return false;
-
-    // Phase 7: 将 PSM 注入 CommandEncoder，使其复用管线缓存
-    dev->commandEncoder.setPipelineStateManager(&dev->pipelineStateManager);
-
-    if (!dev->renderGraph.initialize(dev->rhiDevice))
-        return false;
-
-    if (!dev->drawBatcher.initialize(dev->rhiDevice))
-        return false;
-
-    dev->commandEncoder.setDrawBatcher(&dev->drawBatcher);
-
-    if (!dev->persistentEntityManager.initialize(dev->rhiDevice, 65536))
-        return false;
-
-     if (!dev->meshManager.initialize(dev->rhiDevice))
-         return false;
-
-     if (!dev->world3D.initialize())
-         return false;
-
-     if (!dev->textAtlas.initialize(dev->rhiDevice))
-        return false;
-
-    if (!dev->screenTextRenderer.initialize(dev->rhiDevice))
-        return false;
-
-    // SceneEnv 需要 shader，仅在 OpenGL/Vulkan 后端初始化
-    // Null backend 不创建 GPU 管线，跳过 SceneEnv
-    // Metal backend 使用 .metal shaders，SceneEnv 初始化在 Metal backend 中处理
-    if (desc->backend == BackendType::OpenGL || desc->backend == BackendType::Vulkan)
+    static bool initModules(RenderDevice* dev, const DeviceDesc* desc)
     {
-        if (!dev->sceneEnv.initialize(dev->rhiDevice))
+        // 初始化顺序：基础模块 -> 高级模块 -> 依赖 PSM 的模块 -> 特殊模块
+        // Null backend: 仅分配内部数据结构，不创建 GPU 资源
+
+        if (!dev->world2D.initialize())
             return false;
-    }
-    else
-    {
-        SY_DEBUGF("renderCreateDevice: Null backend - skipping SceneEnv initialization");
-    }
 
-    return true;
-}
+        if (!dev->batchQueue.initialize(dev->rhiDevice))
+            return false;
+
+        if (!dev->overlayQueue.initialize(dev->rhiDevice))
+            return false;
+
+        if (!dev->pipelineStateManager.initialize(dev->rhiDevice))
+            return false;
+
+        if (!dev->commandEncoder.initialize(dev->rhiDevice))
+            return false;
+
+        // Phase 7: 将 PSM 注入 CommandEncoder，使其复用管线缓存
+        dev->commandEncoder.setPipelineStateManager(&dev->pipelineStateManager);
+
+        if (!dev->renderGraph.initialize(dev->rhiDevice))
+            return false;
+
+        if (!dev->drawBatcher.initialize(dev->rhiDevice))
+            return false;
+
+        dev->commandEncoder.setDrawBatcher(&dev->drawBatcher);
+
+        if (!dev->persistentEntityManager.initialize(dev->rhiDevice, 65536))
+            return false;
+
+        if (!dev->meshManager.initialize(dev->rhiDevice))
+            return false;
+
+        if (!dev->world3D.initialize())
+            return false;
+
+        if (!dev->textAtlas.initialize(dev->rhiDevice))
+            return false;
+
+        if (!dev->screenTextRenderer.initialize(dev->rhiDevice))
+            return false;
+
+        // SceneEnv 需要 shader，仅在 OpenGL/Vulkan 后端初始化
+        // Null backend 不创建 GPU 管线，跳过 SceneEnv
+        // Metal backend 使用 .metal shaders，SceneEnv 初始化在 Metal backend 中处理
+        if (desc->backend == BackendType::OpenGL || desc->backend == BackendType::Vulkan)
+        {
+            if (!dev->sceneEnv.initialize(dev->rhiDevice))
+                return false;
+        }
+        else
+        {
+            SY_DEBUGF("renderCreateDevice: Null backend - skipping SceneEnv initialization");
+        }
+
+        return true;
+    }
 
     RENDER_API RenderDevice* renderCreateDevice(const DeviceDesc* desc)
     {

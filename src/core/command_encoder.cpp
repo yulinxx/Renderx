@@ -30,97 +30,97 @@ namespace render
         // 生命周期
         // ============================================================================
 
-bool CommandEncoder::initialize(rhi::IDevice* device)
-{
-    if (m_initialized || !device)
-        return false;
-
-    m_device = device;
-
-    // ------------------------------------------------------------------------
-    // 创建 overlay pipeline
-    // ------------------------------------------------------------------------
-    {
-        rhi::PipelineDesc lineDesc;
-        lineDesc.topology = rhi::PrimitiveTopology::LineList;
-        lineDesc.vertexShader = "overlay_vert";
-        lineDesc.fragmentShader = "overlay_frag";
-        lineDesc.computeShader = nullptr;
-        lineDesc.vertexFormat = rhi::VertexFormat::P3C4;
-        lineDesc.depthTest = false;
-        lineDesc.depthWrite = false;
-        lineDesc.blendEnable = true;
-        lineDesc.srcBlend = rhi::BlendFactor::SrcAlpha;
-        lineDesc.dstBlend = rhi::BlendFactor::OneMinusSrcAlpha;
-        lineDesc.depthFunc = rhi::CompareFunc::Always;
-        m_overlayLinePipeline = m_psm
-            ? m_psm->getOrCreatePipeline(lineDesc)
-            : device->createPipeline(lineDesc);
-        if (m_overlayLinePipeline == rhi::NullHandle)
+        bool CommandEncoder::initialize(rhi::IDevice* device)
         {
-            SY_ERROR("[CommandEncoder] failed to create overlay line pipeline");
-            return false;
+            if (m_initialized || !device)
+                return false;
+
+            m_device = device;
+
+            // ------------------------------------------------------------------------
+            // 创建 overlay pipeline
+            // ------------------------------------------------------------------------
+            {
+                rhi::PipelineDesc lineDesc;
+                lineDesc.topology = rhi::PrimitiveTopology::LineList;
+                lineDesc.vertexShader = "overlay_vert";
+                lineDesc.fragmentShader = "overlay_frag";
+                lineDesc.computeShader = nullptr;
+                lineDesc.vertexFormat = rhi::VertexFormat::P3C4;
+                lineDesc.depthTest = false;
+                lineDesc.depthWrite = false;
+                lineDesc.blendEnable = true;
+                lineDesc.srcBlend = rhi::BlendFactor::SrcAlpha;
+                lineDesc.dstBlend = rhi::BlendFactor::OneMinusSrcAlpha;
+                lineDesc.depthFunc = rhi::CompareFunc::Always;
+                m_overlayLinePipeline = m_psm
+                    ? m_psm->getOrCreatePipeline(lineDesc)
+                    : device->createPipeline(lineDesc);
+                if (m_overlayLinePipeline == rhi::NullHandle)
+                {
+                    SY_ERROR("[CommandEncoder] failed to create overlay line pipeline");
+                    return false;
+                }
+
+                rhi::PipelineDesc triDesc = lineDesc;
+                triDesc.topology = rhi::PrimitiveTopology::TriangleList;
+                m_overlayTriPipeline = m_psm
+                    ? m_psm->getOrCreatePipeline(triDesc)
+                    : device->createPipeline(triDesc);
+                if (m_overlayTriPipeline == rhi::NullHandle)
+                {
+                    SY_ERROR("[CommandEncoder] failed to create overlay triangle pipeline");
+                    return false;
+                }
+            }
+
+            // ------------------------------------------------------------------------
+            // 创建 world pipeline（7 种 topology）
+            // ------------------------------------------------------------------------
+            static const char* kWorldVert = "passthrough_vert";
+            static const char* kWorldFrag = "passthrough_frag";
+
+            static const rhi::PrimitiveTopology kTopoMap[PRIMITIVE_TYPE_COUNT] = {
+                rhi::PrimitiveTopology::PointList,
+                rhi::PrimitiveTopology::LineList,
+                rhi::PrimitiveTopology::LineStrip,
+                rhi::PrimitiveTopology::LineLoop,
+                rhi::PrimitiveTopology::TriangleList,
+                rhi::PrimitiveTopology::TriangleStrip,
+                rhi::PrimitiveTopology::TriangleFan,
+            };
+
+            for (uint32_t i = 0; i < PRIMITIVE_TYPE_COUNT; ++i)
+            {
+                rhi::PipelineDesc desc;
+                desc.topology = kTopoMap[i];
+                desc.vertexShader = kWorldVert;
+                desc.fragmentShader = kWorldFrag;
+                desc.computeShader = nullptr;
+                desc.vertexFormat = rhi::VertexFormat::P3C3;
+                desc.depthTest = false;
+                desc.depthWrite = false;
+                desc.blendEnable = true;
+                desc.srcBlend = rhi::BlendFactor::SrcAlpha;
+                desc.dstBlend = rhi::BlendFactor::OneMinusSrcAlpha;
+                desc.depthFunc = rhi::CompareFunc::Always;
+                m_worldPipelines[i] = m_psm
+                    ? m_psm->getOrCreatePipeline(desc)
+                    : device->createPipeline(desc);
+                if (m_worldPipelines[i] == rhi::NullHandle)
+                {
+                    SY_ERRORF("[CommandEncoder] failed to create world pipeline index=%u", i);
+                    return false;
+                }
+            }
+
+            m_commands.reserve(256);
+            m_initialized = true;
+
+            SY_DEBUGF("[CommandEncoder] Initialized with %u world pipelines + 2 overlay pipelines (PSM=%s)",
+                PRIMITIVE_TYPE_COUNT, m_psm ? "yes" : "no");
+            return true;
         }
-
-        rhi::PipelineDesc triDesc = lineDesc;
-        triDesc.topology = rhi::PrimitiveTopology::TriangleList;
-        m_overlayTriPipeline = m_psm
-            ? m_psm->getOrCreatePipeline(triDesc)
-            : device->createPipeline(triDesc);
-        if (m_overlayTriPipeline == rhi::NullHandle)
-        {
-            SY_ERROR("[CommandEncoder] failed to create overlay triangle pipeline");
-            return false;
-        }
-    }
-
-    // ------------------------------------------------------------------------
-    // 创建 world pipeline（7 种 topology）
-    // ------------------------------------------------------------------------
-    static const char* kWorldVert = "passthrough_vert";
-    static const char* kWorldFrag = "passthrough_frag";
-
-    static const rhi::PrimitiveTopology kTopoMap[PRIMITIVE_TYPE_COUNT] = {
-        rhi::PrimitiveTopology::PointList,
-        rhi::PrimitiveTopology::LineList,
-        rhi::PrimitiveTopology::LineStrip,
-        rhi::PrimitiveTopology::LineLoop,
-        rhi::PrimitiveTopology::TriangleList,
-        rhi::PrimitiveTopology::TriangleStrip,
-        rhi::PrimitiveTopology::TriangleFan,
-    };
-
-    for (uint32_t i = 0; i < PRIMITIVE_TYPE_COUNT; ++i)
-    {
-        rhi::PipelineDesc desc;
-        desc.topology = kTopoMap[i];
-        desc.vertexShader = kWorldVert;
-        desc.fragmentShader = kWorldFrag;
-        desc.computeShader = nullptr;
-        desc.vertexFormat = rhi::VertexFormat::P3C3;
-        desc.depthTest = false;
-        desc.depthWrite = false;
-        desc.blendEnable = true;
-        desc.srcBlend = rhi::BlendFactor::SrcAlpha;
-        desc.dstBlend = rhi::BlendFactor::OneMinusSrcAlpha;
-        desc.depthFunc = rhi::CompareFunc::Always;
-        m_worldPipelines[i] = m_psm
-            ? m_psm->getOrCreatePipeline(desc)
-            : device->createPipeline(desc);
-        if (m_worldPipelines[i] == rhi::NullHandle)
-        {
-            SY_ERRORF("[CommandEncoder] failed to create world pipeline index=%u", i);
-            return false;
-        }
-    }
-
-    m_commands.reserve(256);
-    m_initialized = true;
-
-    SY_DEBUGF("[CommandEncoder] Initialized with %u world pipelines + 2 overlay pipelines (PSM=%s)",
-        PRIMITIVE_TYPE_COUNT, m_psm ? "yes" : "no");
-    return true;
-}
 
         void CommandEncoder::setPipelineStateManager(PipelineStateManager* psm)
         {
@@ -259,12 +259,12 @@ bool CommandEncoder::initialize(rhi::IDevice* device)
         // 命令执行
         // ============================================================================
 
-         void CommandEncoder::execute(rhi::IDevice* device,
-             rhi::BufferHandle worldVB,
-             rhi::BufferHandle overlayVB,
-             rhi::BufferHandle indirectBuf,
-             const float viewMatrix[9],
-             const float cameraCenter[2])
+        void CommandEncoder::execute(rhi::IDevice* device,
+            rhi::BufferHandle worldVB,
+            rhi::BufferHandle overlayVB,
+            rhi::BufferHandle indirectBuf,
+            const float viewMatrix[9],
+            const float cameraCenter[2])
         {
             if (m_commands.empty())
             {
@@ -355,7 +355,7 @@ bool CommandEncoder::initialize(rhi::IDevice* device)
                         else
                         {
                             device->setUniformMatrix3("uViewMatrix", viewMatrix);
-                            const float zero2[2] = {0.0f, 0.0f};
+                            const float zero2[2] = { 0.0f, 0.0f };
                             device->setUniformVec2("uCameraCenter", zero2);
                         }
                     }

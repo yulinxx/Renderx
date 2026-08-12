@@ -140,7 +140,8 @@ extern "C" {
     {
         if (!dev) return;
         std::vector<VertexP3N3> verts(vertexCount);
-        for (uint32_t i = 0; i < vertexCount; ++i) {
+        for (uint32_t i = 0; i < vertexCount; ++i)
+        {
             verts[i].px = positions[i * 3 + 0];
             verts[i].py = positions[i * 3 + 1];
             verts[i].pz = positions[i * 3 + 2];

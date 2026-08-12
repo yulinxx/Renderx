@@ -90,9 +90,8 @@ namespace render::core
         m_device = nullptr;
     }
 
-    void TextAtlas::loadFont(const void* fontData, size_t dataSize, float pixelHeight)
+    void TextAtlas::loadFont(const void* fontData, size_t /*dataSize*/, float pixelHeight)
     {
-        (void)dataSize;
         stbtt_fontinfo fi;
         if (!stbtt_InitFont(&fi, static_cast<const unsigned char*>(fontData), 0))
             return;

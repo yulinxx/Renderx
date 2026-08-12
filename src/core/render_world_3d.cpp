@@ -20,7 +20,7 @@ namespace render
     }
 
     bool RenderWorld3D::initialize(uint32_t initialVertexCapacity,
-                                    uint32_t initialIndexCapacity)
+        uint32_t initialIndexCapacity)
     {
         if (!m_impl)
             m_impl = new Impl();
@@ -42,8 +42,8 @@ namespace render
     }
 
     void RenderWorld3D::addEntity(EntityId id, const VertexP3N3* vertices,
-                                   uint32_t vertexCount, const uint32_t* indices,
-                                   uint32_t indexCount, uint16_t materialIdx)
+        uint32_t vertexCount, const uint32_t* indices,
+        uint32_t indexCount, uint16_t materialIdx)
     {
         if (!m_impl || !vertices || vertexCount == 0) return;
 
@@ -150,5 +150,4 @@ namespace render
         for (auto& e : m_impl->entities)
             e.dirty = false;
     }
-
 } // namespace render

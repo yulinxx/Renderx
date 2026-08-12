@@ -233,11 +233,9 @@ namespace render
                 m_materials[idx].desc = *desc;
         }
 
-        void RenderWorld::queryVisible(const float viewMatrix[9], float viewWidth, float viewHeight,
+        void RenderWorld::queryVisible(const float viewMatrix[9], float /*viewWidth*/, float /*viewHeight*/,
             uint32_t* outIndices, uint32_t* outCount, uint32_t maxOut) const
         {
-            (void)viewWidth;
-            (void)viewHeight;
 
             // viewWidth/viewHeight 当前不直接参与视锥计算，因为 viewMatrix
             // 已是正交投影矩阵（包含缩放）。保留参数用于未来扩展和退化矩阵兜底。

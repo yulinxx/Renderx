@@ -180,17 +180,17 @@ static void computeViewBounds(const float viewMatrix[9],
  *
  * @return 可见图元数量
  */
-/**
- * @brief 从 GPU 可见性缓冲区回读可见图元索引（M8: 异步优化版）
- *
- * 使用 PersistentEntityManager 的异步读取接口，
- * 避免直接 mapBuffer 阻塞 CPU。
- *
- * @param dev 渲染设备
- * @param outIndices 输出可见图元索引数组
- * @param maxOut 输出缓冲区容量
- * @return 可见图元数量
- */
+ /**
+  * @brief 从 GPU 可见性缓冲区回读可见图元索引（M8: 异步优化版）
+  *
+  * 使用 PersistentEntityManager 的异步读取接口，
+  * 避免直接 mapBuffer 阻塞 CPU。
+  *
+  * @param dev 渲染设备
+  * @param outIndices 输出可见图元索引数组
+  * @param maxOut 输出缓冲区容量
+  * @return 可见图元数量
+  */
 static uint32_t readBackGpuVisibility(RenderDevice* dev, uint32_t* outIndices, uint32_t maxOut)
 {
     auto& pem = dev->persistentEntityManager;
@@ -212,7 +212,7 @@ static uint32_t readBackGpuVisibility(RenderDevice* dev, uint32_t* outIndices, u
  * @param polyline 多段线几何数据
  * @param outVertices 输出顶点数组
  */
- static void tessellatePolyline(const GeometryPolyline* polyline, std::vector<render::VertexP3C3>& outVertices)
+static void tessellatePolyline(const GeometryPolyline* polyline, std::vector<render::VertexP3C3>& outVertices)
 {
     if (!polyline || !polyline->points || polyline->pointCount < 2)
         return;
@@ -238,7 +238,7 @@ static uint32_t readBackGpuVisibility(RenderDevice* dev, uint32_t* outIndices, u
  * @param circle 圆形几何数据
  * @param outVertices 输出顶点数组
  */
- static void tessellateCircle(const GeometryCircle* circle, std::vector<render::VertexP3C3>& outVertices)
+static void tessellateCircle(const GeometryCircle* circle, std::vector<render::VertexP3C3>& outVertices)
 {
     if (!circle || circle->radius <= 0)
         return;
@@ -270,37 +270,37 @@ static uint32_t readBackGpuVisibility(RenderDevice* dev, uint32_t* outIndices, u
  * @param arc 圆弧几何数据
  * @param outVertices 输出顶点数组
  */
- static void tessellateArc(const GeometryArc* arc, std::vector<render::VertexP3C3>& outVertices)
- {
-     if (!arc || arc->radius <= 0)
-         return;
+static void tessellateArc(const GeometryArc* arc, std::vector<render::VertexP3C3>& outVertices)
+{
+    if (!arc || arc->radius <= 0)
+        return;
 
-     float cr = arc->color[0], cg = arc->color[1], cb = arc->color[2];
-     double start = arc->startAngle;
-     double end = arc->endAngle;
-     if (end < start)
-         end += 2.0 * render::tess::kPi;
+    float cr = arc->color[0], cg = arc->color[1], cb = arc->color[2];
+    double start = arc->startAngle;
+    double end = arc->endAngle;
+    if (end < start)
+        end += 2.0 * render::tess::kPi;
 
-     double angleRange = end - start;
-     int segments = render::tess::arcSegments(angleRange);
+    double angleRange = end - start;
+    int segments = render::tess::arcSegments(angleRange);
 
-     outVertices.reserve(segments);
-     const double centerX = arc->center.x;
-     const double centerY = arc->center.y;
-     const double radius = arc->radius;
+    outVertices.reserve(segments);
+    const double centerX = arc->center.x;
+    const double centerY = arc->center.y;
+    const double radius = arc->radius;
 
-     for (int i = 0; i <= segments; ++i)
-     {
-         double t = static_cast<double>(i) / segments;
-         double angle = start + t * angleRange;
-         outVertices.push_back({
-             static_cast<float>(centerX + radius * std::cos(angle)),
-             static_cast<float>(centerY + radius * std::sin(angle)),
-             0.0f,
-             cr, cg, cb
-             });
-     }
- }
+    for (int i = 0; i <= segments; ++i)
+    {
+        double t = static_cast<double>(i) / segments;
+        double angle = start + t * angleRange;
+        outVertices.push_back({
+            static_cast<float>(centerX + radius * std::cos(angle)),
+            static_cast<float>(centerY + radius * std::sin(angle)),
+            0.0f,
+            cr, cg, cb
+            });
+    }
+}
 
 /**
  * @brief 将椭圆几何数据细分为顶点
@@ -310,35 +310,35 @@ static uint32_t readBackGpuVisibility(RenderDevice* dev, uint32_t* outIndices, u
  * @param ellipse 椭圆几何数据
  * @param outVertices 输出顶点数组
  */
- static void tessellateEllipse(const GeometryEllipse* ellipse, std::vector<render::VertexP3C3>& outVertices)
- {
-     if (!ellipse || ellipse->radiusX <= 0 || ellipse->radiusY <= 0)
-         return;
+static void tessellateEllipse(const GeometryEllipse* ellipse, std::vector<render::VertexP3C3>& outVertices)
+{
+    if (!ellipse || ellipse->radiusX <= 0 || ellipse->radiusY <= 0)
+        return;
 
-     // 统一离散化基准段数：64（完整椭圆）
-     const int segments = render::tess::kCircleSegments;
-     outVertices.reserve(segments);
+    // 统一离散化基准段数：64（完整椭圆）
+    const int segments = render::tess::kCircleSegments;
+    outVertices.reserve(segments);
 
-     double start = ellipse->startAngle;
-     double end = ellipse->endAngle;
-     if (ellipse->fullEllipse || (start == 0.0 && end == 0.0))
-     {
-         start = 0.0;
-         end = 2.0 * render::tess::kPi;
-     }
-     // 椭圆弧角度归一化：end < start 时跨 2π，与增量路径一致
-     if (end < start)
-         end += 2.0 * render::tess::kPi;
+    double start = ellipse->startAngle;
+    double end = ellipse->endAngle;
+    if (ellipse->fullEllipse || (start == 0.0 && end == 0.0))
+    {
+        start = 0.0;
+        end = 2.0 * render::tess::kPi;
+    }
+    // 椭圆弧角度归一化：end < start 时跨 2π，与增量路径一致
+    if (end < start)
+        end += 2.0 * render::tess::kPi;
 
-     double angleRange = end - start;
-     // 统一离散化段数：完整椭圆 64，椭圆弧按角度比例缩放
-     int actualSegments = render::tess::ellipseSegments(angleRange);
+    double angleRange = end - start;
+    // 统一离散化段数：完整椭圆 64，椭圆弧按角度比例缩放
+    int actualSegments = render::tess::ellipseSegments(angleRange);
 
-     const double centerX = ellipse->center.x;
-     const double centerY = ellipse->center.y;
-     const double rx = ellipse->radiusX;
-     float cr = ellipse->color[0], cg = ellipse->color[1], cb = ellipse->color[2];
-     const double ry = ellipse->radiusY;
+    const double centerX = ellipse->center.x;
+    const double centerY = ellipse->center.y;
+    const double rx = ellipse->radiusX;
+    float cr = ellipse->color[0], cg = ellipse->color[1], cb = ellipse->color[2];
+    const double ry = ellipse->radiusY;
     const double rotation = ellipse->rotation;
     const double cosRot = std::cos(rotation);
     const double sinRot = std::sin(rotation);
@@ -612,7 +612,7 @@ extern "C" {
                 }
             }
 
-SY_DEBUGF("R2D:e=%u v=%u s=%.4f tx=%.2f ty=%.2f vp=%.0fx%.0f",
+            SY_DEBUGF("R2D:e=%u v=%u s=%.4f tx=%.2f ty=%.2f vp=%.0fx%.0f",
                 maxVisible, visibleCount,
                 dev->view2D.viewMatrix[0],
                 dev->view2D.viewMatrix[6],
@@ -698,18 +698,18 @@ SY_DEBUGF("R2D:e=%u v=%u s=%.4f tx=%.2f ty=%.2f vp=%.0fx%.0f",
                 core::PassDesc pass;
                 pass.name = "CommandExecute";
                 pass.enabled = true;
-                 pass.onExecute = [dev](rhi::IDevice* d) {
-                     const float camCenterF[2] = {
-                         static_cast<float>(dev->cameraCenter[0]),
-                         static_cast<float>(dev->cameraCenter[1])
-                     };
-                     dev->commandEncoder.execute(d,
-                         dev->batchQueue.getVertexBuffer(),
-                         dev->overlayQueue.getVertexBuffer(),
-                         dev->batchQueue.getIndirectBuffer(),
-                         dev->view2D.viewMatrix,
-                         camCenterF);
-                 };
+                pass.onExecute = [dev](rhi::IDevice* d) {
+                    const float camCenterF[2] = {
+                        static_cast<float>(dev->cameraCenter[0]),
+                        static_cast<float>(dev->cameraCenter[1])
+                    };
+                    dev->commandEncoder.execute(d,
+                        dev->batchQueue.getVertexBuffer(),
+                        dev->overlayQueue.getVertexBuffer(),
+                        dev->batchQueue.getIndirectBuffer(),
+                        dev->view2D.viewMatrix,
+                        camCenterF);
+                    };
                 pass.inputs.push_back({ core::PassResourceType::VertexBuffer,
                     core::PassResourceAccess::Read, "BatchQueue_VB", 0 });
                 pass.inputs.push_back({ core::PassResourceType::VertexBuffer,

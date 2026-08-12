@@ -73,17 +73,13 @@ extern "C" {
 
     // ==================== 位图（预留） ====================
 
-    RENDER_API void renderSetBitmap(RenderDevice* dev, const uint8_t* rgba, int32_t w, int32_t h,
-        float tlX, float tlY, float trX, float trY,
-        float blX, float blY, float brX, float brY)
+    RENDER_API void renderSetBitmap(RenderDevice* /*dev*/, const uint8_t* /*rgba*/, int32_t /*w*/, int32_t /*h*/,
+        float /*tlX*/, float /*tlY*/, float /*trX*/, float /*trY*/,
+        float /*blX*/, float /*blY*/, float /*brX*/, float /*brY*/)
     {
-        (void)dev; (void)rgba; (void)w; (void)h;
-        (void)tlX; (void)tlY; (void)trX; (void)trY;
-        (void)blX; (void)blY; (void)brX; (void)brY;
     }
 
-    RENDER_API void renderClearBitmap(RenderDevice* dev)
+    RENDER_API void renderClearBitmap(RenderDevice* /*dev*/)
     {
-        (void)dev;
     }
 } // extern "C"

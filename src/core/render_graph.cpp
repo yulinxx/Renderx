@@ -18,24 +18,24 @@ namespace render
         RenderGraph::RenderGraph() = default;
         RenderGraph::~RenderGraph() = default;
 
-bool RenderGraph::initialize(rhi::IDevice* device)
-{
-    if (m_initialized)
-    {
-        SY_WARNF("RenderGraph::initialize: already initialized");
-        return false;
-    }
-    if (!device)
-    {
-        SY_ERROR("RenderGraph::initialize: device is null");
-        return false;
-    }
-    m_device = device;
-    m_initialized = true;
-    m_lastExecutedCount = 0;
-    SY_DEBUGF("RenderGraph::initialize: OK");
-    return true;
-}
+        bool RenderGraph::initialize(rhi::IDevice* device)
+        {
+            if (m_initialized)
+            {
+                SY_WARNF("RenderGraph::initialize: already initialized");
+                return false;
+            }
+            if (!device)
+            {
+                SY_ERROR("RenderGraph::initialize: device is null");
+                return false;
+            }
+            m_device = device;
+            m_initialized = true;
+            m_lastExecutedCount = 0;
+            SY_DEBUGF("RenderGraph::initialize: OK");
+            return true;
+        }
 
         void RenderGraph::shutdown()
         {

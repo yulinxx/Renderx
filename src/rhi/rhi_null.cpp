@@ -11,305 +11,303 @@
 #include "rhi_null.h"
 #include "Log/SyLogger.h"
 
-namespace render::rhi {
-
-// ==================== Lifecycle ====================
-
-bool NullDevice::initialize(void* /*nativeWindow*/, uint32_t width, uint32_t height)
+namespace render::rhi
 {
-    SY_DEBUG("[NullDevice] initialize: no GPU context required");
-    m_width = width;
-    m_height = height;
-    m_initialized = true;
-    m_drawCallCount = 0;
-    return true;
-}
+    // ==================== Lifecycle ====================
 
-void NullDevice::shutdown()
-{
-    SY_DEBUG("[NullDevice] shutdown");
-    m_initialized = false;
-    m_width = 0;
-    m_height = 0;
-    m_nextBufferId = 1;
-    m_nextTextureId = 1;
-    m_nextPipelineId = 1;
-}
+    bool NullDevice::initialize(void* /*nativeWindow*/, uint32_t width, uint32_t height)
+    {
+        SY_DEBUG("[NullDevice] initialize: no GPU context required");
+        m_width = width;
+        m_height = height;
+        m_initialized = true;
+        m_drawCallCount = 0;
+        return true;
+    }
 
-// ==================== Resource Management ====================
+    void NullDevice::shutdown()
+    {
+        SY_DEBUG("[NullDevice] shutdown");
+        m_initialized = false;
+        m_width = 0;
+        m_height = 0;
+        m_nextBufferId = 1;
+        m_nextTextureId = 1;
+        m_nextPipelineId = 1;
+    }
 
-BufferHandle NullDevice::allocBufferHandle()
-{
-    return m_nextBufferId++;
-}
+    // ==================== Resource Management ====================
 
-TextureHandle NullDevice::allocTextureHandle()
-{
-    return m_nextTextureId++;
-}
+    BufferHandle NullDevice::allocBufferHandle()
+    {
+        return m_nextBufferId++;
+    }
 
-PipelineHandle NullDevice::allocPipelineHandle()
-{
-    return m_nextPipelineId++;
-}
+    TextureHandle NullDevice::allocTextureHandle()
+    {
+        return m_nextTextureId++;
+    }
 
-BufferHandle NullDevice::createBuffer(const BufferDesc&)
-{
-    // Null backend: no actual allocation, just return a virtual handle
-    return allocBufferHandle();
-}
+    PipelineHandle NullDevice::allocPipelineHandle()
+    {
+        return m_nextPipelineId++;
+    }
 
-void NullDevice::destroyBuffer(BufferHandle)
-{
-    // Null backend: no actual deallocation
-}
+    BufferHandle NullDevice::createBuffer(const BufferDesc&)
+    {
+        // Null backend: no actual allocation, just return a virtual handle
+        return allocBufferHandle();
+    }
 
-TextureHandle NullDevice::createTexture(const TextureDesc&)
-{
-    return allocTextureHandle();
-}
+    void NullDevice::destroyBuffer(BufferHandle)
+    {
+        // Null backend: no actual deallocation
+    }
 
-void NullDevice::destroyTexture(TextureHandle)
-{
-    // Null backend: no actual deallocation
-}
+    TextureHandle NullDevice::createTexture(const TextureDesc&)
+    {
+        return allocTextureHandle();
+    }
 
-PipelineHandle NullDevice::createPipeline(const PipelineDesc&)
-{
-    return allocPipelineHandle();
-}
+    void NullDevice::destroyTexture(TextureHandle)
+    {
+        // Null backend: no actual deallocation
+    }
 
-void NullDevice::destroyPipeline(PipelineHandle)
-{
-    // Null backend: no actual deallocation
-}
+    PipelineHandle NullDevice::createPipeline(const PipelineDesc&)
+    {
+        return allocPipelineHandle();
+    }
 
-// ==================== Data Upload ====================
+    void NullDevice::destroyPipeline(PipelineHandle)
+    {
+        // Null backend: no actual deallocation
+    }
 
-void NullDevice::uploadBuffer(BufferHandle, uint64_t, uint64_t, const void*)
-{
-    // Null backend: data is discarded, no GPU copy
-}
+    // ==================== Data Upload ====================
 
-void NullDevice::uploadTexture(TextureHandle, uint32_t, const void*, uint32_t)
-{
-    // Null backend: data is discarded
-}
+    void NullDevice::uploadBuffer(BufferHandle, uint64_t, uint64_t, const void*)
+    {
+        // Null backend: data is discarded, no GPU copy
+    }
 
-void* NullDevice::mapBuffer(BufferHandle, uint64_t offset, uint64_t size, uint32_t)
-{
-    // Null backend: return nullptr to indicate no CPU-accessible memory
-    // Callers should check for nullptr and handle gracefully
-    return nullptr;
-}
+    void NullDevice::uploadTexture(TextureHandle, uint32_t, const void*, uint32_t)
+    {
+        // Null backend: data is discarded
+    }
 
-void NullDevice::unmapBuffer(BufferHandle)
-{
-    // Null backend: no-op
-}
+    void* NullDevice::mapBuffer(BufferHandle, uint64_t /*offset*/, uint64_t /*size*/, uint32_t)
+    {
+        // Null backend: return nullptr to indicate no CPU-accessible memory
+        // Callers should check for nullptr and handle gracefully
+        return nullptr;
+    }
 
-void NullDevice::flushMappedRange(BufferHandle, uint64_t, uint64_t)
-{
-    // Null backend: no-op
-}
+    void NullDevice::unmapBuffer(BufferHandle)
+    {
+        // Null backend: no-op
+    }
 
-// ==================== Frame Management ====================
+    void NullDevice::flushMappedRange(BufferHandle, uint64_t, uint64_t)
+    {
+        // Null backend: no-op
+    }
 
-void NullDevice::beginFrame()
-{
-    // Null backend: no-op, frame counter still increments
-}
+    // ==================== Frame Management ====================
 
-void NullDevice::endFrame()
-{
-    // Null backend: no-op
-}
+    void NullDevice::beginFrame()
+    {
+        // Null backend: no-op, frame counter still increments
+    }
 
-void NullDevice::present()
-{
-    // Null backend: no swap chain, no-op
-}
+    void NullDevice::endFrame()
+    {
+        // Null backend: no-op
+    }
 
-// ==================== State Setting ====================
+    void NullDevice::present()
+    {
+        // Null backend: no swap chain, no-op
+    }
 
-void NullDevice::bindPipeline(PipelineHandle)
-{
-    // Null backend: no-op
-}
+    // ==================== State Setting ====================
 
-void NullDevice::bindVertexBuffer(uint32_t, BufferHandle, uint64_t)
-{
-    // Null backend: no-op
-}
+    void NullDevice::bindPipeline(PipelineHandle)
+    {
+        // Null backend: no-op
+    }
 
-void NullDevice::bindIndexBuffer(BufferHandle, uint64_t)
-{
-    // Null backend: no-op
-}
+    void NullDevice::bindVertexBuffer(uint32_t, BufferHandle, uint64_t)
+    {
+        // Null backend: no-op
+    }
 
-void NullDevice::bindUniformBuffer(uint32_t, uint32_t, BufferHandle, uint64_t, uint64_t)
-{
-    // Null backend: no-op
-}
+    void NullDevice::bindIndexBuffer(BufferHandle, uint64_t)
+    {
+        // Null backend: no-op
+    }
 
-void NullDevice::bindShaderStorageBuffer(uint32_t, uint32_t, BufferHandle, uint64_t, uint64_t)
-{
-    // Null backend: no-op
-}
+    void NullDevice::bindUniformBuffer(uint32_t, uint32_t, BufferHandle, uint64_t, uint64_t)
+    {
+        // Null backend: no-op
+    }
 
-void NullDevice::bindTexture(uint32_t, uint32_t, TextureHandle)
-{
-    // Null backend: no-op
-}
+    void NullDevice::bindShaderStorageBuffer(uint32_t, uint32_t, BufferHandle, uint64_t, uint64_t)
+    {
+        // Null backend: no-op
+    }
 
-void NullDevice::setViewport(const Viewport&)
-{
-    // Null backend: no-op
-}
+    void NullDevice::bindTexture(uint32_t, uint32_t, TextureHandle)
+    {
+        // Null backend: no-op
+    }
 
-void NullDevice::setScissor(const Scissor&)
-{
-    // Null backend: no-op
-}
+    void NullDevice::setViewport(const Viewport&)
+    {
+        // Null backend: no-op
+    }
 
-void NullDevice::setLineWidth(float width)
-{
-    m_lineWidth = width;
-}
+    void NullDevice::setScissor(const Scissor&)
+    {
+        // Null backend: no-op
+    }
 
-// ==================== Uniform Setting ====================
+    void NullDevice::setLineWidth(float width)
+    {
+        m_lineWidth = width;
+    }
 
-void NullDevice::setUniformMatrix3(const char*, const float*)
-{
-    // Null backend: no-op
-}
+    // ==================== Uniform Setting ====================
 
-void NullDevice::setUniformMatrix4(const char*, const float*)
-{
-    // Null backend: no-op
-}
+    void NullDevice::setUniformMatrix3(const char*, const float*)
+    {
+        // Null backend: no-op
+    }
 
-void NullDevice::setUniformFloat(const char*, float)
-{
-    // Null backend: no-op
-}
+    void NullDevice::setUniformMatrix4(const char*, const float*)
+    {
+        // Null backend: no-op
+    }
 
-void NullDevice::setUniformInt(const char*, int32_t)
-{
-    // Null backend: no-op
-}
+    void NullDevice::setUniformFloat(const char*, float)
+    {
+        // Null backend: no-op
+    }
 
-void NullDevice::setUniformVec2(const char*, const float*)
-{
-    // Null backend: no-op
-}
+    void NullDevice::setUniformInt(const char*, int32_t)
+    {
+        // Null backend: no-op
+    }
 
-void NullDevice::setUniformVec3(const char*, const float*)
-{
-    // Null backend: no-op
-}
+    void NullDevice::setUniformVec2(const char*, const float*)
+    {
+        // Null backend: no-op
+    }
 
-void NullDevice::setUniformVec4(const char*, const float*)
-{
-    // Null backend: no-op
-}
+    void NullDevice::setUniformVec3(const char*, const float*)
+    {
+        // Null backend: no-op
+    }
 
-// ==================== Drawing ====================
+    void NullDevice::setUniformVec4(const char*, const float*)
+    {
+        // Null backend: no-op
+    }
 
-void NullDevice::draw(uint32_t vertexCount, uint32_t instanceCount, uint32_t, uint32_t)
-{
-    m_drawCallCount++;
-    SY_DEBUGF("[NullDevice] draw: vertices=%u, instances=%u", vertexCount, instanceCount);
-}
+    // ==================== Drawing ====================
 
-void NullDevice::drawIndexed(uint32_t indexCount, uint32_t instanceCount, uint32_t, int32_t, uint32_t)
-{
-    m_drawCallCount++;
-    SY_DEBUGF("[NullDevice] drawIndexed: indices=%u, instances=%u", indexCount, instanceCount);
-}
+    void NullDevice::draw(uint32_t vertexCount, uint32_t instanceCount, uint32_t, uint32_t)
+    {
+        m_drawCallCount++;
+        SY_DEBUGF("[NullDevice] draw: vertices=%u, instances=%u", vertexCount, instanceCount);
+    }
 
-void NullDevice::drawIndirect(BufferHandle, uint64_t, uint32_t drawCount, uint32_t)
-{
-    m_drawCallCount += drawCount;
-    SY_DEBUGF("[NullDevice] drawIndirect: drawCount=%u", drawCount);
-}
+    void NullDevice::drawIndexed(uint32_t indexCount, uint32_t instanceCount, uint32_t, int32_t, uint32_t)
+    {
+        m_drawCallCount++;
+        SY_DEBUGF("[NullDevice] drawIndexed: indices=%u, instances=%u", indexCount, instanceCount);
+    }
 
-void NullDevice::drawIndexedIndirect(BufferHandle, uint64_t, uint32_t drawCount, uint32_t)
-{
-    m_drawCallCount += drawCount;
-    SY_DEBUGF("[NullDevice] drawIndexedIndirect: drawCount=%u", drawCount);
-}
+    void NullDevice::drawIndirect(BufferHandle, uint64_t, uint32_t drawCount, uint32_t)
+    {
+        m_drawCallCount += drawCount;
+        SY_DEBUGF("[NullDevice] drawIndirect: drawCount=%u", drawCount);
+    }
 
-// ==================== Compute ====================
+    void NullDevice::drawIndexedIndirect(BufferHandle, uint64_t, uint32_t drawCount, uint32_t)
+    {
+        m_drawCallCount += drawCount;
+        SY_DEBUGF("[NullDevice] drawIndexedIndirect: drawCount=%u", drawCount);
+    }
 
-void NullDevice::dispatchCompute(uint32_t groupsX, uint32_t groupsY, uint32_t groupsZ)
-{
-    SY_DEBUGF("[NullDevice] dispatchCompute: %ux%ux%u", groupsX, groupsY, groupsZ);
-}
+    // ==================== Compute ====================
 
-void NullDevice::memoryBarrier(uint32_t)
-{
-    // Null backend: no-op
-}
+    void NullDevice::dispatchCompute(uint32_t groupsX, uint32_t groupsY, uint32_t groupsZ)
+    {
+        SY_DEBUGF("[NullDevice] dispatchCompute: %ux%ux%u", groupsX, groupsY, groupsZ);
+    }
 
-// ==================== Render State ====================
+    void NullDevice::memoryBarrier(uint32_t)
+    {
+        // Null backend: no-op
+    }
 
-void NullDevice::setClearColor(float r, float g, float b, float a)
-{
-    m_clearColor[0] = r;
-    m_clearColor[1] = g;
-    m_clearColor[2] = b;
-    m_clearColor[3] = a;
-}
+    // ==================== Render State ====================
 
-void NullDevice::clear(uint32_t)
-{
-    // Null backend: no-op (no actual framebuffer to clear)
-}
+    void NullDevice::setClearColor(float r, float g, float b, float a)
+    {
+        m_clearColor[0] = r;
+        m_clearColor[1] = g;
+        m_clearColor[2] = b;
+        m_clearColor[3] = a;
+    }
 
-void NullDevice::enableDepthTest(bool enable)
-{
-    m_depthTestEnabled = enable;
-}
+    void NullDevice::clear(uint32_t)
+    {
+        // Null backend: no-op (no actual framebuffer to clear)
+    }
 
-void NullDevice::enableBlend(bool enable)
-{
-    m_blendEnabled = enable;
-}
+    void NullDevice::enableDepthTest(bool enable)
+    {
+        m_depthTestEnabled = enable;
+    }
 
-// ==================== Query ====================
+    void NullDevice::enableBlend(bool enable)
+    {
+        m_blendEnabled = enable;
+    }
 
-void NullDevice::resize(uint32_t width, uint32_t height)
-{
-    m_width = width;
-    m_height = height;
-}
+    // ==================== Query ====================
 
-uint64_t NullDevice::getGPUMemoryUsage() const
-{
-    return 0;
-}
+    void NullDevice::resize(uint32_t width, uint32_t height)
+    {
+        m_width = width;
+        m_height = height;
+    }
 
-void* NullDevice::getNativeContext()
-{
-    return nullptr;
-}
+    uint64_t NullDevice::getGPUMemoryUsage() const
+    {
+        return 0;
+    }
 
+    void* NullDevice::getNativeContext()
+    {
+        return nullptr;
+    }
 }   // namespace render::rhi
 
 // ==================== Factory Function ====================
 
-namespace render::rhi {
-
-/**
- * @brief 创建Null渲染设备实例
- *
- * NullDevice 不执行任何实际的 GPU 操作，所有方法都是空实现或返回默认值。
- * 主要用于单元测试、CI/CD 自动化测试和后端抽象层验证。
- */
-IDevice* createNullDevice()
+namespace render::rhi
 {
-    return new NullDevice();
-}
-
+    /**
+     * @brief 创建Null渲染设备实例
+     *
+     * NullDevice 不执行任何实际的 GPU 操作，所有方法都是空实现或返回默认值。
+     * 主要用于单元测试、CI/CD 自动化测试和后端抽象层验证。
+     */
+    IDevice* createNullDevice()
+    {
+        return new NullDevice();
+    }
 }   // namespace render::rhi

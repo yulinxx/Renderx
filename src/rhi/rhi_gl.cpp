@@ -686,9 +686,8 @@ namespace render::rhi
         m_currentIBOOffset = offset;
     }
 
-    void GLDevice::bindUniformBuffer(uint32_t set, uint32_t binding, BufferHandle handle, uint64_t offset, uint64_t size)
+    void GLDevice::bindUniformBuffer(uint32_t /*set*/, uint32_t binding, BufferHandle handle, uint64_t offset, uint64_t size)
     {
-        (void)set;
         if (handle == NullHandle) return;
         auto& entry = m_buffers[size_t(handle - 1)];
         if (!entry.glName) return;
@@ -697,9 +696,8 @@ namespace render::rhi
         g->BindBufferRange(GL_UNIFORM_BUFFER, binding, entry.glName, (GLintptr)offset, (GLsizeiptr)size);
     }
 
-    void GLDevice::bindShaderStorageBuffer(uint32_t set, uint32_t binding, BufferHandle handle, uint64_t offset, uint64_t size)
+    void GLDevice::bindShaderStorageBuffer(uint32_t /*set*/, uint32_t binding, BufferHandle handle, uint64_t offset, uint64_t size)
     {
-        (void)set;
         if (!m_initialized) return;
         if (handle == NullHandle) return;
         auto& entry = m_buffers[size_t(handle - 1)];
@@ -709,9 +707,8 @@ namespace render::rhi
         g->BindBufferRange(GL_SHADER_STORAGE_BUFFER, binding, entry.glName, (GLintptr)offset, (GLsizeiptr)size);
     }
 
-    void GLDevice::bindTexture(uint32_t set, uint32_t binding, TextureHandle handle)
+    void GLDevice::bindTexture(uint32_t /*set*/, uint32_t binding, TextureHandle handle)
     {
-        (void)set;
         if (handle == NullHandle) return;
         auto& entry = m_textures[size_t(handle - 1)];
         if (!entry.glName) return;
@@ -728,9 +725,8 @@ namespace render::rhi
         }
     }
 
-    void GLDevice::draw(uint32_t vertexCount, uint32_t instanceCount, uint32_t firstVertex, uint32_t firstInstance)
+    void GLDevice::draw(uint32_t vertexCount, uint32_t instanceCount, uint32_t firstVertex, uint32_t /*firstInstance*/)
     {
-        (void)firstInstance;
         auto* g = gl();
         uint32_t topo = GL_TRIANGLES;
         if (m_currentPipeline != NullHandle)
@@ -748,10 +744,8 @@ namespace render::rhi
         }
     }
 
-    void GLDevice::drawIndexed(uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, int32_t vertexOffset, uint32_t firstInstance)
+    void GLDevice::drawIndexed(uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, int32_t /*vertexOffset*/, uint32_t /*firstInstance*/)
     {
-        (void)vertexOffset;
-        (void)firstInstance;
         auto* g = gl();
         uint32_t topo = GL_TRIANGLES;
         if (m_currentPipeline != NullHandle)
@@ -1346,9 +1340,8 @@ namespace render::rhi
         return 0;
     }
 
-    void GLDevice::configureVertexAttribs(GLFuncs* g, PrimitiveTopology topo, VertexFormat fmt)
+    void GLDevice::configureVertexAttribs(GLFuncs* g, PrimitiveTopology /*topo*/, VertexFormat fmt)
     {
-        (void)topo;
         if (!g->BindVertexArray)
         {
             g->BindVertexArray(m_vao);

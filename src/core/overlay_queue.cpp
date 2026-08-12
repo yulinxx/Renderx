@@ -25,30 +25,30 @@ namespace render
             return v;
         }
 
-bool OverlayQueue::initialize(rhi::IDevice* device)
-{
-    if (!device)
-        return false;
+        bool OverlayQueue::initialize(rhi::IDevice* device)
+        {
+            if (!device)
+                return false;
 
-    m_device = device;
+            m_device = device;
 
-    // pipeline 由 CommandEncoder 统一管理，OverlayQueue 不再创建
-    rhi::BufferDesc vbDesc;
-    vbDesc.size = 4096 * sizeof(OverlayVertex);
-    vbDesc.usage = rhi::BufferUsage::Vertex;
-    vbDesc.memory = rhi::MemoryType::GPU_CPU_Coherent;
-    vbDesc.debugName = "OverlayQueue_VB";
-    m_vertexBuffer = device->createBuffer(vbDesc);
-    if (m_vertexBuffer == rhi::NullHandle)
-    {
-        SY_ERROR("[OverlayQueue] failed to create vertex buffer");
-        return false;
-    }
-    m_vbCapacity = 4096;
+            // pipeline 由 CommandEncoder 统一管理，OverlayQueue 不再创建
+            rhi::BufferDesc vbDesc;
+            vbDesc.size = 4096 * sizeof(OverlayVertex);
+            vbDesc.usage = rhi::BufferUsage::Vertex;
+            vbDesc.memory = rhi::MemoryType::GPU_CPU_Coherent;
+            vbDesc.debugName = "OverlayQueue_VB";
+            m_vertexBuffer = device->createBuffer(vbDesc);
+            if (m_vertexBuffer == rhi::NullHandle)
+            {
+                SY_ERROR("[OverlayQueue] failed to create vertex buffer");
+                return false;
+            }
+            m_vbCapacity = 4096;
 
-    SY_DEBUG("[OverlayQueue] initialized");
-    return true;
-}
+            SY_DEBUG("[OverlayQueue] initialized");
+            return true;
+        }
 
         void OverlayQueue::shutdown()
         {
@@ -125,9 +125,8 @@ bool OverlayQueue::initialize(rhi::IDevice* device)
         }
 
         void OverlayQueue::setPreviewLines(const VertexP3C3* vertices, uint32_t count,
-            uint32_t colorRGBA)
+            uint32_t /*colorRGBA*/)
         {
-            (void)colorRGBA;
             m_previewVerts.clear();
             if (!vertices || count == 0)
             {
@@ -148,9 +147,8 @@ bool OverlayQueue::initialize(rhi::IDevice* device)
         }
 
         void OverlayQueue::setControlLines(const VertexP3C3* vertices, uint32_t count,
-            uint32_t colorRGBA)
+            uint32_t /*colorRGBA*/)
         {
-            (void)colorRGBA;
             m_controlVerts.clear();
             if (!vertices || count == 0)
             {
@@ -474,7 +472,7 @@ bool OverlayQueue::initialize(rhi::IDevice* device)
 
             if (count > 0)
             {
-                m_unifiedRanges.push_back({start, count, isTriangle, static_cast<uint32_t>(primitive->group)});
+                m_unifiedRanges.push_back({ start, count, isTriangle, static_cast<uint32_t>(primitive->group) });
                 m_dirty = true;
             }
         }
@@ -506,7 +504,7 @@ bool OverlayQueue::initialize(rhi::IDevice* device)
                     m_unifiedVerts.begin() + range.start,
                     m_unifiedVerts.begin() + range.start + range.count);
 
-                newRanges.push_back({newOffset, range.count, range.isTriangle, range.group});
+                newRanges.push_back({ newOffset, range.count, range.isTriangle, range.group });
                 newOffset += range.count;
             }
 
@@ -516,9 +514,9 @@ bool OverlayQueue::initialize(rhi::IDevice* device)
         }
 
         void OverlayQueue::render(rhi::IDevice* device, CommandEncoder* encoder,
-            const float viewMatrix[9])
+            const float /*viewMatrix*/[9])
         {
-            (void)viewMatrix; // viewMatrix 由 CommandEncoder::execute() 统一设置
+            // viewMatrix 由 CommandEncoder::execute() 统一设置
 
             if (!encoder)
             {

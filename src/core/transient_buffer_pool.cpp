@@ -76,7 +76,7 @@ namespace render
             }
 
             m_initialized = true;
-SY_DEBUGF("[TransientBufferPool] Initialized with %u frames, each %llu bytes",
+            SY_DEBUGF("[TransientBufferPool] Initialized with %u frames, each %llu bytes",
                 frameCount, static_cast<unsigned long long>(bufferSize));
             return true;
         }

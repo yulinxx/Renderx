@@ -9,33 +9,33 @@ namespace render
 {
     namespace core
     {
-bool BatchQueue::initialize(rhi::IDevice* device)
-{
-    if (!device)
-        return false;
+        bool BatchQueue::initialize(rhi::IDevice* device)
+        {
+            if (!device)
+                return false;
 
-    m_device = device;
-    m_indirectCmds.reserve(512);
-    m_batches.reserve(PRIMITIVE_TYPE_COUNT);
-    m_dirtyRanges.reserve(64);
-    // pipeline 由 CommandEncoder 统一管理，BatchQueue 不再创建
+            m_device = device;
+            m_indirectCmds.reserve(512);
+            m_batches.reserve(PRIMITIVE_TYPE_COUNT);
+            m_dirtyRanges.reserve(64);
+            // pipeline 由 CommandEncoder 统一管理，BatchQueue 不再创建
 
-    rhi::BufferDesc vbDesc;
-    vbDesc.size = 1024 * 1024 * sizeof(VertexP3C3);
-    vbDesc.usage = rhi::BufferUsage::Vertex;
-    vbDesc.memory = rhi::MemoryType::GPU_CPU_Coherent;
-    vbDesc.debugName = "BatchQueue_VertexBuffer";
-    m_vertexBuffer = device->createBuffer(vbDesc);
-    if (m_vertexBuffer == rhi::NullHandle)
-    {
-        SY_ERROR("[BatchQueue] failed to create vertex buffer");
-        return false;
-    }
-    m_vertexBufferCapacity = 1024 * 1024;
+            rhi::BufferDesc vbDesc;
+            vbDesc.size = 1024 * 1024 * sizeof(VertexP3C3);
+            vbDesc.usage = rhi::BufferUsage::Vertex;
+            vbDesc.memory = rhi::MemoryType::GPU_CPU_Coherent;
+            vbDesc.debugName = "BatchQueue_VertexBuffer";
+            m_vertexBuffer = device->createBuffer(vbDesc);
+            if (m_vertexBuffer == rhi::NullHandle)
+            {
+                SY_ERROR("[BatchQueue] failed to create vertex buffer");
+                return false;
+            }
+            m_vertexBufferCapacity = 1024 * 1024;
 
-    SY_DEBUG("[BatchQueue] initialized");
-    return true;
-}
+            SY_DEBUG("[BatchQueue] initialized");
+            return true;
+        }
 
         void BatchQueue::shutdown()
         {
@@ -280,13 +280,13 @@ bool BatchQueue::initialize(rhi::IDevice* device)
         void BatchQueue::render(rhi::IDevice* device, CommandEncoder* encoder,
             const float viewMatrix[9], const RenderWorld& world)
         {
-            (void)viewMatrix;
 
             // === 临时诊断：捕获 ZOOM（放在最开头，确保最先执行） ===
             static float lastVM0 = 0, lastVM6 = 0;
             bool vmChanged = (std::abs(viewMatrix[0] - lastVM0) > 0.0001f ||
-                              std::abs(viewMatrix[6] - lastVM6) > 0.01f);
-            if (vmChanged) {
+                std::abs(viewMatrix[6] - lastVM6) > 0.01f);
+            if (vmChanged)
+            {
                 SY_DEBUGF("[BQ::render] ZOOM: vm[0]=%.6f->%.6f, vm[6]=%.2f->%.2f, batches=%zu, dirtyRanges=%zu, needFullVB=%d",
                     lastVM0, viewMatrix[0], lastVM6, viewMatrix[6],
                     m_batches.size(), m_dirtyRanges.size(), m_needFullVertexUpload);
