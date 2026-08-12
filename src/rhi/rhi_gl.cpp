@@ -558,8 +558,8 @@ namespace render::rhi
         {
             s_glBeginDiag = false;
             GLenum err = g->GetError();
-            if (err != GL_NO_ERROR)
-                std::fprintf(stderr, "[RHI_GL] beginFrame: GL error after clear = 0x%x\n", (unsigned)err);
+            std::fprintf(stderr, "[RHI_GL] beginFrame: clear color=(%.2f,%.2f,%.2f,%.2f) err=0x%x\n",
+                m_clearColor[0], m_clearColor[1], m_clearColor[2], m_clearColor[3], (unsigned)err);
         }
 
         m_currentPipeline = NullHandle;
