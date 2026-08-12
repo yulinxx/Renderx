@@ -786,13 +786,25 @@ namespace render::rhi
         }
 
         g->BindBuffer(GL_DRAW_INDIRECT_BUFFER, entry.glName);
+
+        // macOS OpenGL.framework 仅导出 OpenGL 4.1 core 符号，不导出 ARB 扩展
+        // glMultiDrawArraysIndirect，解析指针为 null。跨平台兜底：当 Multi
+        // 接口不可用时退化为循环单 DrawArraysIndirect，保证在不支持扩展的平台
+        // 上仍能正确绘制。
         if (drawCount == 1)
         {
             g->DrawArraysIndirect(topo, (const void*)(uintptr_t)offset);
         }
-        else
+        else if (g->MultiDrawArraysIndirect)
         {
             g->MultiDrawArraysIndirect(topo, (const void*)(uintptr_t)offset, (GLsizei)drawCount, (GLsizei)stride);
+        }
+        else
+        {
+            for (uint32_t i = 0; i < drawCount; ++i)
+            {
+                g->DrawArraysIndirect(topo, (const void*)(uintptr_t)(offset + i * stride));
+            }
         }
         g->BindBuffer(GL_DRAW_INDIRECT_BUFFER, 0);
     }
@@ -815,9 +827,16 @@ namespace render::rhi
         {
             g->DrawElementsIndirect(topo, GL_UNSIGNED_INT, (const void*)(uintptr_t)offset);
         }
-        else
+        else if (g->MultiDrawElementsIndirect)
         {
             g->MultiDrawElementsIndirect(topo, GL_UNSIGNED_INT, (const void*)(uintptr_t)offset, (GLsizei)drawCount, (GLsizei)stride);
+        }
+        else
+        {
+            for (uint32_t i = 0; i < drawCount; ++i)
+            {
+                g->DrawElementsIndirect(topo, GL_UNSIGNED_INT, (const void*)(uintptr_t)(offset + i * stride));
+            }
         }
         g->BindBuffer(GL_DRAW_INDIRECT_BUFFER, 0);
     }

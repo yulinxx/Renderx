@@ -14,6 +14,10 @@
  */
 #include "render_c_api_internal.h"
 
+#if defined(__APPLE__)
+#include <mach-o/dyld.h>
+#endif
+
 using namespace render;
 
 extern "C" {
@@ -152,6 +156,18 @@ static bool initModules(RenderDevice* dev, const DeviceDesc* desc)
             GetModuleFileNameW(nullptr, path, MAX_PATH);
             std::filesystem::path fsPath(path);
             shaderDir = fsPath.parent_path().string();
+#elif defined(__APPLE__)
+            char path[PATH_MAX];
+            uint32_t size = sizeof(path);
+            if (_NSGetExecutablePath(path, &size) == 0)
+            {
+                std::filesystem::path fsPath(path);
+                shaderDir = fsPath.parent_path().string();
+            }
+            else
+            {
+                shaderDir = "./";
+            }
 #else
             std::filesystem::path fsPath("/proc/self/exe");
             if (std::filesystem::exists(fsPath))

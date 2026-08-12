@@ -122,13 +122,7 @@ if(APPLE)
         list(APPEND RENDER_SOURCES
             src/rhi/rhi_metal.mm
         )
-        list(APPEND RENDER_INCLUDE_DIRS ${RENDERX_METAL_HPP_DIR})
         list(APPEND RENDER_COMPILE_DEFS RENDERX_HAS_METAL)
-        find_library(METAL_FRAMEWORK Metal)
-        if(METAL_FRAMEWORK)
-            list(APPEND RENDER_LINK_LIBS ${METAL_FRAMEWORK})
-        endif()
-        # Metal framework is linked on macOS by default
         message(STATUS "[Renderx] Metal backend enabled (macOS/iOS)")
     else()
         message(STATUS "[Renderx] Metal C++ bindings (Metal/Metal.hpp) not found, Metal backend disabled")
