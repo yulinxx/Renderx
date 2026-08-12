@@ -59,7 +59,10 @@ extern "C" {
 
         dev->commandEncoder.setDrawBatcher(&dev->drawBatcher);
 
-        if (!dev->persistentEntityManager.initialize(dev->rhiDevice, 65536))
+        // PEM 容量：1<<20 = 1048576 个图元槽位
+        // SSBO 占用：entityData 64MB + visibility 4MB + indirect 16MB ≈ 84MB GPU
+        // 覆盖大型 DXF 装配图 / 地理图场景（原 65536 太小，普通工程图也会触顶）
+        if (!dev->persistentEntityManager.initialize(dev->rhiDevice, 1u << 20))
             return false;
 
         if (!dev->meshManager.initialize(dev->rhiDevice))

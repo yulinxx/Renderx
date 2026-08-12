@@ -231,8 +231,6 @@ namespace render
             m_lastVisibleCount = 0;
             m_readbackBuffer.clear();
             m_visiblePemIndices.clear();
-
-            SY_DEBUG("[PersistentEntityManager] entities cleared");
         }
 
         void PersistentEntityManager::updateEntity(uint32_t index, const PersistentEntity& entity)

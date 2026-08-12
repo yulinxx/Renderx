@@ -228,31 +228,13 @@ namespace render
 
             flushBatch();
 
-            // ===== 间接命令诊断（构建时临时日志）=====
-            const uint32_t dbgN = static_cast<uint32_t>(
-                m_indirectCmds.size() < 12 ? m_indirectCmds.size() : 12);
-            SY_DEBUGF("BQ:indirectCnt=%zu entriesCnt=%zu totalVert=%u batches=%zu",
-                m_indirectCmds.size(), world.getEntityCount(),
-                world.getTotalVertexCount(), m_batches.size());
-
-            for (uint32_t di = 0; di < dbgN; ++di)
-            {
-                const DrawIndirectCmd& cmd = m_indirectCmds[di];
-                SY_DEBUGF("BQ:cmd[%u] first=%u count=%u | type=%u mat=%u",
-                    di, cmd.firstVertex, cmd.vertexCount,
-                    (di < sorted.size()) ? sorted[di].primitiveType : 0xFFFF,
-                    (di < sorted.size()) ? sorted[di].materialIndex : 0xFFFF);
-            }
-
             // 全列表校验：cmd.firstVertex 与对应 entry.vertexOffset 是否一致
-            uint32_t opVerts = 0;
-            uint32_t maxOff = 0;
+            // 仅在 mismatch 时通过 SY_ERRORF 输出，正常路径无日志
             bool mismatch = false;
             for (uint32_t ai = 0; ai < m_indirectCmds.size(); ++ai)
             {
                 const DrawIndirectCmd& cmdm = m_indirectCmds[ai];
                 const auto& e = entries[sorted[ai].visibleIdx];
-                opVerts += cmdm.vertexCount;
                 if (cmdm.vertexCount != e.vertexCount || cmdm.firstVertex != e.vertexOffset)
                 {
                     mismatch = true;
@@ -263,11 +245,8 @@ namespace render
                             e.vertexOffset, e.vertexCount, e.primitiveType);
                     }
                 }
-                if (cmdm.firstVertex > maxOff) maxOff = cmdm.firstVertex;
             }
-            SY_DEBUGF("BQ:sumVerts=%u maxOffset=%u mismatch=%d",
-                opVerts, maxOff, mismatch ? 1 : 0);
-            // ===== end 间接命令诊断 =====
+            (void)mismatch;
 
             // SY_INFOF("BatchQueue::submit: REBUILD path, count=%u, entries=%zu", count, world.getEntityCount());
 
@@ -280,19 +259,7 @@ namespace render
         void BatchQueue::render(rhi::IDevice* device, CommandEncoder* encoder,
             const float viewMatrix[9], const RenderWorld& world)
         {
-
-            // === 临时诊断：捕获 ZOOM（放在最开头，确保最先执行） ===
-            static float lastVM0 = 0, lastVM6 = 0;
-            bool vmChanged = (std::abs(viewMatrix[0] - lastVM0) > 0.0001f ||
-                std::abs(viewMatrix[6] - lastVM6) > 0.01f);
-            if (vmChanged)
-            {
-                SY_DEBUGF("[BQ::render] ZOOM: vm[0]=%.6f->%.6f, vm[6]=%.2f->%.2f, batches=%zu, dirtyRanges=%zu, needFullVB=%d",
-                    lastVM0, viewMatrix[0], lastVM6, viewMatrix[6],
-                    m_batches.size(), m_dirtyRanges.size(), m_needFullVertexUpload);
-                lastVM0 = viewMatrix[0]; lastVM6 = viewMatrix[6];
-            }
-            // ============================================================
+            (void)viewMatrix;
 
             if (!encoder)
             {
@@ -302,7 +269,6 @@ namespace render
 
             if (m_batches.empty())
             {
-                SY_DEBUGF("[BatchQueue::render] m_batches is EMPTY");
                 return;
             }
 
@@ -330,21 +296,16 @@ namespace render
                 m_vertexBuffer = device->createBuffer(desc);
                 m_vertexBufferCapacity = newCap;
                 m_needFullVertexUpload = true;
-
-                SY_DEBUG("[BatchQueue] VB expanded, flag full upload");
             }
 
             // 顶点上传策略：首次渲染、扩容后或显式标记时全量上传，否则只上传 dirty 区间
-            bool vbUploaded = false;
             if (m_needFullVertexUpload || totalVertices > m_vertexBufferCapacity)
             {
                 // 全量上传：首次渲染、扩容后或顶点池重建
                 device->uploadBuffer(m_vertexBuffer, 0,
                     totalVertices * sizeof(VertexP3C3),
                     world.getVertexData());
-                vbUploaded = true;
                 m_needFullVertexUpload = false;
-                SY_DEBUGF("[BatchQueue] full VB upload: %u vertices", totalVertices);
             }
             else if (!m_vertexUploadRanges.empty())
             {
@@ -356,11 +317,7 @@ namespace render
                     device->uploadBuffer(m_vertexBuffer, offset, size,
                         world.getVertexData() + range.vertexOffset);
                 }
-                vbUploaded = true;
-                SY_DEBUGF("[BatchQueue] incremental VB upload: %zu ranges", m_vertexUploadRanges.size());
             }
-
-            (void)vbUploaded; // 保留用于调试日志
 
             if (m_dirty)
             {

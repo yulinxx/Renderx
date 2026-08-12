@@ -71,7 +71,7 @@ public:
      * @param maxEntities 最大支持的图元数量（决定 SSBO 大小）
      * @return true 初始化成功，false 初始化失败
      */
-    bool initialize(rhi::IDevice* device, uint32_t maxEntities = 65536);
+    bool initialize(rhi::IDevice* device, uint32_t maxEntities = 1u << 20);
 
     /**
      * @brief 关闭并释放 GPU 资源

@@ -116,6 +116,7 @@ namespace render
             uint32_t denseIdx = static_cast<uint32_t>(m_entities.size() - 1);
             m_dirtyList.push_back(denseIdx);
             m_changeCount++;
+            m_generation++;
             // 新增实体必须标记四叉树脏，否则 queryVisible 不会包含它
             m_quadTreeDirty = true;
 
@@ -152,6 +153,7 @@ namespace render
             uint32_t denseIdx = static_cast<uint32_t>(entry - m_entities.begin());
             m_dirtyList.push_back(denseIdx);
             m_changeCount++;
+            m_generation++;
             // 图元 bbox 可能变化，标记四叉树脏以确保下次查询重建
             m_quadTreeDirty = true;
         }
@@ -170,6 +172,7 @@ namespace render
             m_entities.erase(it->second);
             m_entityKeyMap.erase(it);
             m_changeCount++;
+            m_generation++;
 
             m_quadTreeDirty = true;
 

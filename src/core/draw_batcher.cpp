@@ -137,7 +137,6 @@ namespace render
                 }
             }
 
-            SY_DEBUGF("[DrawBatcher] build: %u commands -> %u groups", cmdCount, m_groups.size());
             return m_groups;
         }
     } // namespace core

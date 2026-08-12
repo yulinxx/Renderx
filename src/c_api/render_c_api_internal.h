@@ -117,6 +117,10 @@ namespace render
         /// 帧计数器（用于日志节流，每60帧输出一次统计）
         uint32_t             frameCounter = 0;
 
+        /// 上次 sync 到 PEM 的 world2D generation，用于跳过未变更帧的全量重建
+        /// RenderWorld 在 addEntity/modifyEntity/removeEntity 时会递增 generation
+        uint32_t             lastWorld2DGeneration = 0xFFFFFFFFu;
+
         /// 发射模式暂存的文本项（在 renderFrame 中渲染）
         struct PendingText
         {

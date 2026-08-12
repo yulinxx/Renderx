@@ -66,8 +66,6 @@ static void syncWorldToPersistentManager(RenderDevice* dev)
         // 正确转换回 RenderWorld dense 索引。不能用 entityId，二者不等价。
         pem.addEntity(pe, i);
     }
-
-    SY_DEBUGF("[syncWorldToPM] synced %u entities to PersistentEntityManager", count);
 }
 
 /**
@@ -558,8 +556,15 @@ extern "C" {
 
             // ---- GPU 剔除（PersistentEntityManager）----
             // 1. 同步 RenderWorld 图元到 PersistentEntityManager
-            syncWorldToPersistentManager(dev);
-            dev->persistentEntityManager.uploadChanges();
+            // 仅在 RenderWorld 变更（addEntity/modifyEntity/removeEntity）时重建 PEM，
+            // pan/zoom 不修改 RenderWorld，可跳过每帧全量重建，避免大规模图元时的卡顿
+            const uint32_t worldGen = dev->world2D.getGeneration();
+            if (worldGen != dev->lastWorld2DGeneration)
+            {
+                syncWorldToPersistentManager(dev);
+                dev->persistentEntityManager.uploadChanges();
+                dev->lastWorld2DGeneration = worldGen;
+            }
 
             // 2. 计算 2D 视图矩形（与 CPU 四叉树一致的语义）
             float viewMinX, viewMinY, viewMaxX, viewMaxY;
@@ -580,8 +585,6 @@ extern "C" {
             if (gpuVisibleCount > 0)
             {
                 visibleCount = gpuVisibleCount;
-                SY_DEBUGF("renderFrame: using GPU culling result, visible=%u",
-                    visibleCount);
             }
             else
             {
@@ -607,17 +610,12 @@ extern "C" {
                     }
                     else
                     {
-                        SY_DEBUGF("renderFrame: view rect empty (scale valid), no visible entities");
+                        // 视图内无可见图元：保持 0，不强制显示
                     }
                 }
             }
 
-            SY_DEBUGF("R2D:e=%u v=%u s=%.4f tx=%.2f ty=%.2f vp=%.0fx%.0f",
-                maxVisible, visibleCount,
-                dev->view2D.viewMatrix[0],
-                dev->view2D.viewMatrix[6],
-                dev->view2D.viewMatrix[7],
-                dev->view2D.viewWidth, dev->view2D.viewHeight);
+            // 视图参数摘要日志已移除，避免每帧输出
 
             // 先提交给 BatchQueue（此时 dirty 标志尚未清除，增量更新可正常工作）
             dev->batchQueue.submit(dev->visibleIndices.data(), visibleCount, dev->world2D);
@@ -833,10 +831,10 @@ extern "C" {
         dev->stats.gpuMemoryBytes = rhi->getGPUMemoryUsage();
 
         ++dev->frameCounter;
+        // RenderStats 摘要日志已移除：每帧输出导致缩放卡顿
+        // 调试时可通过 renderGetStats() 主动查询
         if (dev->frameCounter >= 60)
         {
-            SY_DEBUGF("RenderStats: entities=%u, visible=%u, gpuMemory=%llu bytes",
-                dev->stats.entityCount, dev->stats.visibleCount, dev->stats.gpuMemoryBytes);
             dev->frameCounter = 0;
         }
     }
@@ -860,7 +858,6 @@ extern "C" {
             SY_ERROR("renderBeginScene: dev is null");
             return;
         }
-        SY_DEBUGF("renderBeginScene: clearing world2D (had %u entities)", dev->world2D.getEntityCount());
         dev->world2D.clearAllEntities();
         dev->pendingTextItems.clear();
         dev->entityIdCounter = 1;
@@ -874,7 +871,7 @@ extern "C" {
     RENDER_API void renderEndScene(RenderDevice* dev)
     {
         if (!dev) return;
-        SY_DEBUGF("renderEndScene: world2D now has %u entities", dev->world2D.getEntityCount());
+        // 末态实体数日志已移除：仅在异常路径用 SY_ERROR 输出
     }
 
     // ==================== 统一几何提交 API ====================

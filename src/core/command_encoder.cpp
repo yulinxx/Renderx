@@ -288,9 +288,6 @@ namespace render
                     ++m_lastBatchCount;
             }
 
-            SY_DEBUGF("[CommandEncoder] execute: %u commands -> %u batches (DrawBatcher=%s)",
-                cmdCount, m_lastBatchCount, m_drawBatcher ? "on" : "off");
-
             // 当前绑定的状态，用于避免重复绑定
             rhi::PipelineHandle     boundPipeline = {};
             rhi::BufferHandle       boundVB = rhi::NullHandle;
@@ -349,11 +346,17 @@ namespace render
 
                         if (cmd.space == DrawSpace::World2D)
                         {
-                            device->setUniformMatrix3("uViewMatrix", viewMatrix);
+                            // World2D 顶点为绝对世界坐标（未在 tessellation 阶段预减相机中心），
+                            // scene_2d.vert 内部已执行 relPos = aPosition.xy - uCameraCenter。
+                            // 这里必须传 scale-only 矩阵，避免 viewMatrix 的 translation 与
+                            // uCameraCenter 减法叠加导致 pan 偏移被加 2 倍。
+                            device->setUniformMatrix3("uViewMatrix", worldScaleMatrix);
                             device->setUniformVec2("uCameraCenter", safeCameraCenter);
                         }
                         else
                         {
+                            // Overlay 顶点为屏幕对齐坐标，shader 不做 camCenter 减法，
+                            // 必须传完整 viewMatrix（包含 translation）才能正确平移。
                             device->setUniformMatrix3("uViewMatrix", viewMatrix);
                             const float zero2[2] = { 0.0f, 0.0f };
                             device->setUniformVec2("uCameraCenter", zero2);
@@ -438,13 +441,10 @@ namespace render
                         }
 
                         device->drawIndirect(mdiBuf,
-                            group.indirectOffset,
-                            group.drawCount,
-                            sizeof(DrawIndirectCmd));
+                        group.indirectOffset,
+                        group.drawCount,
+                        sizeof(DrawIndirectCmd));
                     }
-
-                    SY_DEBUGF("[CommandEncoder] MDI overlay: %u commands -> %u groups",
-                        m_drawBatcher->getCommandCount(), m_drawBatcher->getGroupCount());
                 }
             }
         }
