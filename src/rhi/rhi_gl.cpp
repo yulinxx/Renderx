@@ -553,6 +553,15 @@ namespace render::rhi
         g->ClearColor(m_clearColor[0], m_clearColor[1], m_clearColor[2], m_clearColor[3]);
         g->Clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+        static bool s_glBeginDiag = true;
+        if (s_glBeginDiag)
+        {
+            s_glBeginDiag = false;
+            GLenum err = g->GetError();
+            if (err != GL_NO_ERROR)
+                std::fprintf(stderr, "[RHI_GL] beginFrame: GL error after clear = 0x%x\n", (unsigned)err);
+        }
+
         m_currentPipeline = NullHandle;
         for (int i = 0; i < 4; i++)
         {

@@ -338,8 +338,10 @@ namespace render
 
             if (m_cullingPipeline == rhi::NullHandle)
             {
-                SY_ERROR("[PersistentEntityManager] failed to create culling pipeline");
-                return false;
+                // 计算着色器不可用（如 macOS 仅支持 GL 4.1，无 compute shader）：
+                // GPU 剔除降级为 CPU 四叉树剔除，初始化继续，不视为失败。
+                SY_WARN("[PersistentEntityManager] GPU culling unavailable, falling back to CPU culling");
+                return true;
             }
             else
             {
@@ -356,7 +358,7 @@ namespace render
 
             if (m_cullingPipeline == rhi::NullHandle)
             {
-                SY_ERROR("[PersistentEntityManager] executeCulling: pipeline not ready");
+                // GPU 剔除不可用（compute 不受支持），调用方将回退到 CPU 四叉树
                 return;
             }
 
