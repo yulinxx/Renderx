@@ -59,7 +59,7 @@ namespace render
             PassEntry entry;
             entry.desc = desc;
             m_passes.push_back(std::move(entry));
-            SY_DEBUGF("RenderGraph::addPass: '%s' (total=%zu)", desc.name ? desc.name : "(unnamed)", m_passes.size());
+            //SY_DEBUGF("RenderGraph::addPass: '%s' (total=%zu)", desc.name ? desc.name : "(unnamed)", m_passes.size());
         }
 
         void RenderGraph::clear()
@@ -161,7 +161,9 @@ namespace render
                 SY_WARNF("RenderGraph::setPassEnabled: index %u out of range (count=%zu)", index, m_passes.size());
                 return;
             }
+
             m_passes[index].desc.enabled = enabled;
+
             SY_DEBUGF("RenderGraph::setPassEnabled: [%u] '%s' -> %s",
                 index,
                 m_passes[index].desc.name ? m_passes[index].desc.name : "",
