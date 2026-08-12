@@ -349,7 +349,7 @@ bool CommandEncoder::initialize(rhi::IDevice* device)
 
                         if (cmd.space == DrawSpace::World2D)
                         {
-                            device->setUniformMatrix3("uViewMatrix", worldScaleMatrix);
+                            device->setUniformMatrix3("uViewMatrix", viewMatrix);
                             device->setUniformVec2("uCameraCenter", safeCameraCenter);
                         }
                         else
