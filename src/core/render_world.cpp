@@ -79,11 +79,11 @@ namespace render
             m_freeList.push_back(vertexCount);
         }
 
-        void RenderWorld::addEntity(EntityId id, const VertexP3C3* vertices, uint32_t vertexCount,
-            PrimitiveType type, uint16_t materialIdx)
+        void RenderWorld::addEntity(
+            EntityId id, const VertexP3C3* vertices, uint32_t vertexCount, PrimitiveType type, uint16_t materialIdx)
         {
-            //SY_TRACEF("RenderWorld::addEntity: id=%llu, verts=%u, type=%u",
-            //    id, vertexCount, static_cast<uint32_t>(type));
+            // SY_TRACEF("RenderWorld::addEntity: id=%llu, verts=%u, type=%u",
+            //     id, vertexCount, static_cast<uint32_t>(type));
 
             EntityEntry entry;
             entry.entityId = id;
@@ -93,20 +93,29 @@ namespace render
             entry.materialIndex = materialIdx;
             entry.flags = 0;
             entry.dirty = true;
-            computeBBox(vertices, vertexCount, &entry.bbox[0], &entry.bbox[1],
-                &entry.bbox[2], &entry.bbox[3]);
+            computeBBox(vertices, vertexCount, &entry.bbox[0], &entry.bbox[1], &entry.bbox[2], &entry.bbox[3]);
 
             if (m_entities.size() < 3)
             {
-                SY_DEBUGF("RenderWorld::addEntity[%llu]: type=%u, verts=%u, bbox=[%.2f,%.2f]-[%.2f,%.2f], firstVert=(%.2f,%.2f,%.2f)(%.2f,%.2f,%.2f)",
-                    id, static_cast<uint32_t>(type), vertexCount,
-                    entry.bbox[0], entry.bbox[1], entry.bbox[2], entry.bbox[3],
-                    vertices[0].px, vertices[0].py, vertices[0].pz,
-                    vertexCount > 1 ? vertices[1].px : 0.f, vertexCount > 1 ? vertices[1].py : 0.f, vertexCount > 1 ? vertices[1].pz : 0.f);
+                SY_DEBUGF("RenderWorld::addEntity[%llu]: type=%u, verts=%u, bbox=[%.2f,%.2f]-[%.2f,%.2f], "
+                          "firstVert=(%.2f,%.2f,%.2f)(%.2f,%.2f,%.2f)",
+                    id,
+                    static_cast<uint32_t>(type),
+                    vertexCount,
+                    entry.bbox[0],
+                    entry.bbox[1],
+                    entry.bbox[2],
+                    entry.bbox[3],
+                    vertices[0].px,
+                    vertices[0].py,
+                    vertices[0].pz,
+                    vertexCount > 1 ? vertices[1].px : 0.f,
+                    vertexCount > 1 ? vertices[1].py : 0.f,
+                    vertexCount > 1 ? vertices[1].pz : 0.f);
             }
 
             entry.vertexOffset = allocateVertexSpace(vertexCount);
-            //SY_TRACEF("RenderWorld::addEntity: vertex offset=%u", entry.vertexOffset);
+            // SY_TRACEF("RenderWorld::addEntity: vertex offset=%u", entry.vertexOffset);
 
             uint64_t key = m_entities.insert(entry);
             m_entityKeyMap[id] = key;
@@ -120,18 +129,24 @@ namespace render
             // 新增实体必须标记四叉树脏，否则 queryVisible 不会包含它
             m_quadTreeDirty = true;
 
-            //SY_INFOF("RenderWorld::addEntity: total=%u, vertexPool=%u",
-            //    (uint32_t)m_entities.size(), (uint32_t)m_vertexPool.size());
+            // SY_INFOF("RenderWorld::addEntity: total=%u, vertexPool=%u",
+            //     (uint32_t)m_entities.size(), (uint32_t)m_vertexPool.size());
         }
 
-        void RenderWorld::modifyEntity(EntityId id, const VertexP3C3* vertices, uint32_t vertexCount,
-            uint16_t materialIdx)
+        void RenderWorld::modifyEntity(
+            EntityId id, const VertexP3C3* vertices, uint32_t vertexCount, uint16_t materialIdx)
         {
             auto it = m_entityKeyMap.find(id);
-            if (it == m_entityKeyMap.end()) return;
+            if (it == m_entityKeyMap.end())
+            {
+                return;
+            }
 
             EntityEntry* entry = m_entities.find(it->second);
-            if (!entry) return;
+            if (!entry)
+            {
+                return;
+            }
 
             entry->entityId = id;
 
@@ -145,8 +160,7 @@ namespace render
             entry->vertexCount = vertexCount;
             entry->materialIndex = materialIdx;
             entry->dirty = true;
-            computeBBox(vertices, vertexCount, &entry->bbox[0], &entry->bbox[1],
-                &entry->bbox[2], &entry->bbox[3]);
+            computeBBox(vertices, vertexCount, &entry->bbox[0], &entry->bbox[1], &entry->bbox[2], &entry->bbox[3]);
 
             std::copy(vertices, vertices + vertexCount, m_vertexPool.begin() + entry->vertexOffset);
 
@@ -161,7 +175,10 @@ namespace render
         void RenderWorld::removeEntity(EntityId id)
         {
             auto it = m_entityKeyMap.find(id);
-            if (it == m_entityKeyMap.end()) return;
+            if (it == m_entityKeyMap.end())
+            {
+                return;
+            }
 
             EntityEntry* entry = m_entities.find(it->second);
             if (entry)
@@ -176,7 +193,7 @@ namespace render
 
             m_quadTreeDirty = true;
 
-            for (auto dirtyIt = m_dirtyList.begin(); dirtyIt != m_dirtyList.end(); )
+            for (auto dirtyIt = m_dirtyList.begin(); dirtyIt != m_dirtyList.end();)
             {
                 if (*dirtyIt >= m_entities.size())
                 {
@@ -192,15 +209,25 @@ namespace render
         void RenderWorld::setEntityVisibility(EntityId id, bool visible)
         {
             auto it = m_entityKeyMap.find(id);
-            if (it == m_entityKeyMap.end()) return;
+            if (it == m_entityKeyMap.end())
+            {
+                return;
+            }
 
             EntityEntry* entry = m_entities.find(it->second);
-            if (!entry) return;
+            if (!entry)
+            {
+                return;
+            }
 
             if (visible)
+            {
                 entry->flags &= ~kEntityFlagHidden;
+            }
             else
+            {
                 entry->flags |= kEntityFlagHidden;
+            }
         }
 
         void RenderWorld::clearAllEntities()
@@ -233,11 +260,17 @@ namespace render
         void RenderWorld::updateMaterial(uint16_t idx, const MaterialDesc* desc)
         {
             if (idx < static_cast<uint16_t>(m_materials.size()))
+            {
                 m_materials[idx].desc = *desc;
+            }
         }
 
-        void RenderWorld::queryVisible(const float viewMatrix[9], float /*viewWidth*/, float /*viewHeight*/,
-            uint32_t* outIndices, uint32_t* outCount, uint32_t maxOut) const
+        void RenderWorld::queryVisible(const float viewMatrix[9],
+            float /*viewWidth*/,
+            float /*viewHeight*/,
+            uint32_t* outIndices,
+            uint32_t* outCount,
+            uint32_t maxOut) const
         {
 
             // viewWidth/viewHeight 当前不直接参与视锥计算，因为 viewMatrix
@@ -245,7 +278,9 @@ namespace render
             RenderWorld* self = const_cast<RenderWorld*>(this);
 
             if (outCount)
+            {
                 *outCount = 0;
+            }
 
             // 四叉树重建条件：脏标记 / 变更累积超阈值 / 视图变化
             bool needsRebuild = m_quadTreeDirty || m_changeCount >= kRebuildThreshold;
@@ -265,8 +300,14 @@ namespace render
 
             if (m_quadTree.empty() || m_entities.size() == 0)
             {
-                if (outIndices) *outIndices = 0;
-                if (outCount) *outCount = 0;
+                if (outIndices)
+                {
+                    *outIndices = 0;
+                }
+                if (outCount)
+                {
+                    *outCount = 0;
+                }
                 return;
             }
 
@@ -274,9 +315,7 @@ namespace render
             float m10 = viewMatrix[1], m11 = viewMatrix[4], m12 = viewMatrix[7];
             float m20 = viewMatrix[2], m21 = viewMatrix[5], m22 = viewMatrix[8];
 
-            float det = m00 * (m11 * m22 - m12 * m21)
-                - m01 * (m10 * m22 - m12 * m20)
-                + m02 * (m10 * m21 - m11 * m20);
+            float det = m00 * (m11 * m22 - m12 * m21) - m01 * (m10 * m22 - m12 * m20) + m02 * (m10 * m21 - m11 * m20);
 
             float frustum[4];
 
@@ -302,11 +341,13 @@ namespace render
                 inv[8] = (m00 * m11 - m01 * m10) * invDet;
 
                 static const float kCorners[4][2] = {
-                    {-1.0f, -1.0f}, {1.0f, -1.0f}, {1.0f, 1.0f}, {-1.0f, 1.0f}
+                    { -1.0f, -1.0f }, { 1.0f, -1.0f }, { 1.0f, 1.0f }, { -1.0f, 1.0f }
                 };
 
-                frustum[0] = FLT_MAX;  frustum[1] = FLT_MAX;
-                frustum[2] = -FLT_MAX; frustum[3] = -FLT_MAX;
+                frustum[0] = FLT_MAX;
+                frustum[1] = FLT_MAX;
+                frustum[2] = -FLT_MAX;
+                frustum[3] = -FLT_MAX;
 
                 for (int i = 0; i < 4; i++)
                 {
@@ -314,7 +355,10 @@ namespace render
                     float wx = inv[0] * cx + inv[3] * cy + inv[6];
                     float wy = inv[1] * cx + inv[4] * cy + inv[7];
                     float w = inv[2] * cx + inv[5] * cy + inv[8];
-                    if (std::abs(w) < 1e-10f) continue;
+                    if (std::abs(w) < 1e-10f)
+                    {
+                        continue;
+                    }
                     float worldX = wx / w;
                     float worldY = wy / w;
                     frustum[0] = std::min(frustum[0], worldX);
@@ -333,13 +377,17 @@ namespace render
                 stack.pop_back();
 
                 if (nodeIdx >= m_quadTree.size())
+                {
                     continue;
+                }
 
                 const QuadTreeNode& node = m_quadTree[nodeIdx];
 
-                if (!bboxIntersects(node.minX, node.minY, node.maxX, node.maxY,
-                    frustum[0], frustum[1], frustum[2], frustum[3]))
+                if (!bboxIntersects(
+                        node.minX, node.minY, node.maxX, node.maxY, frustum[0], frustum[1], frustum[2], frustum[3]))
+                {
                     continue;
+                }
 
                 if (node.isLeaf)
                 {
@@ -347,14 +395,18 @@ namespace render
                     while (iter != UINT32_MAX)
                     {
                         if (iter >= m_quadTreeEntities.size() || iter >= m_quadTreeEntityNext.size())
+                        {
                             break;
+                        }
 
                         uint32_t denseIdx = m_quadTreeEntities[iter];
                         if (denseIdx < m_entities.size() && isEntityVisible(denseIdx, frustum))
                         {
                             const EntityEntry& e = *(m_entities.begin() + denseIdx);
                             if (!(e.flags & kEntityFlagHidden))
+                            {
                                 m_visibleResult.push_back(denseIdx);
+                            }
                         }
                         iter = m_quadTreeEntityNext[iter];
                     }
@@ -365,26 +417,37 @@ namespace render
                     {
                         uint32_t childIdx = node.firstChild + c;
                         if (childIdx < m_quadTree.size())
+                        {
                             stack.push_back(childIdx);
+                        }
                     }
                 }
             }
 
-            uint32_t count = static_cast<uint32_t>(
-                std::min(m_visibleResult.size(), static_cast<size_t>(maxOut)));
+            uint32_t count = static_cast<uint32_t>(std::min(m_visibleResult.size(), static_cast<size_t>(maxOut)));
             if (outIndices && count > 0)
+            {
                 std::memcpy(outIndices, m_visibleResult.data(), count * sizeof(uint32_t));
-            if (outCount) *outCount = count;
+            }
+            if (outCount)
+            {
+                *outCount = count;
+            }
         }
 
         void RenderWorld::update()
         {
             if (m_dirtyList.empty() && !m_vertexPoolResized)
+            {
                 return;
+            }
 
             for (uint32_t denseIdx : m_dirtyList)
             {
-                if (denseIdx >= m_entities.size()) continue;
+                if (denseIdx >= m_entities.size())
+                {
+                    continue;
+                }
                 EntityEntry* entry = m_entities.begin() + denseIdx;
                 if (entry->dirty)
                 {
@@ -399,17 +462,23 @@ namespace render
         uint32_t RenderWorld::getDirtyVertexRanges(VertexUploadRange* outRanges, uint32_t maxRanges) const
         {
             if (!outRanges || maxRanges == 0)
+            {
                 return 0;
+            }
 
             uint32_t count = 0;
             for (uint32_t denseIdx : m_dirtyList)
             {
                 if (denseIdx >= m_entities.size())
+                {
                     continue;
+                }
 
                 const EntityEntry& entry = *(m_entities.begin() + denseIdx);
                 if (!entry.dirty)
+                {
                     continue;
+                }
 
                 if (count < maxRanges)
                 {
@@ -435,7 +504,9 @@ namespace render
             for (uint32_t denseIdx : m_dirtyList)
             {
                 if (denseIdx >= m_entities.size())
+                {
                     continue;
+                }
                 EntityEntry* entry = m_entities.begin() + denseIdx;
                 entry->dirty = false;
             }
@@ -443,9 +514,8 @@ namespace render
             m_vertexPoolResized = false;
         }
 
-        void RenderWorld::computeBBox(const VertexP3C3* verts, uint32_t count,
-            float* outMinX, float* outMinY,
-            float* outMaxX, float* outMaxY) const
+        void RenderWorld::computeBBox(
+            const VertexP3C3* verts, uint32_t count, float* outMinX, float* outMinY, float* outMaxX, float* outMaxY) const
         {
             if (count == 0)
             {
@@ -453,8 +523,10 @@ namespace render
                 return;
             }
 
-            *outMinX = verts[0].px; *outMinY = verts[0].py;
-            *outMaxX = verts[0].px; *outMaxY = verts[0].py;
+            *outMinX = verts[0].px;
+            *outMinY = verts[0].py;
+            *outMaxX = verts[0].px;
+            *outMaxY = verts[0].py;
 
             for (uint32_t i = 1; i < count; i++)
             {
@@ -482,14 +554,16 @@ namespace render
 
             for (const auto& entry : m_entities)
             {
-                if (!std::isfinite(entry.bbox[0]) || !std::isfinite(entry.bbox[1]) ||
-                    !std::isfinite(entry.bbox[2]) || !std::isfinite(entry.bbox[3]))
+                if (!std::isfinite(entry.bbox[0]) || !std::isfinite(entry.bbox[1]) || !std::isfinite(entry.bbox[2]) ||
+                    !std::isfinite(entry.bbox[3]))
                 {
                     continue;
                 }
 
                 if (entry.bbox[0] > entry.bbox[2] || entry.bbox[1] > entry.bbox[3])
+                {
                     continue;
+                }
 
                 sceneMinX = std::min(sceneMinX, entry.bbox[0]);
                 sceneMinY = std::min(sceneMinY, entry.bbox[1]);
@@ -504,12 +578,16 @@ namespace render
             }
 
             float pad = std::max(sceneMaxX - sceneMinX, sceneMaxY - sceneMinY) * 0.01f;
-            if (pad < 1.0f) pad = 1.0f;
-            sceneMinX -= pad; sceneMinY -= pad;
-            sceneMaxX += pad; sceneMaxY += pad;
+            if (pad < 1.0f)
+            {
+                pad = 1.0f;
+            }
+            sceneMinX -= pad;
+            sceneMinY -= pad;
+            sceneMaxX += pad;
+            sceneMaxY += pad;
 
-            m_quadTree.push_back({ sceneMinX, sceneMinY, sceneMaxX, sceneMaxY,
-                                  UINT32_MAX, UINT32_MAX, 0, true });
+            m_quadTree.push_back({ sceneMinX, sceneMinY, sceneMaxX, sceneMaxY, UINT32_MAX, UINT32_MAX, 0, true });
 
             for (uint32_t idx = 0; idx < m_entities.size(); ++idx)
             {
@@ -522,21 +600,29 @@ namespace render
         void RenderWorld::insertQuadTree(uint32_t nodeIdx, uint32_t entityDenseIdx, uint32_t depth)
         {
             if (nodeIdx >= m_quadTree.size() || entityDenseIdx >= m_entities.size())
+            {
                 return;
+            }
 
             QuadTreeNode& node = m_quadTree[nodeIdx];
             const EntityEntry& entry = *(m_entities.begin() + entityDenseIdx);
 
-            if (!std::isfinite(entry.bbox[0]) || !std::isfinite(entry.bbox[1]) ||
-                !std::isfinite(entry.bbox[2]) || !std::isfinite(entry.bbox[3]))
+            if (!std::isfinite(entry.bbox[0]) || !std::isfinite(entry.bbox[1]) || !std::isfinite(entry.bbox[2]) ||
+                !std::isfinite(entry.bbox[3]))
+            {
                 return;
+            }
 
             if (entry.bbox[0] > entry.bbox[2] || entry.bbox[1] > entry.bbox[3])
+            {
                 return;
+            }
 
-            if (!bboxIntersects(node.minX, node.minY, node.maxX, node.maxY,
-                entry.bbox[0], entry.bbox[1], entry.bbox[2], entry.bbox[3]))
+            if (!bboxIntersects(
+                    node.minX, node.minY, node.maxX, node.maxY, entry.bbox[0], entry.bbox[1], entry.bbox[2], entry.bbox[3]))
+            {
                 return;
+            }
 
             if (node.isLeaf)
             {
@@ -554,21 +640,19 @@ namespace render
                 float midY = (node.minY + node.maxY) * 0.5f;
 
                 uint32_t firstChild = static_cast<uint32_t>(m_quadTree.size());
-                m_quadTree.push_back({ node.minX, node.minY, midX, midY,
-                                      UINT32_MAX, UINT32_MAX, 0, true });
-                m_quadTree.push_back({ midX, node.minY, node.maxX, midY,
-                                      UINT32_MAX, UINT32_MAX, 0, true });
-                m_quadTree.push_back({ midX, midY, node.maxX, node.maxY,
-                                      UINT32_MAX, UINT32_MAX, 0, true });
-                m_quadTree.push_back({ node.minX, midY, midX, node.maxY,
-                                      UINT32_MAX, UINT32_MAX, 0, true });
+                m_quadTree.push_back({ node.minX, node.minY, midX, midY, UINT32_MAX, UINT32_MAX, 0, true });
+                m_quadTree.push_back({ midX, node.minY, node.maxX, midY, UINT32_MAX, UINT32_MAX, 0, true });
+                m_quadTree.push_back({ midX, midY, node.maxX, node.maxY, UINT32_MAX, UINT32_MAX, 0, true });
+                m_quadTree.push_back({ node.minX, midY, midX, node.maxY, UINT32_MAX, UINT32_MAX, 0, true });
 
                 std::vector<uint32_t> existing;
                 uint32_t iter = node.firstEntity;
                 while (iter != UINT32_MAX)
                 {
                     if (iter >= m_quadTreeEntities.size() || iter >= m_quadTreeEntityNext.size())
+                    {
                         break;
+                    }
                     existing.push_back(m_quadTreeEntities[iter]);
                     iter = m_quadTreeEntityNext[iter];
                 }
@@ -594,21 +678,25 @@ namespace render
             }
 
             if (node.firstChild == UINT32_MAX)
+            {
                 return;
+            }
 
             for (uint32_t c = 0; c < 4; c++)
             {
                 uint32_t childIdx = node.firstChild + c;
                 if (childIdx < m_quadTree.size())
+                {
                     insertQuadTree(childIdx, entityDenseIdx, depth + 1);
+                }
             }
         }
 
         bool RenderWorld::isEntityVisible(uint32_t denseIdx, const float frustum[4]) const
         {
             const EntityEntry& entry = *(m_entities.begin() + denseIdx);
-            return bboxIntersects(entry.bbox[0], entry.bbox[1], entry.bbox[2], entry.bbox[3],
-                frustum[0], frustum[1], frustum[2], frustum[3]);
+            return bboxIntersects(
+                entry.bbox[0], entry.bbox[1], entry.bbox[2], entry.bbox[3], frustum[0], frustum[1], frustum[2], frustum[3]);
         }
 
         const RenderWorld::EntityEntry* RenderWorld::getEntityEntries() const
@@ -632,5 +720,5 @@ namespace render
             }
             return false;
         }
-    } // namespace core
-} // namespace render
+    }  // namespace core
+}  // namespace render

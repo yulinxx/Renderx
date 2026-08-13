@@ -63,27 +63,42 @@ TEST(MeshManagerTest, InstanceEntry_IdentityMatrix)
 TEST(MeshManagerTest, BBox_Calculation)
 {
     // 简单三角形的包围盒
-    float positions[] = {
-        0.0f, 0.0f, 0.0f,
-        1.0f, 0.0f, 0.0f,
-        0.5f, 1.0f, 0.0f
-    };
+    float positions[] = { 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.5f, 1.0f, 0.0f };
 
     float minX = positions[0], maxX = positions[0];
     float minY = positions[1], maxY = positions[1];
     float minZ = positions[2], maxZ = positions[2];
 
-    for (int i = 0; i < 3; ++i) {
+    for (int i = 0; i < 3; ++i)
+    {
         float x = positions[i * 3 + 0];
         float y = positions[i * 3 + 1];
         float z = positions[i * 3 + 2];
 
-        if (x < minX) minX = x;
-        if (x > maxX) maxX = x;
-        if (y < minY) minY = y;
-        if (y > maxY) maxY = y;
-        if (z < minZ) minZ = z;
-        if (z > maxZ) maxZ = z;
+        if (x < minX)
+        {
+            minX = x;
+        }
+        if (x > maxX)
+        {
+            maxX = x;
+        }
+        if (y < minY)
+        {
+            minY = y;
+        }
+        if (y > maxY)
+        {
+            maxY = y;
+        }
+        if (z < minZ)
+        {
+            minZ = z;
+        }
+        if (z > maxZ)
+        {
+            maxZ = z;
+        }
     }
 
     EXPECT_FLOAT_EQ(minX, 0.0f);
@@ -198,22 +213,25 @@ TEST(MeshManagerTest, VisibilityQuery_BasicFilter)
     std::vector<render::core::MeshManager::InstanceEntry> instances;
 
     // 添加多个实例
-    for (uint32_t i = 0; i < 5; ++i) {
+    for (uint32_t i = 0; i < 5; ++i)
+    {
         render::core::MeshManager::InstanceEntry inst{};
         inst.meshDenseIdx = i;
-        inst.flags = (i % 2 == 0) ? 1 : 0; // 偶数可见
+        inst.flags = (i % 2 == 0) ? 1 : 0;  // 偶数可见
         instances.push_back(inst);
     }
 
     // 查询可见实例
     std::vector<uint32_t> visible;
-    for (uint32_t i = 0; i < instances.size(); ++i) {
-        if (instances[i].flags & 1) {
+    for (uint32_t i = 0; i < instances.size(); ++i)
+    {
+        if (instances[i].flags & 1)
+        {
             visible.push_back(i);
         }
     }
 
-    EXPECT_EQ(visible.size(), 3u); // 0, 2, 4
+    EXPECT_EQ(visible.size(), 3u);  // 0, 2, 4
     EXPECT_EQ(visible[0], 0u);
     EXPECT_EQ(visible[1], 2u);
     EXPECT_EQ(visible[2], 4u);

@@ -130,7 +130,8 @@ TEST(SlotMapTest, Iterator_CanIterateAllElements)
     map.insert(30);
 
     int sum = 0;
-    for (const auto& val : map) {
+    for (const auto& val : map)
+    {
         sum += val;
     }
 
@@ -142,7 +143,8 @@ TEST(SlotMapTest, Iterator_EmptyMap_NoIteration)
     SlotMap<uint64_t, int> map;
 
     int count = 0;
-    for (const auto& val : map) {
+    for (const auto& val : map)
+    {
         (void)val;
         count++;
     }
@@ -214,7 +216,8 @@ TEST(SlotMapTest, LargeNumberOfInserts)
     SlotMap<uint64_t, int> map;
     const int count = 1000;
 
-    for (int i = 0; i < count; ++i) {
+    for (int i = 0; i < count; ++i)
+    {
         map.insert(i);
     }
 
@@ -225,9 +228,11 @@ TEST(SlotMapTest, InsertAndEraseAlternating)
 {
     SlotMap<uint64_t, int> map;
 
-    for (int i = 0; i < 100; ++i) {
+    for (int i = 0; i < 100; ++i)
+    {
         auto key = map.insert(i);
-        if (i % 2 == 0) {
+        if (i % 2 == 0)
+        {
             map.erase(key);
         }
     }

@@ -20,15 +20,22 @@ namespace render
         static OverlayVertex makeVert(float x, float y, float z, float r, float g, float b, float a)
         {
             OverlayVertex v;
-            v.px = x; v.py = y; v.pz = z;
-            v.cr = r; v.cg = g; v.cb = b; v.ca = a;
+            v.px = x;
+            v.py = y;
+            v.pz = z;
+            v.cr = r;
+            v.cg = g;
+            v.cb = b;
+            v.ca = a;
             return v;
         }
 
         bool OverlayQueue::initialize(rhi::IDevice* device)
         {
             if (!device)
+            {
                 return false;
+            }
 
             m_device = device;
 
@@ -96,8 +103,7 @@ namespace render
             m_dirty = true;
         }
 
-        void OverlayQueue::setSnapIndicator(float worldX, float worldY, bool visible,
-            const float color[4])
+        void OverlayQueue::setSnapIndicator(float worldX, float worldY, bool visible, const float color[4])
         {
             m_snapVerts.clear();
             if (!visible)
@@ -115,17 +121,16 @@ namespace render
             {
                 float a0 = 2.0f * 3.14159265f * i / kSegments;
                 float a1 = 2.0f * 3.14159265f * (i + 1) / kSegments;
-                m_snapVerts.push_back(makeVert(worldX + radius * std::cos(a0),
-                    worldY + radius * std::sin(a0), z, r, g, b, a));
-                m_snapVerts.push_back(makeVert(worldX + radius * std::cos(a1),
-                    worldY + radius * std::sin(a1), z, r, g, b, a));
+                m_snapVerts.push_back(
+                    makeVert(worldX + radius * std::cos(a0), worldY + radius * std::sin(a0), z, r, g, b, a));
+                m_snapVerts.push_back(
+                    makeVert(worldX + radius * std::cos(a1), worldY + radius * std::sin(a1), z, r, g, b, a));
             }
 
             m_dirty = true;
         }
 
-        void OverlayQueue::setPreviewLines(const VertexP3C3* vertices, uint32_t count,
-            uint32_t /*colorRGBA*/)
+        void OverlayQueue::setPreviewLines(const VertexP3C3* vertices, uint32_t count, uint32_t /*colorRGBA*/)
         {
             m_previewVerts.clear();
             if (!vertices || count == 0)
@@ -139,15 +144,14 @@ namespace render
             m_previewVerts.resize(count);
             for (uint32_t i = 0; i < count; ++i)
             {
-                m_previewVerts[i] = makeVert(vertices[i].px, vertices[i].py, vertices[i].pz,
-                    vertices[i].cr, vertices[i].cg, vertices[i].cb, 1.0f);
+                m_previewVerts[i] = makeVert(
+                    vertices[i].px, vertices[i].py, vertices[i].pz, vertices[i].cr, vertices[i].cg, vertices[i].cb, 1.0f);
             }
 
             m_dirty = true;
         }
 
-        void OverlayQueue::setControlLines(const VertexP3C3* vertices, uint32_t count,
-            uint32_t /*colorRGBA*/)
+        void OverlayQueue::setControlLines(const VertexP3C3* vertices, uint32_t count, uint32_t /*colorRGBA*/)
         {
             m_controlVerts.clear();
             if (!vertices || count == 0)
@@ -161,16 +165,15 @@ namespace render
             m_controlVerts.resize(count);
             for (uint32_t i = 0; i < count; ++i)
             {
-                m_controlVerts[i] = makeVert(vertices[i].px, vertices[i].py, vertices[i].pz,
-                    vertices[i].cr, vertices[i].cg, vertices[i].cb, 1.0f);
+                m_controlVerts[i] = makeVert(
+                    vertices[i].px, vertices[i].py, vertices[i].pz, vertices[i].cr, vertices[i].cg, vertices[i].cb, 1.0f);
             }
 
             m_dirty = true;
         }
 
-        void OverlayQueue::setPointMarkers(const float* worldPositions, uint32_t count,
-            float markerSize, uint32_t fillColor,
-            uint32_t borderColor)
+        void OverlayQueue::setPointMarkers(
+            const float* worldPositions, uint32_t count, float markerSize, uint32_t fillColor, uint32_t borderColor)
         {
             m_markerVerts.clear();
             m_unifiedVerts.clear();
@@ -238,9 +241,8 @@ namespace render
             m_dirty = true;
         }
 
-        void OverlayQueue::setSelectionHandles(const float* worldPositions, uint32_t count,
-            float handleSize, uint32_t fillColor,
-            uint32_t borderColor)
+        void OverlayQueue::setSelectionHandles(
+            const float* worldPositions, uint32_t count, float handleSize, uint32_t fillColor, uint32_t borderColor)
         {
             m_handleVerts.clear();
             m_unifiedVerts.clear();
@@ -276,8 +278,7 @@ namespace render
             m_dirty = true;
         }
 
-        void OverlayQueue::setSelectionRect(const BBox2f* bbox, uint32_t fillColor,
-            uint32_t borderColor)
+        void OverlayQueue::setSelectionRect(const BBox2f* bbox, uint32_t fillColor, uint32_t borderColor)
         {
             m_selRectFillVerts.clear();
             m_selRectBorderVerts.clear();
@@ -327,7 +328,9 @@ namespace render
         void OverlayQueue::submitOverlay(const OverlayPrimitive* primitive)
         {
             if (!primitive || !primitive->payload)
+            {
                 return;
+            }
 
             uint32_t start = static_cast<uint32_t>(m_unifiedVerts.size());
             uint32_t count = 0;
@@ -336,138 +339,152 @@ namespace render
 
             switch (primitive->form)
             {
-                case OverlayForm::LineList:
+            case OverlayForm::LineList:
+            {
+                // 线段列表：预览线/控制线/选择轮廓等所有 LineList 形态图元共用此分支
+                const auto* desc = static_cast<const OverlayPolylineDesc*>(primitive->payload);
+                if (!desc || !desc->vertices || desc->vertexCount == 0)
                 {
-                    // 线段列表：预览线/控制线/选择轮廓等所有 LineList 形态图元共用此分支
-                    const auto* desc = static_cast<const OverlayPolylineDesc*>(primitive->payload);
-                    if (!desc || !desc->vertices || desc->vertexCount == 0)
-                        break;
-                    count = desc->vertexCount;
-                    m_unifiedVerts.reserve(start + count);
-                    if (desc->usePerVertexColor && !desc->colors)
-                    {
-                        const auto* ov = reinterpret_cast<const OverlayVertex*>(desc->vertices);
-                        m_unifiedVerts.insert(m_unifiedVerts.end(), ov, ov + count);
-                    }
-                    else if (desc->usePerVertexColor && desc->colors)
-                    {
-                        for (uint32_t i = 0; i < count; ++i)
-                        {
-                            m_unifiedVerts.push_back(makeVert(
-                                desc->vertices[i * 3 + 0],
-                                desc->vertices[i * 3 + 1],
-                                desc->vertices[i * 3 + 2],
-                                desc->colors[i * 3 + 0],
-                                desc->colors[i * 3 + 1],
-                                desc->colors[i * 3 + 2],
-                                1.0f));
-                        }
-                    }
-                    else
-                    {
-                        float r, g, b, a;
-                        unpackRGBA(primitive->style.borderColor, r, g, b, a);
-                        for (uint32_t i = 0; i < count; ++i)
-                        {
-                            m_unifiedVerts.push_back(makeVert(
-                                desc->vertices[i * 3 + 0],
-                                desc->vertices[i * 3 + 1],
-                                desc->vertices[i * 3 + 2],
-                                r, g, b, a));
-                        }
-                    }
                     break;
                 }
-                case OverlayForm::Rect:
+                count = desc->vertexCount;
+                m_unifiedVerts.reserve(start + count);
+                if (desc->usePerVertexColor && !desc->colors)
                 {
-                    const auto* desc = static_cast<const OverlayRectDesc*>(primitive->payload);
-                    if (!desc)
-                        break;
+                    const auto* ov = reinterpret_cast<const OverlayVertex*>(desc->vertices);
+                    m_unifiedVerts.insert(m_unifiedVerts.end(), ov, ov + count);
+                }
+                else if (desc->usePerVertexColor && desc->colors)
+                {
+                    for (uint32_t i = 0; i < count; ++i)
+                    {
+                        m_unifiedVerts.push_back(makeVert(desc->vertices[i * 3 + 0],
+                            desc->vertices[i * 3 + 1],
+                            desc->vertices[i * 3 + 2],
+                            desc->colors[i * 3 + 0],
+                            desc->colors[i * 3 + 1],
+                            desc->colors[i * 3 + 2],
+                            1.0f));
+                    }
+                }
+                else
+                {
                     float r, g, b, a;
                     unpackRGBA(primitive->style.borderColor, r, g, b, a);
-                    count = 8;
-                    m_unifiedVerts.reserve(start + count);
-                    m_unifiedVerts.push_back(makeVert(desc->minX, desc->minY, z, r, g, b, a));
-                    m_unifiedVerts.push_back(makeVert(desc->maxX, desc->minY, z, r, g, b, a));
-                    m_unifiedVerts.push_back(makeVert(desc->maxX, desc->minY, z, r, g, b, a));
-                    m_unifiedVerts.push_back(makeVert(desc->maxX, desc->maxY, z, r, g, b, a));
-                    m_unifiedVerts.push_back(makeVert(desc->maxX, desc->maxY, z, r, g, b, a));
-                    m_unifiedVerts.push_back(makeVert(desc->minX, desc->maxY, z, r, g, b, a));
-                    m_unifiedVerts.push_back(makeVert(desc->minX, desc->maxY, z, r, g, b, a));
-                    m_unifiedVerts.push_back(makeVert(desc->minX, desc->minY, z, r, g, b, a));
-                    SY_DEBUGF("[OverlayQueue] submit Rect (%.2f,%.2f)-(%.2f,%.2f) color=#%08x",
-                        desc->minX, desc->minY, desc->maxX, desc->maxY, primitive->style.borderColor);
-                    break;
-                }
-                case OverlayForm::FilledRect:
-                {
-                    const auto* desc = static_cast<const OverlayRectDesc*>(primitive->payload);
-                    if (!desc)
-                        break;
-                    float r, g, b, a;
-                    unpackRGBA(primitive->style.fillColor, r, g, b, a);
-                    count = 6;
-                    isTriangle = 1;
-                    m_unifiedVerts.reserve(start + count);
-                    m_unifiedVerts.push_back(makeVert(desc->minX, desc->minY, z, r, g, b, a));
-                    m_unifiedVerts.push_back(makeVert(desc->maxX, desc->minY, z, r, g, b, a));
-                    m_unifiedVerts.push_back(makeVert(desc->maxX, desc->maxY, z, r, g, b, a));
-                    m_unifiedVerts.push_back(makeVert(desc->minX, desc->minY, z, r, g, b, a));
-                    m_unifiedVerts.push_back(makeVert(desc->maxX, desc->maxY, z, r, g, b, a));
-                    m_unifiedVerts.push_back(makeVert(desc->minX, desc->maxY, z, r, g, b, a));
-                    break;
-                }
-                case OverlayForm::Marker:
-                {
-                    // 点标记：选择手柄/标记点等所有 Marker 形态图元共用此分支
-                    const auto* desc = static_cast<const OverlayMarkerSetDesc*>(primitive->payload);
-                    if (!desc || !desc->positions || desc->count == 0)
-                        break;
-                    float half = primitive->style.pointSize * 0.5f;
-                    float inner = std::max(half - 1.0f, half * 0.72f);
-                    uint8_t fillAlpha = (primitive->style.fillColor >> 24) & 0xFF;
-                    bool hasFill = (fillAlpha != 0);
-                    uint32_t vertsPerItem = hasFill ? 14 : 8;
-                    count = desc->count * vertsPerItem;
-                    m_unifiedVerts.reserve(start + count);
-                    for (uint32_t i = 0; i < desc->count; ++i)
+                    for (uint32_t i = 0; i < count; ++i)
                     {
-                        float cx = desc->positions[i * 2 + 0];
-                        float cy = desc->positions[i * 2 + 1];
-                        if (hasFill)
-                        {
-                            m_unifiedVerts.resize(m_unifiedVerts.size() + 6);
-                            buildMarkerQuad(&m_unifiedVerts[m_unifiedVerts.size() - 6], cx, cy, inner, primitive->style.fillColor);
-                        }
-                        m_unifiedVerts.resize(m_unifiedVerts.size() + 8);
-                        buildMarkerBorder(&m_unifiedVerts[m_unifiedVerts.size() - 8], cx, cy, half, primitive->style.borderColor);
+                        m_unifiedVerts.push_back(makeVert(
+                            desc->vertices[i * 3 + 0], desc->vertices[i * 3 + 1], desc->vertices[i * 3 + 2], r, g, b, a));
                     }
-                    break;
                 }
-                case OverlayForm::SnapCircle:
+                break;
+            }
+            case OverlayForm::Rect:
+            {
+                const auto* desc = static_cast<const OverlayRectDesc*>(primitive->payload);
+                if (!desc)
                 {
-                    const auto* desc = static_cast<const OverlayMarkerSetDesc*>(primitive->payload);
-                    if (!desc || desc->count == 0)
-                        break;
-                    float cx = desc->positions[0];
-                    float cy = desc->positions[1];
-                    float radius = primitive->style.pointSize;
-                    float r, g, b, a;
-                    unpackRGBA(primitive->style.fillColor, r, g, b, a);
-                    const int kSegments = 16;
-                    count = kSegments * 2;
-                    m_unifiedVerts.reserve(start + count);
-                    for (int i = 0; i < kSegments; ++i)
-                    {
-                        float a0 = 2.0f * 3.14159265f * i / kSegments;
-                        float a1 = 2.0f * 3.14159265f * (i + 1) / kSegments;
-                        m_unifiedVerts.push_back(makeVert(cx + radius * std::cos(a0), cy + radius * std::sin(a0), z, r, g, b, a));
-                        m_unifiedVerts.push_back(makeVert(cx + radius * std::cos(a1), cy + radius * std::sin(a1), z, r, g, b, a));
-                    }
                     break;
                 }
-                case OverlayForm::Count:
+                float r, g, b, a;
+                unpackRGBA(primitive->style.borderColor, r, g, b, a);
+                count = 8;
+                m_unifiedVerts.reserve(start + count);
+                m_unifiedVerts.push_back(makeVert(desc->minX, desc->minY, z, r, g, b, a));
+                m_unifiedVerts.push_back(makeVert(desc->maxX, desc->minY, z, r, g, b, a));
+                m_unifiedVerts.push_back(makeVert(desc->maxX, desc->minY, z, r, g, b, a));
+                m_unifiedVerts.push_back(makeVert(desc->maxX, desc->maxY, z, r, g, b, a));
+                m_unifiedVerts.push_back(makeVert(desc->maxX, desc->maxY, z, r, g, b, a));
+                m_unifiedVerts.push_back(makeVert(desc->minX, desc->maxY, z, r, g, b, a));
+                m_unifiedVerts.push_back(makeVert(desc->minX, desc->maxY, z, r, g, b, a));
+                m_unifiedVerts.push_back(makeVert(desc->minX, desc->minY, z, r, g, b, a));
+                SY_DEBUGF("[OverlayQueue] submit Rect (%.2f,%.2f)-(%.2f,%.2f) color=#%08x",
+                    desc->minX,
+                    desc->minY,
+                    desc->maxX,
+                    desc->maxY,
+                    primitive->style.borderColor);
+                break;
+            }
+            case OverlayForm::FilledRect:
+            {
+                const auto* desc = static_cast<const OverlayRectDesc*>(primitive->payload);
+                if (!desc)
+                {
                     break;
+                }
+                float r, g, b, a;
+                unpackRGBA(primitive->style.fillColor, r, g, b, a);
+                count = 6;
+                isTriangle = 1;
+                m_unifiedVerts.reserve(start + count);
+                m_unifiedVerts.push_back(makeVert(desc->minX, desc->minY, z, r, g, b, a));
+                m_unifiedVerts.push_back(makeVert(desc->maxX, desc->minY, z, r, g, b, a));
+                m_unifiedVerts.push_back(makeVert(desc->maxX, desc->maxY, z, r, g, b, a));
+                m_unifiedVerts.push_back(makeVert(desc->minX, desc->minY, z, r, g, b, a));
+                m_unifiedVerts.push_back(makeVert(desc->maxX, desc->maxY, z, r, g, b, a));
+                m_unifiedVerts.push_back(makeVert(desc->minX, desc->maxY, z, r, g, b, a));
+                break;
+            }
+            case OverlayForm::Marker:
+            {
+                // 点标记：选择手柄/标记点等所有 Marker 形态图元共用此分支
+                const auto* desc = static_cast<const OverlayMarkerSetDesc*>(primitive->payload);
+                if (!desc || !desc->positions || desc->count == 0)
+                {
+                    break;
+                }
+                float half = primitive->style.pointSize * 0.5f;
+                float inner = std::max(half - 1.0f, half * 0.72f);
+                uint8_t fillAlpha = (primitive->style.fillColor >> 24) & 0xFF;
+                bool hasFill = (fillAlpha != 0);
+                uint32_t vertsPerItem = hasFill ? 14 : 8;
+                count = desc->count * vertsPerItem;
+                m_unifiedVerts.reserve(start + count);
+                for (uint32_t i = 0; i < desc->count; ++i)
+                {
+                    float cx = desc->positions[i * 2 + 0];
+                    float cy = desc->positions[i * 2 + 1];
+                    if (hasFill)
+                    {
+                        m_unifiedVerts.resize(m_unifiedVerts.size() + 6);
+                        buildMarkerQuad(
+                            &m_unifiedVerts[m_unifiedVerts.size() - 6], cx, cy, inner, primitive->style.fillColor);
+                    }
+                    m_unifiedVerts.resize(m_unifiedVerts.size() + 8);
+                    buildMarkerBorder(
+                        &m_unifiedVerts[m_unifiedVerts.size() - 8], cx, cy, half, primitive->style.borderColor);
+                }
+                break;
+            }
+            case OverlayForm::SnapCircle:
+            {
+                const auto* desc = static_cast<const OverlayMarkerSetDesc*>(primitive->payload);
+                if (!desc || desc->count == 0)
+                {
+                    break;
+                }
+                float cx = desc->positions[0];
+                float cy = desc->positions[1];
+                float radius = primitive->style.pointSize;
+                float r, g, b, a;
+                unpackRGBA(primitive->style.fillColor, r, g, b, a);
+                const int kSegments = 16;
+                count = kSegments * 2;
+                m_unifiedVerts.reserve(start + count);
+                for (int i = 0; i < kSegments; ++i)
+                {
+                    float a0 = 2.0f * 3.14159265f * i / kSegments;
+                    float a1 = 2.0f * 3.14159265f * (i + 1) / kSegments;
+                    m_unifiedVerts.push_back(
+                        makeVert(cx + radius * std::cos(a0), cy + radius * std::sin(a0), z, r, g, b, a));
+                    m_unifiedVerts.push_back(
+                        makeVert(cx + radius * std::cos(a1), cy + radius * std::sin(a1), z, r, g, b, a));
+                }
+                break;
+            }
+            case OverlayForm::Count:
+                break;
             }
 
             if (count > 0)
@@ -487,7 +504,9 @@ namespace render
         void OverlayQueue::clearOverlayGroup(OverlayGroup group)
         {
             if (m_unifiedRanges.empty())
+            {
                 return;
+            }
 
             std::vector<OverlayVertex> newVerts;
             std::vector<Range> newRanges;
@@ -498,7 +517,9 @@ namespace render
             for (const auto& range : m_unifiedRanges)
             {
                 if (range.group == static_cast<uint32_t>(group))
+                {
                     continue;
+                }
 
                 newVerts.insert(newVerts.end(),
                     m_unifiedVerts.begin() + range.start,
@@ -513,8 +534,7 @@ namespace render
             m_dirty = true;
         }
 
-        void OverlayQueue::render(rhi::IDevice* device, CommandEncoder* encoder,
-            const float /*viewMatrix*/[9])
+        void OverlayQueue::render(rhi::IDevice* device, CommandEncoder* encoder, const float /*viewMatrix*/[9])
         {
             // viewMatrix 由 CommandEncoder::execute() 统一设置
 
@@ -527,20 +547,18 @@ namespace render
             uint32_t totalUnifiedVerts = static_cast<uint32_t>(m_unifiedVerts.size());
             SY_DEBUGF("[OverlayQueue] render: unified=%u ranges=%zu", totalUnifiedVerts, m_unifiedRanges.size());
 
-            uint32_t totalOldVerts =
-                static_cast<uint32_t>(m_selectionBoxVerts.size()) +
-                static_cast<uint32_t>(m_controlVerts.size()) +
-                static_cast<uint32_t>(m_previewVerts.size()) +
-                static_cast<uint32_t>(m_markerVerts.size()) +
-                static_cast<uint32_t>(m_handleVerts.size()) +
-                static_cast<uint32_t>(m_crosshairVerts.size()) +
-                static_cast<uint32_t>(m_snapVerts.size()) +
-                static_cast<uint32_t>(m_selRectFillVerts.size()) +
-                static_cast<uint32_t>(m_selRectBorderVerts.size());
+            uint32_t totalOldVerts = static_cast<uint32_t>(m_selectionBoxVerts.size()) +
+                static_cast<uint32_t>(m_controlVerts.size()) + static_cast<uint32_t>(m_previewVerts.size()) +
+                static_cast<uint32_t>(m_markerVerts.size()) + static_cast<uint32_t>(m_handleVerts.size()) +
+                static_cast<uint32_t>(m_crosshairVerts.size()) + static_cast<uint32_t>(m_snapVerts.size()) +
+                static_cast<uint32_t>(m_selRectFillVerts.size()) + static_cast<uint32_t>(m_selRectBorderVerts.size());
 
             uint32_t totalVerts = totalOldVerts + totalUnifiedVerts;
 
-            if (totalVerts == 0) return;
+            if (totalVerts == 0)
+            {
+                return;
+            }
 
             // 仅在叠加层数据变化时重建合并顶点缓冲区和上传 GPU
             if (m_dirty)
@@ -548,11 +566,19 @@ namespace render
                 if (totalVerts > m_vbCapacity)
                 {
                     if (m_vertexBuffer != rhi::NullHandle)
+                    {
                         device->destroyBuffer(m_vertexBuffer);
+                    }
 
                     uint32_t newCap = m_vbCapacity;
-                    if (newCap == 0) newCap = 4096;
-                    while (newCap < totalVerts) newCap *= 2;
+                    if (newCap == 0)
+                    {
+                        newCap = 4096;
+                    }
+                    while (newCap < totalVerts)
+                    {
+                        newCap *= 2;
+                    }
 
                     rhi::BufferDesc desc;
                     desc.size = newCap * sizeof(OverlayVertex);
@@ -606,19 +632,26 @@ namespace render
                 uint32_t unifiedStart = static_cast<uint32_t>(merged.size());
                 merged.insert(merged.end(), m_unifiedVerts.begin(), m_unifiedVerts.end());
 
-                device->uploadBuffer(m_vertexBuffer, 0,
-                    merged.size() * sizeof(OverlayVertex),
-                    merged.data());
+                device->uploadBuffer(m_vertexBuffer, 0, merged.size() * sizeof(OverlayVertex), merged.data());
 
-                m_mergedOffsets[0] = selStart;     m_mergedCounts[0] = selCount;
-                m_mergedOffsets[1] = ctrlStart;    m_mergedCounts[1] = ctrlCount;
-                m_mergedOffsets[2] = prevStart;    m_mergedCounts[2] = prevCount;
-                m_mergedOffsets[3] = markerStart;  m_mergedCounts[3] = markerCount;
-                m_mergedOffsets[4] = handleStart;  m_mergedCounts[4] = handleCount;
-                m_mergedOffsets[5] = crossStart;   m_mergedCounts[5] = crossCount;
-                m_mergedOffsets[6] = snapStart;    m_mergedCounts[6] = snapCount;
-                m_mergedOffsets[7] = rectFillStart;   m_mergedCounts[7] = rectFillCount;
-                m_mergedOffsets[8] = rectBorderStart; m_mergedCounts[8] = rectBorderCount;
+                m_mergedOffsets[0] = selStart;
+                m_mergedCounts[0] = selCount;
+                m_mergedOffsets[1] = ctrlStart;
+                m_mergedCounts[1] = ctrlCount;
+                m_mergedOffsets[2] = prevStart;
+                m_mergedCounts[2] = prevCount;
+                m_mergedOffsets[3] = markerStart;
+                m_mergedCounts[3] = markerCount;
+                m_mergedOffsets[4] = handleStart;
+                m_mergedCounts[4] = handleCount;
+                m_mergedOffsets[5] = crossStart;
+                m_mergedCounts[5] = crossCount;
+                m_mergedOffsets[6] = snapStart;
+                m_mergedCounts[6] = snapCount;
+                m_mergedOffsets[7] = rectFillStart;
+                m_mergedCounts[7] = rectFillCount;
+                m_mergedOffsets[8] = rectBorderStart;
+                m_mergedCounts[8] = rectBorderCount;
 
                 m_unifiedStart = unifiedStart;
                 m_dirty = false;
@@ -646,13 +679,19 @@ namespace render
             uint32_t rectBorderStart = m_mergedOffsets[8];
 
             if (selCount > 0)
+            {
                 encoder->submitOverlay(PrimitiveType::LineList, selStart, selCount);
+            }
 
             if (ctrlCount > 0)
+            {
                 encoder->submitOverlay(PrimitiveType::LineList, ctrlStart, ctrlCount);
+            }
 
             if (prevCount > 0)
+            {
                 encoder->submitOverlay(PrimitiveType::LineList, prevStart, prevCount);
+            }
 
             if (markerCount > 0)
             {
@@ -661,10 +700,13 @@ namespace render
                 uint32_t lineCount = numMarkers * 8;
 
                 if (triCount > 0)
+                {
                     encoder->submitOverlay(PrimitiveType::TriangleList, markerStart, triCount);
+                }
                 if (lineCount > 0)
-                    encoder->submitOverlay(PrimitiveType::LineList,
-                        markerStart + triCount, lineCount);
+                {
+                    encoder->submitOverlay(PrimitiveType::LineList, markerStart + triCount, lineCount);
+                }
             }
 
             if (handleCount > 0)
@@ -674,23 +716,34 @@ namespace render
                 uint32_t lineCount = numHandles * 8;
 
                 if (triCount > 0)
+                {
                     encoder->submitOverlay(PrimitiveType::TriangleList, handleStart, triCount);
+                }
                 if (lineCount > 0)
-                    encoder->submitOverlay(PrimitiveType::LineList,
-                        handleStart + triCount, lineCount);
+                {
+                    encoder->submitOverlay(PrimitiveType::LineList, handleStart + triCount, lineCount);
+                }
             }
 
             if (crossCount > 0)
+            {
                 encoder->submitOverlay(PrimitiveType::LineList, crossStart, crossCount);
+            }
 
             if (snapCount > 0)
+            {
                 encoder->submitOverlay(PrimitiveType::LineList, snapStart, snapCount);
+            }
 
             if (rectFillCount > 0)
+            {
                 encoder->submitOverlay(PrimitiveType::TriangleList, rectFillStart, rectFillCount);
+            }
 
             if (rectBorderCount > 0)
+            {
                 encoder->submitOverlay(PrimitiveType::LineList, rectBorderStart, rectBorderCount);
+            }
 
             // 统一提交的 overlay 图元
             if (!m_unifiedRanges.empty() && totalUnifiedVerts > 0)
@@ -698,18 +751,17 @@ namespace render
                 for (const auto& range : m_unifiedRanges)
                 {
                     if (range.count == 0)
+                    {
                         continue;
+                    }
 
-                    PrimitiveType topo = range.isTriangle
-                        ? PrimitiveType::TriangleList
-                        : PrimitiveType::LineList;
+                    PrimitiveType topo = range.isTriangle ? PrimitiveType::TriangleList : PrimitiveType::LineList;
                     encoder->submitOverlay(topo, m_unifiedStart + range.start, range.count);
                 }
             }
         }
 
-        void OverlayQueue::buildMarkerQuad(OverlayVertex* out, float cx, float cy,
-            float halfSize, uint32_t fillColor)
+        void OverlayQueue::buildMarkerQuad(OverlayVertex* out, float cx, float cy, float halfSize, uint32_t fillColor)
         {
             float r, g, b, a;
             unpackRGBA(fillColor, r, g, b, a);
@@ -727,8 +779,8 @@ namespace render
             out[5] = makeVert(x0, y1, z, r, g, b, a);
         }
 
-        void OverlayQueue::buildMarkerBorder(OverlayVertex* out, float cx, float cy,
-            float halfSize, uint32_t borderColor)
+        void OverlayQueue::buildMarkerBorder(
+            OverlayVertex* out, float cx, float cy, float halfSize, uint32_t borderColor)
         {
             float r, g, b, a;
             unpackRGBA(borderColor, r, g, b, a);
@@ -749,5 +801,5 @@ namespace render
             out[6] = makeVert(x0, y1, z, r, g, b, a);
             out[7] = makeVert(x0, y0, z, r, g, b, a);
         }
-    } // namespace core
-} // namespace render
+    }  // namespace core
+}  // namespace render

@@ -16,11 +16,8 @@ namespace render
                 {
                     for (int row = 0; row < 4; ++row)
                     {
-                        out[col * 4 + row] =
-                            a[0 * 4 + row] * b[col * 4 + 0] +
-                            a[1 * 4 + row] * b[col * 4 + 1] +
-                            a[2 * 4 + row] * b[col * 4 + 2] +
-                            a[3 * 4 + row] * b[col * 4 + 3];
+                        out[col * 4 + row] = a[0 * 4 + row] * b[col * 4 + 0] + a[1 * 4 + row] * b[col * 4 + 1] +
+                            a[2 * 4 + row] * b[col * 4 + 2] + a[3 * 4 + row] * b[col * 4 + 3];
                     }
                 }
             }
@@ -31,11 +28,14 @@ namespace render
                 out[1] = m[1] * p[0] + m[5] * p[1] + m[9] * p[2] + m[13];
                 out[2] = m[2] * p[0] + m[6] * p[1] + m[10] * p[2] + m[14];
             }
-        }
+        }  // namespace
 
         bool MeshManager::initialize(rhi::IDevice* device)
         {
-            if (!device) return false;
+            if (!device)
+            {
+                return false;
+            }
             m_device = device;
             buildPipelines(device);
             return true;
@@ -139,12 +139,19 @@ namespace render
 
         void MeshManager::uploadMeshBuffers(rhi::IDevice* device)
         {
-            if (m_positions.empty() && m_indices.empty()) return;
+            if (m_positions.empty() && m_indices.empty())
+            {
+                return;
+            }
 
             if (m_positionBuffer != rhi::NullHandle)
+            {
                 device->destroyBuffer(m_positionBuffer);
+            }
             if (m_indexBuffer != rhi::NullHandle)
+            {
                 device->destroyBuffer(m_indexBuffer);
+            }
 
             {
                 rhi::BufferDesc desc;
@@ -153,9 +160,7 @@ namespace render
                 desc.memory = rhi::MemoryType::GPU_Only;
                 desc.debugName = "MeshManager_PositionBuffer";
                 m_positionBuffer = device->createBuffer(desc);
-                device->uploadBuffer(m_positionBuffer, 0,
-                    m_positions.size() * sizeof(VertexP3N3),
-                    m_positions.data());
+                device->uploadBuffer(m_positionBuffer, 0, m_positions.size() * sizeof(VertexP3N3), m_positions.data());
             }
 
             {
@@ -165,9 +170,7 @@ namespace render
                 desc.memory = rhi::MemoryType::GPU_Only;
                 desc.debugName = "MeshManager_IndexBuffer";
                 m_indexBuffer = device->createBuffer(desc);
-                device->uploadBuffer(m_indexBuffer, 0,
-                    m_indices.size() * sizeof(uint32_t),
-                    m_indices.data());
+                device->uploadBuffer(m_indexBuffer, 0, m_indices.size() * sizeof(uint32_t), m_indices.data());
             }
 
             m_meshBufferDirty = false;
@@ -175,7 +178,10 @@ namespace render
 
         void MeshManager::uploadInstanceBuffer(rhi::IDevice* device)
         {
-            if (m_instances.empty()) return;
+            if (m_instances.empty())
+            {
+                return;
+            }
 
             uint64_t requiredSize = m_instances.size() * sizeof(InstanceDesc);
             if (m_instanceBuffer != rhi::NullHandle)
@@ -209,8 +215,10 @@ namespace render
             m_instanceBufferDirty = false;
         }
 
-        MeshId MeshManager::registerMesh(const float* positions, const float* normals,
-            const uint32_t* indices, uint32_t vertexCount,
+        MeshId MeshManager::registerMesh(const float* positions,
+            const float* normals,
+            const uint32_t* indices,
+            uint32_t vertexCount,
             uint32_t indexCount)
         {
             MeshEntry entry;
@@ -234,12 +242,30 @@ namespace render
                 v.nz = normals[i * 3 + 2];
                 m_positions.push_back(v);
 
-                if (v.px < minX) minX = v.px;
-                if (v.py < minY) minY = v.py;
-                if (v.pz < minZ) minZ = v.pz;
-                if (v.px > maxX) maxX = v.px;
-                if (v.py > maxY) maxY = v.py;
-                if (v.pz > maxZ) maxZ = v.pz;
+                if (v.px < minX)
+                {
+                    minX = v.px;
+                }
+                if (v.py < minY)
+                {
+                    minY = v.py;
+                }
+                if (v.pz < minZ)
+                {
+                    minZ = v.pz;
+                }
+                if (v.px > maxX)
+                {
+                    maxX = v.px;
+                }
+                if (v.py > maxY)
+                {
+                    maxY = v.py;
+                }
+                if (v.pz > maxZ)
+                {
+                    maxZ = v.pz;
+                }
             }
 
             entry.bbox[0] = minX;
@@ -263,14 +289,20 @@ namespace render
         void MeshManager::unregisterMesh(MeshId mesh)
         {
             MeshEntry* entry = m_meshes.find(mesh);
-            if (entry) entry->deleted = true;
+            if (entry)
+            {
+                entry->deleted = true;
+            }
         }
 
-        uint32_t MeshManager::addInstance(MeshId mesh, const float modelMatrix[16],
-            uint32_t materialIdx, const float color[4])
+        uint32_t MeshManager::addInstance(
+            MeshId mesh, const float modelMatrix[16], uint32_t materialIdx, const float color[4])
         {
             MeshEntry* entry = m_meshes.find(mesh);
-            if (!entry || entry->deleted) return UINT32_MAX;
+            if (!entry || entry->deleted)
+            {
+                return UINT32_MAX;
+            }
 
             uint32_t denseIdx = 0;
             const MeshEntry* denseData = m_meshes.dense_data();
@@ -323,7 +355,10 @@ namespace render
 
         void MeshManager::modifyInstance(uint32_t instanceId, const float modelMatrix[16])
         {
-            if (instanceId >= m_instances.size()) return;
+            if (instanceId >= m_instances.size())
+            {
+                return;
+            }
             std::memcpy(m_instances[instanceId].modelMatrix, modelMatrix, 64);
             m_instances[instanceId].dirty = true;
             m_instanceBufferDirty = true;
@@ -332,7 +367,10 @@ namespace render
 
         void MeshManager::removeInstance(uint32_t instanceId)
         {
-            if (instanceId >= m_instances.size()) return;
+            if (instanceId >= m_instances.size())
+            {
+                return;
+            }
             m_instances[instanceId].flags = 0;
             m_instances[instanceId].meshDenseIdx = UINT32_MAX;
             m_instanceBufferDirty = true;
@@ -341,16 +379,25 @@ namespace render
 
         void MeshManager::setInstanceVisibility(uint32_t instanceId, bool visible)
         {
-            if (instanceId >= m_instances.size()) return;
+            if (instanceId >= m_instances.size())
+            {
+                return;
+            }
             if (visible)
+            {
                 m_instances[instanceId].flags |= 1u;
+            }
             else
+            {
                 m_instances[instanceId].flags &= ~1u;
+            }
             m_instanceBufferDirty = true;
         }
 
-        void MeshManager::queryVisible(const float viewMatrix[16], const float projMatrix[16],
-            uint32_t* outInstanceIds, uint32_t* outCount,
+        void MeshManager::queryVisible(const float viewMatrix[16],
+            const float projMatrix[16],
+            uint32_t* outInstanceIds,
+            uint32_t* outCount,
             uint32_t maxOut)
         {
             float viewProj[16];
@@ -362,12 +409,20 @@ namespace render
             for (uint32_t i = 0; i < static_cast<uint32_t>(m_instances.size()); ++i)
             {
                 const auto& inst = m_instances[i];
-                if (!(inst.flags & 1u) || inst.meshDenseIdx == UINT32_MAX) continue;
+                if (!(inst.flags & 1u) || inst.meshDenseIdx == UINT32_MAX)
+                {
+                    continue;
+                }
 
                 const MeshEntry* mesh = nullptr;
                 if (inst.meshDenseIdx < m_meshes.size())
+                {
                     mesh = &m_meshes.dense_data()[inst.meshDenseIdx];
-                if (!mesh || mesh->deleted) continue;
+                }
+                if (!mesh || mesh->deleted)
+                {
+                    continue;
+                }
 
                 float centerX = (mesh->bbox[0] + mesh->bbox[3]) * 0.5f;
                 float centerY = (mesh->bbox[1] + mesh->bbox[4]) * 0.5f;
@@ -378,22 +433,41 @@ namespace render
                 mat4TransformPoint(inst.modelMatrix, center, worldCenter);
 
                 float clip[4];
-                clip[0] = viewProj[0] * worldCenter[0] + viewProj[4] * worldCenter[1] + viewProj[8] * worldCenter[2] + viewProj[12];
-                clip[1] = viewProj[1] * worldCenter[0] + viewProj[5] * worldCenter[1] + viewProj[9] * worldCenter[2] + viewProj[13];
-                clip[2] = viewProj[2] * worldCenter[0] + viewProj[6] * worldCenter[1] + viewProj[10] * worldCenter[2] + viewProj[14];
-                clip[3] = viewProj[3] * worldCenter[0] + viewProj[7] * worldCenter[1] + viewProj[11] * worldCenter[2] + viewProj[15];
+                clip[0] = viewProj[0] * worldCenter[0] + viewProj[4] * worldCenter[1] + viewProj[8] * worldCenter[2] +
+                    viewProj[12];
+                clip[1] = viewProj[1] * worldCenter[0] + viewProj[5] * worldCenter[1] + viewProj[9] * worldCenter[2] +
+                    viewProj[13];
+                clip[2] = viewProj[2] * worldCenter[0] + viewProj[6] * worldCenter[1] + viewProj[10] * worldCenter[2] +
+                    viewProj[14];
+                clip[3] = viewProj[3] * worldCenter[0] + viewProj[7] * worldCenter[1] + viewProj[11] * worldCenter[2] +
+                    viewProj[15];
 
-                if (std::abs(clip[3]) < 1e-6f) continue;
+                if (std::abs(clip[3]) < 1e-6f)
+                {
+                    continue;
+                }
 
                 float ndcX = clip[0] / clip[3];
                 float ndcY = clip[1] / clip[3];
                 float ndcZ = clip[2] / clip[3];
 
-                if (ndcX < -1.0f - margin || ndcX > 1.0f + margin) continue;
-                if (ndcY < -1.0f - margin || ndcY > 1.0f + margin) continue;
-                if (ndcZ < -1.0f - margin || ndcZ > 1.0f + margin) continue;
+                if (ndcX < -1.0f - margin || ndcX > 1.0f + margin)
+                {
+                    continue;
+                }
+                if (ndcY < -1.0f - margin || ndcY > 1.0f + margin)
+                {
+                    continue;
+                }
+                if (ndcZ < -1.0f - margin || ndcZ > 1.0f + margin)
+                {
+                    continue;
+                }
 
-                if (count >= maxOut) break;
+                if (count >= maxOut)
+                {
+                    break;
+                }
                 outInstanceIds[count++] = i;
             }
 
@@ -403,34 +477,43 @@ namespace render
         void MeshManager::update()
         {
             if (m_meshBufferDirty)
+            {
                 uploadMeshBuffers(m_device);
+            }
         }
 
-        void MeshManager::render(rhi::IDevice* device, const float viewMatrix[16],
-            const float projMatrix[16])
+        void MeshManager::render(rhi::IDevice* device, const float viewMatrix[16], const float projMatrix[16])
         {
             if (m_meshBufferDirty)
+            {
                 uploadMeshBuffers(device);
+            }
 
             // M6: 使用动态向量替代固定大小数组，移除 MAX_INSTANCES 限制
             std::vector<uint32_t> visibleIds(m_instances.size());
             uint32_t visibleCount = 0;
-            queryVisible(viewMatrix, projMatrix, visibleIds.data(), &visibleCount,
-                static_cast<uint32_t>(visibleIds.size()));
+            queryVisible(
+                viewMatrix, projMatrix, visibleIds.data(), &visibleCount, static_cast<uint32_t>(visibleIds.size()));
             visibleIds.resize(visibleCount);
 
-            if (visibleCount == 0) return;
+            if (visibleCount == 0)
+            {
+                return;
+            }
 
             m_visibleInstances.clear();
             m_visibleInstances.reserve(visibleCount);
             for (uint32_t i = 0; i < visibleCount; ++i)
+            {
                 m_visibleInstances.push_back(visibleIds[i]);
+            }
 
             struct VisibleInstance
             {
                 uint32_t instanceId;
                 uint32_t meshDenseIdx;
             };
+
             std::vector<VisibleInstance> sorted;
             sorted.reserve(visibleCount);
             for (uint32_t i = 0; i < visibleCount; ++i)
@@ -438,10 +521,9 @@ namespace render
                 uint32_t instId = visibleIds[i];
                 sorted.push_back({ instId, m_instances[instId].meshDenseIdx });
             }
-            std::sort(sorted.begin(), sorted.end(),
-                [](const VisibleInstance& a, const VisibleInstance& b) {
-                    return a.meshDenseIdx < b.meshDenseIdx;
-                });
+            std::sort(sorted.begin(), sorted.end(), [](const VisibleInstance& a, const VisibleInstance& b) {
+                return a.meshDenseIdx < b.meshDenseIdx;
+            });
 
             std::vector<InstanceDesc> packedInstances;
             packedInstances.reserve(visibleCount);
@@ -474,8 +556,14 @@ namespace render
                     }
 
                     m_instanceBufferCapacity = requiredSize;
-                    if (m_instanceBufferCapacity == 0) m_instanceBufferCapacity = 256 * sizeof(InstanceDesc);
-                    while (m_instanceBufferCapacity < requiredSize) m_instanceBufferCapacity *= 2;
+                    if (m_instanceBufferCapacity == 0)
+                    {
+                        m_instanceBufferCapacity = 256 * sizeof(InstanceDesc);
+                    }
+                    while (m_instanceBufferCapacity < requiredSize)
+                    {
+                        m_instanceBufferCapacity *= 2;
+                    }
 
                     rhi::BufferDesc desc;
                     desc.size = m_instanceBufferCapacity;
@@ -485,9 +573,8 @@ namespace render
                     m_instanceBuffer = device->createBuffer(desc);
                 }
 
-                device->uploadBuffer(m_instanceBuffer, 0,
-                    packedInstances.size() * sizeof(InstanceDesc),
-                    packedInstances.data());
+                device->uploadBuffer(
+                    m_instanceBuffer, 0, packedInstances.size() * sizeof(InstanceDesc), packedInstances.data());
             }
 
             device->bindPipeline(m_meshPipeline);
@@ -503,8 +590,7 @@ namespace render
 
             if (m_instanceBuffer != rhi::NullHandle)
             {
-                device->bindUniformBuffer(0, 0, m_instanceBuffer, 0,
-                    packedInstances.size() * sizeof(InstanceDesc));
+                device->bindUniformBuffer(0, 0, m_instanceBuffer, 0, packedInstances.size() * sizeof(InstanceDesc));
             }
 
             uint32_t drawInstanceOffset = 0;
@@ -514,13 +600,17 @@ namespace render
                 uint32_t currentMesh = sorted[groupStart].meshDenseIdx;
                 uint32_t groupEnd = groupStart;
                 while (groupEnd < visibleCount && sorted[groupEnd].meshDenseIdx == currentMesh)
+                {
                     ++groupEnd;
+                }
 
                 uint32_t instanceCount = groupEnd - groupStart;
 
                 const MeshEntry* mesh = nullptr;
                 if (currentMesh < m_meshes.size())
+                {
                     mesh = &m_meshes.dense_data()[currentMesh];
+                }
 
                 if (mesh && !mesh->deleted)
                 {
@@ -537,5 +627,5 @@ namespace render
 
             m_instanceBufferDirty = false;
         }
-    } // namespace core
-} // namespace render
+    }  // namespace core
+}  // namespace render

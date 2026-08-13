@@ -19,12 +19,14 @@ namespace render
             {
                 return (value + alignment - 1) & ~(alignment - 1);
             }
-        }
+        }  // namespace
 
         TransientBufferPool::~TransientBufferPool()
         {
             if (m_initialized)
+            {
                 shutdown();
+            }
         }
 
         bool TransientBufferPool::initialize(rhi::IDevice* device, uint64_t bufferSize, uint32_t frameCount)
@@ -72,19 +74,23 @@ namespace render
 
                 m_frames[i].used = 0;
                 SY_DEBUGF("[TransientBufferPool] Frame %u buffer created and mapped (size=%llu)",
-                    i, static_cast<unsigned long long>(bufferSize));
+                    i,
+                    static_cast<unsigned long long>(bufferSize));
             }
 
             m_initialized = true;
             SY_DEBUGF("[TransientBufferPool] Initialized with %u frames, each %llu bytes",
-                frameCount, static_cast<unsigned long long>(bufferSize));
+                frameCount,
+                static_cast<unsigned long long>(bufferSize));
             return true;
         }
 
         void TransientBufferPool::shutdown()
         {
             if (!m_device)
+            {
                 return;
+            }
 
             // 释放帧缓冲区及其 fallback
             for (auto& frame : m_frames)
@@ -105,7 +111,9 @@ namespace render
                     if (fb.handle != rhi::NullHandle)
                     {
                         if (fb.mappedPtr)
+                        {
                             m_device->unmapBuffer(fb.handle);
+                        }
                         m_device->destroyBuffer(fb.handle);
                     }
                 }
@@ -117,7 +125,9 @@ namespace render
                 {
                     auto* g = gl();
                     if (g->DeleteSync)
+                    {
                         g->DeleteSync(static_cast<GLsync>(frame.fence));
+                    }
                     frame.fence = nullptr;
                 }
             }
@@ -137,7 +147,9 @@ namespace render
         void TransientBufferPool::beginFrame()
         {
             if (!m_initialized)
+            {
                 return;
+            }
 
             auto* g = gl();
             FrameBuffer& currentFrame = m_frames[m_currentFrame];
@@ -148,7 +160,9 @@ namespace render
                 if (currentFrame.fence)
                 {
                     if (g->DeleteSync)
+                    {
                         g->DeleteSync(static_cast<GLsync>(currentFrame.fence));
+                    }
                 }
                 currentFrame.fence = g->FenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
             }
@@ -165,14 +179,18 @@ namespace render
                 {
                     // GPU 仍在读取，阻塞等待（最坏情况下的同步点）
                     SY_WARNF("[TransientBufferPool] Frame %u still in use by GPU, blocking wait...", m_currentFrame);
-                    result = g->ClientWaitSync(static_cast<GLsync>(nextFrame.fence), GL_SYNC_FLUSH_COMMANDS_BIT, 1000000000);
+                    result =
+                        g->ClientWaitSync(static_cast<GLsync>(nextFrame.fence), GL_SYNC_FLUSH_COMMANDS_BIT, 1000000000);
                     if (result == GL_TIMEOUT_EXPIRED)
                     {
-                        SY_ERRORF("[TransientBufferPool] Frame %u GPU wait timeout (1s), potential data corruption", m_currentFrame);
+                        SY_ERRORF("[TransientBufferPool] Frame %u GPU wait timeout (1s), potential data corruption",
+                            m_currentFrame);
                     }
                 }
                 if (g->DeleteSync)
+                {
                     g->DeleteSync(static_cast<GLsync>(nextFrame.fence));
+                }
                 nextFrame.fence = nullptr;
             }
 
@@ -185,7 +203,9 @@ namespace render
                 if (fb.handle != rhi::NullHandle)
                 {
                     if (fb.mappedPtr)
+                    {
                         m_device->unmapBuffer(fb.handle);
+                    }
                     m_device->destroyBuffer(fb.handle);
                 }
             }
@@ -197,8 +217,10 @@ namespace render
                 ++m_consecutiveFallbackFrames;
                 if (m_consecutiveFallbackFrames >= 3)
                 {
-                    SY_WARNF("[TransientBufferPool] Fallback degenerated for %u consecutive frames (last frame: %u fallbacks). Consider increasing buffer size.",
-                        m_consecutiveFallbackFrames, m_currentFrameFallbackCount);
+                    SY_WARNF("[TransientBufferPool] Fallback degenerated for %u consecutive frames (last frame: %u "
+                             "fallbacks). Consider increasing buffer size.",
+                        m_consecutiveFallbackFrames,
+                        m_currentFrameFallbackCount);
                 }
             }
             else
@@ -214,7 +236,9 @@ namespace render
         {
             Allocation alloc;
             if (!m_initialized || size == 0)
+            {
                 return alloc;
+            }
 
             FrameBuffer& frame = m_frames[m_currentFrame];
             uint64_t alignedOffset = align_up(frame.used, alignment);
@@ -289,8 +313,10 @@ namespace render
         uint64_t TransientBufferPool::usedSize() const
         {
             if (!m_initialized || m_frames.empty())
+            {
                 return 0;
+            }
             return m_frames[m_currentFrame].used;
         }
-    } // namespace core
-} // namespace render
+    }  // namespace core
+}  // namespace render

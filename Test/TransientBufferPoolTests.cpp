@@ -15,18 +15,18 @@
 #include "../src/rhi/rhi_device.h"
 
 #ifdef _WIN32
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#include <windows.h>
+    #ifndef WIN32_LEAN_AND_MEAN
+        #define WIN32_LEAN_AND_MEAN
+    #endif
+    #include <windows.h>
 #endif
 
 #include <cstring>
 #include <vector>
 
- // ------------------------------------------------------------------
- // Minimal GL context helper for Windows (used to load OpenGL functions)
- // ------------------------------------------------------------------
+// ------------------------------------------------------------------
+// Minimal GL context helper for Windows (used to load OpenGL functions)
+// ------------------------------------------------------------------
 #ifdef _WIN32
 class MinimalGLContext
 {
@@ -43,10 +43,11 @@ public:
         wc.lpszClassName = "TransientBufferPoolTest";
         RegisterClassA(&wc);
 
-        m_hwnd = CreateWindowExA(0, wc.lpszClassName, "", 0,
-            0, 0, 1, 1, nullptr, nullptr, wc.hInstance, nullptr);
+        m_hwnd = CreateWindowExA(0, wc.lpszClassName, "", 0, 0, 0, 1, 1, nullptr, nullptr, wc.hInstance, nullptr);
         if (!m_hwnd)
+        {
             return false;
+        }
 
         m_hdc = GetDC(m_hwnd);
         PIXELFORMATDESCRIPTOR pfd = {};
@@ -59,14 +60,20 @@ public:
 
         int pf = ChoosePixelFormat(m_hdc, &pfd);
         if (!pf || !SetPixelFormat(m_hdc, pf, &pfd))
+        {
             return false;
+        }
 
         m_hglrc = wglCreateContext(m_hdc);
         if (!m_hglrc)
+        {
             return false;
+        }
 
         if (!wglMakeCurrent(m_hdc, m_hglrc))
+        {
             return false;
+        }
 
         return true;
     }
@@ -104,9 +111,9 @@ public:
     {
         return false;
     }
-    void destroy()
-    {
-    }
+
+    void destroy() {}
+
     void* nativeHandle() const
     {
         return nullptr;
@@ -167,7 +174,7 @@ protected:
 // 验证基本初始化和关闭不会崩溃
 TEST_F(TransientBufferPoolTest, InitializeShutdown_Succeeds)
 {
-    constexpr uint64_t kBufferSize = 1024 * 1024; // 1 MB
+    constexpr uint64_t kBufferSize = 1024 * 1024;  // 1 MB
     constexpr uint32_t kFrameCount = 3;
 
     EXPECT_TRUE(m_pool.initialize(m_device, kBufferSize, kFrameCount));
@@ -228,7 +235,7 @@ TEST_F(TransientBufferPoolTest, BeginFrame_RotatesAndResets)
     EXPECT_EQ(m_pool.usedSize(), 0u);
 
     auto alloc2 = m_pool.allocate(512);
-    EXPECT_EQ(alloc2.offset, 0u); // new frame, starts from 0
+    EXPECT_EQ(alloc2.offset, 0u);  // new frame, starts from 0
     EXPECT_EQ(m_pool.usedSize(), 512u);
 }
 
@@ -250,7 +257,7 @@ TEST_F(TransientBufferPoolTest, BeginFrame_MultipleCycles)
 // 验证溢出时触发 fallback
 TEST_F(TransientBufferPoolTest, Overflow_TriggersFallback)
 {
-    constexpr uint64_t kBufferSize = 4096; // small buffer to trigger overflow quickly
+    constexpr uint64_t kBufferSize = 4096;  // small buffer to trigger overflow quickly
     ASSERT_TRUE(m_pool.initialize(m_device, kBufferSize, 3));
 
     // Fill the primary buffer
@@ -273,7 +280,7 @@ TEST_F(TransientBufferPoolTest, Overflow_TriggersFallback)
 TEST_F(TransientBufferPoolTest, BeginFrame_CleansFallbacks)
 {
     constexpr uint64_t kBufferSize = 4096;
-    ASSERT_TRUE(m_pool.initialize(m_device, kBufferSize, 2)); // 2 frames to cycle faster
+    ASSERT_TRUE(m_pool.initialize(m_device, kBufferSize, 2));  // 2 frames to cycle faster
 
     // Frame 0: cause fallback
     auto alloc1 = m_pool.allocate(8192);
@@ -315,7 +322,7 @@ TEST(TransientBufferPoolLogicTest, Uninitialized_SafeNoop)
     auto alloc = pool.allocate(1024);
     EXPECT_EQ(alloc.buffer, render::rhi::NullHandle);
     EXPECT_EQ(pool.usedSize(), 0u);
-    pool.shutdown(); // safe to call multiple times
+    pool.shutdown();  // safe to call multiple times
 }
 
 // 验证无效初始化参数返回 false
@@ -368,7 +375,7 @@ TEST_F(TransientBufferPoolTest, MultipleFallbacks_SameFrame)
     ASSERT_NE(a2.cpuPtr, nullptr);
     ASSERT_NE(a3.cpuPtr, nullptr);
 
-    EXPECT_EQ(m_pool.fallbackCount(), 1u); // 仅 a3 触发 fallback
+    EXPECT_EQ(m_pool.fallbackCount(), 1u);  // 仅 a3 触发 fallback
 }
 
 // 验证超大对齐请求（如 4096 字节对齐）
@@ -384,7 +391,7 @@ TEST_F(TransientBufferPoolTest, Allocate_LargeAlignment)
     ASSERT_NE(a2.cpuPtr, nullptr);
 
     EXPECT_EQ(a1.offset, 0u);
-    EXPECT_EQ(a2.offset, 4096u); // 对齐到 4096
+    EXPECT_EQ(a2.offset, 4096u);  // 对齐到 4096
 }
 
 // 验证主池刚好够、刚好不够的情况

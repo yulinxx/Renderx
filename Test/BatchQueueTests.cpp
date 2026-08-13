@@ -83,9 +83,8 @@ TEST(BatchQueueTest, BatchMerge_AdjacentBatches)
     batches.push_back(batch2);
 
     // 合并逻辑：相同材质和图元类型的批次可以合并
-    bool canMerge = (batches[0].type == batches[1].type &&
-                     batches[0].materialIndex == batches[1].materialIndex &&
-                     batches[0].firstIndirect + batches[0].indirectCount == batches[1].firstIndirect);
+    bool canMerge = (batches[0].type == batches[1].type && batches[0].materialIndex == batches[1].materialIndex &&
+        batches[0].firstIndirect + batches[0].indirectCount == batches[1].firstIndirect);
 
     EXPECT_TRUE(canMerge);
 }
@@ -133,8 +132,8 @@ TEST(BatchQueueTest, DirtyRangeMerge_AdjacentRanges)
 {
     std::vector<render::core::BatchQueue::DirtyRange> ranges;
 
-    render::core::BatchQueue::DirtyRange range1{0, 10};
-    render::core::BatchQueue::DirtyRange range2{10, 5};
+    render::core::BatchQueue::DirtyRange range1{ 0, 10 };
+    render::core::BatchQueue::DirtyRange range2{ 10, 5 };
 
     ranges.push_back(range1);
     ranges.push_back(range2);
@@ -143,8 +142,9 @@ TEST(BatchQueueTest, DirtyRangeMerge_AdjacentRanges)
     bool canMerge = (ranges[0].offset + ranges[0].size == ranges[1].offset);
     EXPECT_TRUE(canMerge);
 
-    if (canMerge) {
-        render::core::BatchQueue::DirtyRange merged{ranges[0].offset, ranges[0].size + ranges[1].size};
+    if (canMerge)
+    {
+        render::core::BatchQueue::DirtyRange merged{ ranges[0].offset, ranges[0].size + ranges[1].size };
         EXPECT_EQ(merged.offset, 0u);
         EXPECT_EQ(merged.size, 15u);
     }
@@ -155,8 +155,8 @@ TEST(BatchQueueTest, DirtyRangeMerge_NonAdjacentRanges)
 {
     std::vector<render::core::BatchQueue::DirtyRange> ranges;
 
-    render::core::BatchQueue::DirtyRange range1{0, 10};
-    render::core::BatchQueue::DirtyRange range2{15, 5};
+    render::core::BatchQueue::DirtyRange range1{ 0, 10 };
+    render::core::BatchQueue::DirtyRange range2{ 15, 5 };
 
     ranges.push_back(range1);
     ranges.push_back(range2);
@@ -190,7 +190,8 @@ TEST(BatchQueueTest, IndirectCommand_MultipleCommands)
 {
     std::vector<render::DrawIndirectCmd> commands;
 
-    for (uint32_t i = 0; i < 5; ++i) {
+    for (uint32_t i = 0; i < 5; ++i)
+    {
         render::DrawIndirectCmd cmd{};
         cmd.vertexCount = 3;
         cmd.instanceCount = 1;
@@ -244,8 +245,9 @@ TEST(BatchQueueTest, CapacityManagement_Grow)
     uint32_t required = 150;
 
     // 模拟容量增长
-    if (required > capacity) {
-        capacity = required * 2; // 倍增策略
+    if (required > capacity)
+    {
+        capacity = required * 2;  // 倍增策略
     }
 
     EXPECT_GE(capacity, required);

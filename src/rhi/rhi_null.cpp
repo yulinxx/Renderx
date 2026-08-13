@@ -294,7 +294,7 @@ namespace render::rhi
     {
         return nullptr;
     }
-}   // namespace render::rhi
+}  // namespace render::rhi
 
 // ==================== Factory Function ====================
 
@@ -310,4 +310,4 @@ namespace render::rhi
     {
         return new NullDevice();
     }
-}   // namespace render::rhi
+}  // namespace render::rhi

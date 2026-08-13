@@ -17,7 +17,7 @@ namespace render
     {
         std::call_once(g_onceFlag, []() {
             g_runtime = std::unique_ptr<RenderRuntime>(new RenderRuntime());
-            });
+        });
         return *g_runtime;
     }
 
@@ -53,4 +53,4 @@ namespace render
         m_initialized = false;
         shaderDir.clear();
     }
-}
+}  // namespace render

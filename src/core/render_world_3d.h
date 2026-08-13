@@ -7,9 +7,9 @@
 #include <memory>
 #include <unordered_map>
 
- namespace render
- {
-     struct EntityEntry3D
+namespace render
+{
+    struct EntityEntry3D
     {
         EntityId entityId = 0;
         uint32_t vertexOffset = 0;
@@ -33,13 +33,15 @@
         RenderWorld3D(const RenderWorld3D&) = delete;
         RenderWorld3D& operator=(const RenderWorld3D&) = delete;
 
-        bool initialize(uint32_t initialVertexCapacity = 65536,
-                        uint32_t initialIndexCapacity = 65536);
+        bool initialize(uint32_t initialVertexCapacity = 65536, uint32_t initialIndexCapacity = 65536);
         void shutdown();
 
-        void addEntity(EntityId id, const VertexP3N3* vertices, uint32_t vertexCount,
-                       const uint32_t* indices, uint32_t indexCount,
-                       uint16_t materialIdx);
+        void addEntity(EntityId id,
+            const VertexP3N3* vertices,
+            uint32_t vertexCount,
+            const uint32_t* indices,
+            uint32_t indexCount,
+            uint16_t materialIdx);
         void removeEntity(EntityId id);
         void clear();
 
@@ -58,4 +60,4 @@
         Impl* m_impl;
     };
 
-} // namespace render
+}  // namespace render

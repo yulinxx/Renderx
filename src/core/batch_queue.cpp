@@ -12,7 +12,9 @@ namespace render
         bool BatchQueue::initialize(rhi::IDevice* device)
         {
             if (!device)
+            {
                 return false;
+            }
 
             m_device = device;
             m_indirectCmds.reserve(512);
@@ -64,15 +66,16 @@ namespace render
             m_device = nullptr;
         }
 
-        void BatchQueue::submit(const uint32_t* visibleIndices, uint32_t count,
-            const RenderWorld& world)
+        void BatchQueue::submit(const uint32_t* visibleIndices, uint32_t count, const RenderWorld& world)
         {
             // 在 submit 开始时收集顶点上传区间，避免 render 时 dirty 标志已被清除
             m_vertexUploadRanges.clear();
             RenderWorld::VertexUploadRange ranges[64];
             uint32_t rangeCount = world.getDirtyVertexRanges(ranges, 64);
             for (uint32_t i = 0; i < rangeCount; ++i)
+            {
                 m_vertexUploadRanges.push_back(ranges[i]);
+            }
 
             if (count == 0)
             {
@@ -154,12 +157,13 @@ namespace render
                 sorted[i].materialIndex = entries[idx].materialIndex;
             }
 
-            std::sort(sorted.begin(), sorted.end(),
-                [](const SortEntry& a, const SortEntry& b) {
-                    if (a.primitiveType != b.primitiveType)
-                        return a.primitiveType < b.primitiveType;
-                    return a.materialIndex < b.materialIndex;
-                });
+            std::sort(sorted.begin(), sorted.end(), [](const SortEntry& a, const SortEntry& b) {
+                if (a.primitiveType != b.primitiveType)
+                {
+                    return a.primitiveType < b.primitiveType;
+                }
+                return a.materialIndex < b.materialIndex;
+            });
 
             const auto* materials = world.getMaterials();
 
@@ -192,7 +196,7 @@ namespace render
                     b.materialIndex = currentMaterial;
                     m_batches.push_back(b);
                 }
-                };
+            };
 
             for (uint32_t i = 0; i < count; ++i)
             {
@@ -241,8 +245,12 @@ namespace render
                     if (ai < 16)
                     {
                         SY_ERRORF("BQ:MISMATCH cmd[%u] (first=%u,cnt=%u) vs entry (offset=%u,cnt=%u) type=%u",
-                            ai, cmdm.firstVertex, cmdm.vertexCount,
-                            e.vertexOffset, e.vertexCount, e.primitiveType);
+                            ai,
+                            cmdm.firstVertex,
+                            cmdm.vertexCount,
+                            e.vertexOffset,
+                            e.vertexCount,
+                            e.primitiveType);
                     }
                 }
             }
@@ -256,8 +264,8 @@ namespace render
             m_dirty = true;
         }
 
-        void BatchQueue::render(rhi::IDevice* device, CommandEncoder* encoder,
-            const float viewMatrix[9], const RenderWorld& world)
+        void BatchQueue::render(
+            rhi::IDevice* device, CommandEncoder* encoder, const float viewMatrix[9], const RenderWorld& world)
         {
             (void)viewMatrix;
 
@@ -279,13 +287,22 @@ namespace render
             if (totalVertices > m_vertexBufferCapacity)
             {
                 SY_WARNF("BatchQueue::render: vertex buffer too small (%u < %u), expanding",
-                    m_vertexBufferCapacity, totalVertices);
+                    m_vertexBufferCapacity,
+                    totalVertices);
                 if (m_vertexBuffer != rhi::NullHandle)
+                {
                     device->destroyBuffer(m_vertexBuffer);
+                }
 
                 uint32_t newCap = m_vertexBufferCapacity;
-                if (newCap == 0) newCap = 1024 * 1024;
-                while (newCap < totalVertices) newCap *= 2;
+                if (newCap == 0)
+                {
+                    newCap = 1024 * 1024;
+                }
+                while (newCap < totalVertices)
+                {
+                    newCap *= 2;
+                }
 
                 rhi::BufferDesc desc;
                 desc.size = newCap * sizeof(VertexP3C3);
@@ -302,9 +319,7 @@ namespace render
             if (m_needFullVertexUpload || totalVertices > m_vertexBufferCapacity)
             {
                 // 全量上传：首次渲染、扩容后或顶点池重建
-                device->uploadBuffer(m_vertexBuffer, 0,
-                    totalVertices * sizeof(VertexP3C3),
-                    world.getVertexData());
+                device->uploadBuffer(m_vertexBuffer, 0, totalVertices * sizeof(VertexP3C3), world.getVertexData());
                 m_needFullVertexUpload = false;
             }
             else if (!m_vertexUploadRanges.empty())
@@ -314,8 +329,7 @@ namespace render
                 {
                     uint64_t offset = static_cast<uint64_t>(range.vertexOffset) * sizeof(VertexP3C3);
                     uint64_t size = static_cast<uint64_t>(range.vertexCount) * sizeof(VertexP3C3);
-                    device->uploadBuffer(m_vertexBuffer, offset, size,
-                        world.getVertexData() + range.vertexOffset);
+                    device->uploadBuffer(m_vertexBuffer, offset, size, world.getVertexData() + range.vertexOffset);
                 }
             }
 
@@ -323,9 +337,8 @@ namespace render
             {
                 if (m_dirtyRanges.empty())
                 {
-                    device->uploadBuffer(m_indirectBuffer, 0,
-                        m_indirectCmds.size() * sizeof(DrawIndirectCmd),
-                        m_indirectCmds.data());
+                    device->uploadBuffer(
+                        m_indirectBuffer, 0, m_indirectCmds.size() * sizeof(DrawIndirectCmd), m_indirectCmds.data());
                 }
                 else
                 {
@@ -333,8 +346,7 @@ namespace render
                     {
                         uint64_t offset = range.offset * sizeof(DrawIndirectCmd);
                         uint64_t size = range.size * sizeof(DrawIndirectCmd);
-                        device->uploadBuffer(m_indirectBuffer, offset, size,
-                            m_indirectCmds.data() + range.offset);
+                        device->uploadBuffer(m_indirectBuffer, offset, size, m_indirectCmds.data() + range.offset);
                     }
                 }
                 m_dirty = false;
@@ -343,8 +355,7 @@ namespace render
             // Phase 3: 通过 CommandEncoder 提交绘制命令，不再直接调用 RHI
             for (const Batch& batch : m_batches)
             {
-                encoder->submitWorld(
-                    batch.type,
+                encoder->submitWorld(batch.type,
                     batch.materialIndex,
                     batch.firstIndirect * sizeof(DrawIndirectCmd),
                     batch.indirectCount,
@@ -356,14 +367,24 @@ namespace render
         void BatchQueue::ensureIndirectCapacity(uint32_t cmdCount)
         {
             if (cmdCount <= m_indirectBufferCapacity)
+            {
                 return;
+            }
 
             uint32_t newCap = m_indirectBufferCapacity;
-            if (newCap == 0) newCap = 512;
-            while (newCap < cmdCount) newCap *= 2;
+            if (newCap == 0)
+            {
+                newCap = 512;
+            }
+            while (newCap < cmdCount)
+            {
+                newCap *= 2;
+            }
 
             if (m_indirectBuffer != rhi::NullHandle)
+            {
                 m_device->destroyBuffer(m_indirectBuffer);
+            }
 
             rhi::BufferDesc desc;
             desc.size = newCap * sizeof(DrawIndirectCmd);
@@ -378,12 +399,13 @@ namespace render
         void BatchQueue::mergeDirtyRanges()
         {
             if (m_dirtyRanges.size() <= 1)
+            {
                 return;
+            }
 
-            std::sort(m_dirtyRanges.begin(), m_dirtyRanges.end(),
-                [](const DirtyRange& a, const DirtyRange& b) {
-                    return a.offset < b.offset;
-                });
+            std::sort(m_dirtyRanges.begin(), m_dirtyRanges.end(), [](const DirtyRange& a, const DirtyRange& b) {
+                return a.offset < b.offset;
+            });
 
             std::vector<DirtyRange> merged;
             merged.push_back(m_dirtyRanges[0]);
@@ -403,5 +425,5 @@ namespace render
 
             m_dirtyRanges.swap(merged);
         }
-    } // namespace core
-} // namespace render
+    }  // namespace core
+}  // namespace render

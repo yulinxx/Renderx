@@ -89,7 +89,7 @@ TEST(ArenaTest, Allocate_Fragmentation_ReturnsNullptr)
     // 分配小块直到空间不足
     void* p1 = arena.allocate(40);
     void* p2 = arena.allocate(40);
-    void* p3 = arena.allocate(40); // 应该失败
+    void* p3 = arena.allocate(40);  // 应该失败
 
     EXPECT_NE(p1, nullptr);
     EXPECT_NE(p2, nullptr);
@@ -143,12 +143,12 @@ TEST(ArenaTest, Reset_AllowsReallocation)
     void* p1 = arena.allocate(80);
     EXPECT_NE(p1, nullptr);
 
-    void* p2 = arena.allocate(80); // 应该失败
+    void* p2 = arena.allocate(80);  // 应该失败
     EXPECT_EQ(p2, nullptr);
 
     arena.reset();
 
-    void* p3 = arena.allocate(80); // 重置后应该成功
+    void* p3 = arena.allocate(80);  // 重置后应该成功
     EXPECT_NE(p3, nullptr);
 }
 
@@ -203,7 +203,8 @@ TEST(ArenaTest, MultipleResetCycles)
 {
     Arena arena(1024);
 
-    for (int i = 0; i < 10; ++i) {
+    for (int i = 0; i < 10; ++i)
+    {
         void* ptr = arena.allocate(100);
         EXPECT_NE(ptr, nullptr);
         arena.reset();

@@ -43,7 +43,9 @@ static void syncWorldToPersistentManager(RenderDevice* dev)
     {
         const auto& e = entries[i];
         if (e.vertexCount == 0)
+        {
             continue;
+        }
 
         render::core::PersistentEntity pe{};
         pe.id = static_cast<uint32_t>(e.entityId);
@@ -80,9 +82,7 @@ static void syncWorldToPersistentManager(RenderDevice* dev)
  * @param outMaxX 输出最大 X
  * @param outMaxY 输出最大 Y
  */
-static void computeViewBounds(const float viewMatrix[9],
-    float* outMinX, float* outMinY,
-    float* outMaxX, float* outMaxY)
+static void computeViewBounds(const float viewMatrix[9], float* outMinX, float* outMinY, float* outMaxX, float* outMaxY)
 {
     // Camera2D 生成的 viewMatrix 是 column-major (列主序) 3x3:
     // 内存布局 (按列存储):
@@ -120,12 +120,7 @@ static void computeViewBounds(const float viewMatrix[9],
 
     // NDC 4 个角点 (-1,-1), (1,-1), (1,1), (-1,1) -> world
     // 列主序逆矩阵乘法: [x,y,1] * inv = [ x*inv[0]+y*inv[3]+inv[6], x*inv[1]+y*inv[4]+inv[7], ... ]
-    static const float kCorners[4][2] = {
-        {-1.0f, -1.0f},
-        { 1.0f, -1.0f},
-        { 1.0f,  1.0f},
-        {-1.0f,  1.0f}
-    };
+    static const float kCorners[4][2] = { { -1.0f, -1.0f }, { 1.0f, -1.0f }, { 1.0f, 1.0f }, { -1.0f, 1.0f } };
 
     float minX = FLT_MAX, minY = FLT_MAX;
     float maxX = -FLT_MAX, maxY = -FLT_MAX;
@@ -159,12 +154,25 @@ static void computeViewBounds(const float viewMatrix[9],
     static int cullDebugCounter = 0;
     if (cullDebugCounter < 1)
     {
-        SY_DEBUGF("computeViewBounds: scaleX=%.6f scaleY=%.6f tx=%.2f ty=%.2f, bounds=[%.2f,%.2f]-[%.2f,%.2f], validCorners=%d",
-            scaleX, scaleY, tx, ty, minX, minY, maxX, maxY, validCorners);
+        SY_DEBUGF("computeViewBounds: scaleX=%.6f scaleY=%.6f tx=%.2f ty=%.2f, bounds=[%.2f,%.2f]-[%.2f,%.2f], "
+                  "validCorners=%d",
+            scaleX,
+            scaleY,
+            tx,
+            ty,
+            minX,
+            minY,
+            maxX,
+            maxY,
+            validCorners);
         for (int i = 0; i < validCorners && i < 4; ++i)
         {
             SY_DEBUGF("  corner %d (%.1f,%.1f) -> world (%.2f,%.2f)",
-                i, kCorners[i][0], kCorners[i][1], cornerWorldX[i], cornerWorldY[i]);
+                i,
+                kCorners[i][0],
+                kCorners[i][1],
+                cornerWorldX[i],
+                cornerWorldY[i]);
         }
         cullDebugCounter++;
     }
@@ -178,17 +186,17 @@ static void computeViewBounds(const float viewMatrix[9],
  *
  * @return 可见图元数量
  */
- /**
-  * @brief 从 GPU 可见性缓冲区回读可见图元索引（M8: 异步优化版）
-  *
-  * 使用 PersistentEntityManager 的异步读取接口，
-  * 避免直接 mapBuffer 阻塞 CPU。
-  *
-  * @param dev 渲染设备
-  * @param outIndices 输出可见图元索引数组
-  * @param maxOut 输出缓冲区容量
-  * @return 可见图元数量
-  */
+/**
+ * @brief 从 GPU 可见性缓冲区回读可见图元索引（M8: 异步优化版）
+ *
+ * 使用 PersistentEntityManager 的异步读取接口，
+ * 避免直接 mapBuffer 阻塞 CPU。
+ *
+ * @param dev 渲染设备
+ * @param outIndices 输出可见图元索引数组
+ * @param maxOut 输出缓冲区容量
+ * @return 可见图元数量
+ */
 static uint32_t readBackGpuVisibility(RenderDevice* dev, uint32_t* outIndices, uint32_t maxOut)
 {
     auto& pem = dev->persistentEntityManager;
@@ -213,27 +221,21 @@ static uint32_t readBackGpuVisibility(RenderDevice* dev, uint32_t* outIndices, u
 static void tessellatePolyline(const GeometryPolyline* polyline, std::vector<render::VertexP3C3>& outVertices)
 {
     if (!polyline || !polyline->points || polyline->pointCount < 2)
+    {
         return;
+    }
 
     float cr = polyline->color[0], cg = polyline->color[1], cb = polyline->color[2];
     outVertices.reserve(polyline->pointCount + (polyline->closed ? 1 : 0));
     for (uint32_t i = 0; i < polyline->pointCount; ++i)
     {
-        outVertices.push_back({
-            static_cast<float>(polyline->points[i].x),
-            static_cast<float>(polyline->points[i].y),
-            0.0f,
-            cr, cg, cb
-            });
+        outVertices.push_back(
+            { static_cast<float>(polyline->points[i].x), static_cast<float>(polyline->points[i].y), 0.0f, cr, cg, cb });
     }
     if (polyline->closed)
     {
-        outVertices.push_back({
-            static_cast<float>(polyline->points[0].x),
-            static_cast<float>(polyline->points[0].y),
-            0.0f,
-            cr, cg, cb
-            });
+        outVertices.push_back(
+            { static_cast<float>(polyline->points[0].x), static_cast<float>(polyline->points[0].y), 0.0f, cr, cg, cb });
     }
 }
 
@@ -248,7 +250,9 @@ static void tessellatePolyline(const GeometryPolyline* polyline, std::vector<ren
 static void tessellateCircle(const GeometryCircle* circle, std::vector<render::VertexP3C3>& outVertices)
 {
     if (!circle || circle->radius <= 0)
+    {
         return;
+    }
 
     float cr = circle->color[0], cg = circle->color[1], cb = circle->color[2];
     const int segments = render::tess::kCircleSegments;
@@ -260,12 +264,12 @@ static void tessellateCircle(const GeometryCircle* circle, std::vector<render::V
     for (int i = 0; i < segments; ++i)
     {
         double angle = (2.0 * render::tess::kPi * i) / segments;
-        outVertices.push_back({
-            static_cast<float>(centerX + radius * std::cos(angle)),
+        outVertices.push_back({ static_cast<float>(centerX + radius * std::cos(angle)),
             static_cast<float>(centerY + radius * std::sin(angle)),
             0.0f,
-            cr, cg, cb
-            });
+            cr,
+            cg,
+            cb });
     }
 }
 
@@ -280,13 +284,17 @@ static void tessellateCircle(const GeometryCircle* circle, std::vector<render::V
 static void tessellateArc(const GeometryArc* arc, std::vector<render::VertexP3C3>& outVertices)
 {
     if (!arc || arc->radius <= 0)
+    {
         return;
+    }
 
     float cr = arc->color[0], cg = arc->color[1], cb = arc->color[2];
     double start = arc->startAngle;
     double end = arc->endAngle;
     if (end < start)
+    {
         end += 2.0 * render::tess::kPi;
+    }
 
     double angleRange = end - start;
     int segments = render::tess::arcSegments(angleRange);
@@ -300,12 +308,12 @@ static void tessellateArc(const GeometryArc* arc, std::vector<render::VertexP3C3
     {
         double t = static_cast<double>(i) / segments;
         double angle = start + t * angleRange;
-        outVertices.push_back({
-            static_cast<float>(centerX + radius * std::cos(angle)),
+        outVertices.push_back({ static_cast<float>(centerX + radius * std::cos(angle)),
             static_cast<float>(centerY + radius * std::sin(angle)),
             0.0f,
-            cr, cg, cb
-            });
+            cr,
+            cg,
+            cb });
     }
 }
 
@@ -320,7 +328,9 @@ static void tessellateArc(const GeometryArc* arc, std::vector<render::VertexP3C3
 static void tessellateEllipse(const GeometryEllipse* ellipse, std::vector<render::VertexP3C3>& outVertices)
 {
     if (!ellipse || ellipse->radiusX <= 0 || ellipse->radiusY <= 0)
+    {
         return;
+    }
 
     // 统一离散化基准段数：64（完整椭圆）
     const int segments = render::tess::kCircleSegments;
@@ -335,7 +345,9 @@ static void tessellateEllipse(const GeometryEllipse* ellipse, std::vector<render
     }
     // 椭圆弧角度归一化：end < start 时跨 2π，与增量路径一致
     if (end < start)
+    {
         end += 2.0 * render::tess::kPi;
+    }
 
     double angleRange = end - start;
     // 统一离散化段数：完整椭圆 64，椭圆弧按角度比例缩放
@@ -357,12 +369,12 @@ static void tessellateEllipse(const GeometryEllipse* ellipse, std::vector<render
         double x = rx * std::cos(angle);
         double y = ry * std::sin(angle);
 
-        outVertices.push_back({
-            static_cast<float>(centerX + x * cosRot - y * sinRot),
+        outVertices.push_back({ static_cast<float>(centerX + x * cosRot - y * sinRot),
             static_cast<float>(centerY + x * sinRot + y * cosRot),
             0.0f,
-            cr, cg, cb
-            });
+            cr,
+            cg,
+            cb });
     }
 }
 
@@ -388,139 +400,176 @@ inline EntityId resolveEntityId(RenderDevice* dev, EntityId explicitId)
  */
 static void renderSubmitGeometryImpl(RenderDevice* dev, const GeometryPrimitive* primitive)
 {
-    if (!dev || !primitive) return;
+    if (!dev || !primitive)
+    {
+        return;
+    }
 
     switch (primitive->kind)
     {
-        // ---- 2D 文档几何路径 ----
-        case GeometryPrimitiveKind::Polyline:
+    // ---- 2D 文档几何路径 ----
+    case GeometryPrimitiveKind::Polyline:
+    {
+        if (!primitive->desc.polyline)
         {
-            if (!primitive->desc.polyline) return;
-            std::vector<render::VertexP3C3> vertices;
-            tessellatePolyline(primitive->desc.polyline, vertices);
-            if (!vertices.empty())
-            {
-                render::PrimitiveType type = render::PrimitiveType::LineStrip;
-                EntityId eid = resolveEntityId(dev, primitive->entityId);
-                dev->world2D.addEntity(eid, vertices.data(),
-                    static_cast<uint32_t>(vertices.size()), type, 0);
-            }
-            break;
+            return;
         }
-        case GeometryPrimitiveKind::Circle:
+        std::vector<render::VertexP3C3> vertices;
+        tessellatePolyline(primitive->desc.polyline, vertices);
+        if (!vertices.empty())
         {
-            if (!primitive->desc.circle) return;
-            std::vector<render::VertexP3C3> vertices;
-            tessellateCircle(primitive->desc.circle, vertices);
-            if (!vertices.empty())
-            {
-                EntityId eid = resolveEntityId(dev, primitive->entityId);
-                dev->world2D.addEntity(eid, vertices.data(),
-                    static_cast<uint32_t>(vertices.size()),
-                    render::PrimitiveType::LineLoop, 0);
-            }
-            break;
-        }
-        case GeometryPrimitiveKind::Arc:
-        {
-            if (!primitive->desc.arc) return;
-            std::vector<render::VertexP3C3> vertices;
-            tessellateArc(primitive->desc.arc, vertices);
-            if (!vertices.empty())
-            {
-                EntityId eid = resolveEntityId(dev, primitive->entityId);
-                dev->world2D.addEntity(eid, vertices.data(),
-                    static_cast<uint32_t>(vertices.size()),
-                    render::PrimitiveType::LineStrip, 0);
-            }
-            break;
-        }
-        case GeometryPrimitiveKind::Ellipse:
-        {
-            if (!primitive->desc.ellipse) return;
-            std::vector<render::VertexP3C3> vertices;
-            tessellateEllipse(primitive->desc.ellipse, vertices);
-            if (!vertices.empty())
-            {
-                render::PrimitiveType type = primitive->desc.ellipse->fullEllipse ?
-                    render::PrimitiveType::LineLoop : render::PrimitiveType::LineStrip;
-                EntityId eid = resolveEntityId(dev, primitive->entityId);
-                dev->world2D.addEntity(eid, vertices.data(),
-                    static_cast<uint32_t>(vertices.size()), type, 0);
-            }
-            break;
-        }
-        case GeometryPrimitiveKind::Image:
-        {
-            if (!primitive->desc.image) return;
-            const GeometryImage* image = primitive->desc.image;
-            std::vector<render::VertexP3C3> vertices;
-            vertices.reserve(5);
-            render::VertexP3C3 v;
-            v.cr = image->color[0]; v.cg = image->color[1]; v.cb = image->color[2];
-            v.px = static_cast<float>(image->topLeft.x); v.py = static_cast<float>(image->topLeft.y); v.pz = 0.0f;
-            vertices.push_back(v);
-            v.px = static_cast<float>(image->topRight.x); v.py = static_cast<float>(image->topRight.y);
-            vertices.push_back(v);
-            v.px = static_cast<float>(image->bottomRight.x); v.py = static_cast<float>(image->bottomRight.y);
-            vertices.push_back(v);
-            v.px = static_cast<float>(image->bottomLeft.x); v.py = static_cast<float>(image->bottomLeft.y);
-            vertices.push_back(v);
-            v.px = static_cast<float>(image->topLeft.x); v.py = static_cast<float>(image->topLeft.y);
-            vertices.push_back(v);
+            render::PrimitiveType type = render::PrimitiveType::LineStrip;
             EntityId eid = resolveEntityId(dev, primitive->entityId);
-            dev->world2D.addEntity(eid, vertices.data(),
-                static_cast<uint32_t>(vertices.size()),
-                render::PrimitiveType::LineStrip, 0);
-            break;
+            dev->world2D.addEntity(eid, vertices.data(), static_cast<uint32_t>(vertices.size()), type, 0);
         }
-        // ---- 文本缓存路径 ----
-        case GeometryPrimitiveKind::Text:
+        break;
+    }
+    case GeometryPrimitiveKind::Circle:
+    {
+        if (!primitive->desc.circle)
         {
-            if (!primitive->desc.text || !primitive->desc.text->text) return;
-            const GeometryText* text = primitive->desc.text;
-            RenderDevice::PendingText pt;
-            pt.textStorage = text->text;
-            pt.item.text = pt.textStorage.c_str();
-            pt.item.x = static_cast<float>(text->position.x);
-            pt.item.y = static_cast<float>(text->position.y);
-            pt.item.coordMode = 0;
-            pt.item.hAlign = text->hAlign;
-            pt.item.vAlign = text->vAlign;
-            pt.item.fontSize = (text->fontSize > 0.0f) ? static_cast<int32_t>(text->fontSize) : 12;
-            pt.item.color[0] = text->color[0];
-            pt.item.color[1] = text->color[1];
-            pt.item.color[2] = text->color[2];
-            pt.item.color[3] = text->color[3];
-            pt.item.rotationDeg = text->rotationDeg;
-            pt.item.zOrder = 0.0f;
-            dev->pendingTextItems.push_back(std::move(pt));
-            break;
+            return;
         }
-        // ---- 3D mesh 路径 ----
-        case GeometryPrimitiveKind::TriangleSoup:
+        std::vector<render::VertexP3C3> vertices;
+        tessellateCircle(primitive->desc.circle, vertices);
+        if (!vertices.empty())
         {
-            if (!primitive->desc.triangleSoup) return;
-            const GeometryTriangleSoupDesc* desc = primitive->desc.triangleSoup;
-            if (!desc->vertices || !desc->normals || desc->vertexCount < 3) return;
-
-            // 生成顺序索引
-            std::vector<uint32_t> indices(desc->vertexCount);
-            for (uint32_t i = 0; i < desc->vertexCount; ++i) indices[i] = i;
-
-            MeshId meshId = dev->meshManager.registerMesh(desc->vertices, desc->normals,
-                indices.data(), desc->vertexCount, desc->vertexCount);
-            if (meshId == INVALID_MESH_ID) return;
-
-            // 默认单位矩阵作为模型变换
-            float identity[16] = { 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1 };
-            dev->meshManager.addInstance(meshId, identity, 0, const_cast<float*>(desc->color));
-            break;
+            EntityId eid = resolveEntityId(dev, primitive->entityId);
+            dev->world2D.addEntity(
+                eid, vertices.data(), static_cast<uint32_t>(vertices.size()), render::PrimitiveType::LineLoop, 0);
         }
+        break;
+    }
+    case GeometryPrimitiveKind::Arc:
+    {
+        if (!primitive->desc.arc)
+        {
+            return;
+        }
+        std::vector<render::VertexP3C3> vertices;
+        tessellateArc(primitive->desc.arc, vertices);
+        if (!vertices.empty())
+        {
+            EntityId eid = resolveEntityId(dev, primitive->entityId);
+            dev->world2D.addEntity(
+                eid, vertices.data(), static_cast<uint32_t>(vertices.size()), render::PrimitiveType::LineStrip, 0);
+        }
+        break;
+    }
+    case GeometryPrimitiveKind::Ellipse:
+    {
+        if (!primitive->desc.ellipse)
+        {
+            return;
+        }
+        std::vector<render::VertexP3C3> vertices;
+        tessellateEllipse(primitive->desc.ellipse, vertices);
+        if (!vertices.empty())
+        {
+            render::PrimitiveType type = primitive->desc.ellipse->fullEllipse ? render::PrimitiveType::LineLoop
+                                                                              : render::PrimitiveType::LineStrip;
+            EntityId eid = resolveEntityId(dev, primitive->entityId);
+            dev->world2D.addEntity(eid, vertices.data(), static_cast<uint32_t>(vertices.size()), type, 0);
+        }
+        break;
+    }
+    case GeometryPrimitiveKind::Image:
+    {
+        if (!primitive->desc.image)
+        {
+            return;
+        }
+        const GeometryImage* image = primitive->desc.image;
+        std::vector<render::VertexP3C3> vertices;
+        vertices.reserve(5);
+        render::VertexP3C3 v;
+        v.cr = image->color[0];
+        v.cg = image->color[1];
+        v.cb = image->color[2];
+        v.px = static_cast<float>(image->topLeft.x);
+        v.py = static_cast<float>(image->topLeft.y);
+        v.pz = 0.0f;
+        vertices.push_back(v);
+        v.px = static_cast<float>(image->topRight.x);
+        v.py = static_cast<float>(image->topRight.y);
+        vertices.push_back(v);
+        v.px = static_cast<float>(image->bottomRight.x);
+        v.py = static_cast<float>(image->bottomRight.y);
+        vertices.push_back(v);
+        v.px = static_cast<float>(image->bottomLeft.x);
+        v.py = static_cast<float>(image->bottomLeft.y);
+        vertices.push_back(v);
+        v.px = static_cast<float>(image->topLeft.x);
+        v.py = static_cast<float>(image->topLeft.y);
+        vertices.push_back(v);
+        EntityId eid = resolveEntityId(dev, primitive->entityId);
+        dev->world2D.addEntity(
+            eid, vertices.data(), static_cast<uint32_t>(vertices.size()), render::PrimitiveType::LineStrip, 0);
+        break;
+    }
+    // ---- 文本缓存路径 ----
+    case GeometryPrimitiveKind::Text:
+    {
+        if (!primitive->desc.text || !primitive->desc.text->text)
+        {
+            return;
+        }
+        const GeometryText* text = primitive->desc.text;
+        RenderDevice::PendingText pt;
+        pt.textStorage = text->text;
+        pt.item.text = pt.textStorage.c_str();
+        pt.item.x = static_cast<float>(text->position.x);
+        pt.item.y = static_cast<float>(text->position.y);
+        pt.item.coordMode = 0;
+        pt.item.hAlign = text->hAlign;
+        pt.item.vAlign = text->vAlign;
+        pt.item.fontSize = (text->fontSize > 0.0f) ? static_cast<int32_t>(text->fontSize) : 12;
+        pt.item.color[0] = text->color[0];
+        pt.item.color[1] = text->color[1];
+        pt.item.color[2] = text->color[2];
+        pt.item.color[3] = text->color[3];
+        pt.item.rotationDeg = text->rotationDeg;
+        pt.item.zOrder = 0.0f;
+        dev->pendingTextItems.push_back(std::move(pt));
+        break;
+    }
+    // ---- 3D mesh 路径 ----
+    case GeometryPrimitiveKind::TriangleSoup:
+    {
+        if (!primitive->desc.triangleSoup)
+        {
+            return;
+        }
+        const GeometryTriangleSoupDesc* desc = primitive->desc.triangleSoup;
+        if (!desc->vertices || !desc->normals || desc->vertexCount < 3)
+        {
+            return;
+        }
+
+        // 生成顺序索引
+        std::vector<uint32_t> indices(desc->vertexCount);
+        for (uint32_t i = 0; i < desc->vertexCount; ++i)
+        {
+            indices[i] = i;
+        }
+
+        MeshId meshId = dev->meshManager.registerMesh(
+            desc->vertices, desc->normals, indices.data(), desc->vertexCount, desc->vertexCount);
+        if (meshId == INVALID_MESH_ID)
+        {
+            return;
+        }
+
+        // 默认单位矩阵作为模型变换
+        float identity[16] = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
+        dev->meshManager.addInstance(meshId, identity, 0, const_cast<float*>(desc->color));
+        break;
+    }
     }
 }
 
-extern "C" {
+extern "C"
+{
     // ==================== 渲染帧主循环 ====================
 
     /**
@@ -560,7 +609,9 @@ extern "C" {
             // ---- CPU 侧数据准备（不涉及 RHI，放在 Pass 外）----
             uint32_t maxVisible = static_cast<uint32_t>(dev->world2D.getEntityCount());
             if (dev->visibleIndices.size() < maxVisible)
+            {
                 dev->visibleIndices.resize(maxVisible);
+            }
 
             // ---- GPU 剔除（PersistentEntityManager）----
             // 1. 同步 RenderWorld 图元到 PersistentEntityManager
@@ -586,8 +637,8 @@ extern "C" {
             //    可见 PEM 索引到 m_visiblePemIndices。这是唯一的回读入口，
             //    不再额外调用 generateIndirectCommands（那会再 map 一次 countBuffer，
             //    造成每帧两次阻塞 map，且其 indirect buffer 未被实际绘制路径使用）。
-            uint32_t gpuVisibleCount = readBackGpuVisibility(dev,
-                dev->visibleIndices.data(), static_cast<uint32_t>(dev->visibleIndices.size()));
+            uint32_t gpuVisibleCount = readBackGpuVisibility(
+                dev, dev->visibleIndices.data(), static_cast<uint32_t>(dev->visibleIndices.size()));
 
             // 5. GPU 剔除成功则使用其结果，否则回退到 CPU 四叉树
             if (gpuVisibleCount > 0)
@@ -598,8 +649,12 @@ extern "C" {
             {
                 // GPU 剔除返回 0：可能是视图内确实无图元（用户缩小/平移出界），
                 // 也可能是剔除链路异常。用 CPU 四叉树交叉验证，避免误判。
-                dev->world2D.queryVisible(dev->view2D.viewMatrix, dev->view2D.viewWidth,
-                    dev->view2D.viewHeight, dev->visibleIndices.data(), &visibleCount, maxVisible);
+                dev->world2D.queryVisible(dev->view2D.viewMatrix,
+                    dev->view2D.viewWidth,
+                    dev->view2D.viewHeight,
+                    dev->visibleIndices.data(),
+                    &visibleCount,
+                    maxVisible);
 
                 if (maxVisible > 0 && visibleCount == 0)
                 {
@@ -614,7 +669,9 @@ extern "C" {
                         SY_WARNF("renderFrame: degenerate viewMatrix (sx=%.4f sy=%.4f), forcing all entities", sx, sy);
                         visibleCount = maxVisible;
                         for (uint32_t i = 0; i < maxVisible; ++i)
+                        {
                             dev->visibleIndices[i] = i;
+                        }
                     }
                     else
                     {
@@ -638,14 +695,13 @@ extern "C" {
                 pass.name = "FrameSetup";
                 pass.enabled = true;
                 pass.onSetup = [dev](rhi::IDevice* d) {
-                    d->setClearColor(dev->clearColor[0], dev->clearColor[1],
-                        dev->clearColor[2], dev->clearColor[3]);
+                    d->setClearColor(dev->clearColor[0], dev->clearColor[1], dev->clearColor[2], dev->clearColor[3]);
                     d->enableDepthTest(false);
                     d->enableBlend(true);
                     dev->commandEncoder.reset();
-                    };
-                pass.outputs.push_back({ core::PassResourceType::ColorTarget,
-                    core::PassResourceAccess::Write, "Backbuffer", 0 });
+                };
+                pass.outputs.push_back(
+                    { core::PassResourceType::ColorTarget, core::PassResourceAccess::Write, "Backbuffer", 0 });
                 dev->renderGraph.addPass(pass);
             }
 
@@ -656,14 +712,15 @@ extern "C" {
                 pass.name = "SceneEnv";
                 pass.enabled = true;
                 pass.onExecute = [dev](rhi::IDevice* d) {
-                    dev->sceneEnv.render(d, dev->view2D.viewMatrix,
+                    dev->sceneEnv.render(d,
+                        dev->view2D.viewMatrix,
                         static_cast<uint32_t>(dev->view2D.viewWidth),
                         static_cast<uint32_t>(dev->view2D.viewHeight));
-                    };
-                pass.inputs.push_back({ core::PassResourceType::ColorTarget,
-                    core::PassResourceAccess::Read, "Backbuffer", 0 });
-                pass.outputs.push_back({ core::PassResourceType::ColorTarget,
-                    core::PassResourceAccess::Write, "Backbuffer", 0 });
+                };
+                pass.inputs.push_back(
+                    { core::PassResourceType::ColorTarget, core::PassResourceAccess::Read, "Backbuffer", 0 });
+                pass.outputs.push_back(
+                    { core::PassResourceType::ColorTarget, core::PassResourceAccess::Write, "Backbuffer", 0 });
                 dev->renderGraph.addPass(pass);
             }
 
@@ -674,15 +731,18 @@ extern "C" {
                 pass.name = "Bitmap";
                 pass.enabled = true;
                 pass.onExecute = [dev](rhi::IDevice* d) {
-                    if (!dev->bitmapRenderer.hasBitmap()) return;
+                    if (!dev->bitmapRenderer.hasBitmap())
+                    {
+                        return;
+                    }
                     dev->bitmapRenderer.render(d, dev->view2D.viewMatrix, dev->cameraCenter);
-                    };
-                pass.inputs.push_back({ core::PassResourceType::Texture,
-                    core::PassResourceAccess::Read, "Bitmap_Tex", 0 });
-                pass.inputs.push_back({ core::PassResourceType::VertexBuffer,
-                    core::PassResourceAccess::Read, "Bitmap_VB", 0 });
-                pass.outputs.push_back({ core::PassResourceType::ColorTarget,
-                    core::PassResourceAccess::Write, "Backbuffer", 0 });
+                };
+                pass.inputs.push_back(
+                    { core::PassResourceType::Texture, core::PassResourceAccess::Read, "Bitmap_Tex", 0 });
+                pass.inputs.push_back(
+                    { core::PassResourceType::VertexBuffer, core::PassResourceAccess::Read, "Bitmap_VB", 0 });
+                pass.outputs.push_back(
+                    { core::PassResourceType::ColorTarget, core::PassResourceAccess::Write, "Backbuffer", 0 });
                 dev->renderGraph.addPass(pass);
             }
 
@@ -693,13 +753,12 @@ extern "C" {
                 pass.name = "World2DCollect";
                 pass.enabled = true;
                 pass.onExecute = [dev](rhi::IDevice* d) {
-                    dev->batchQueue.render(d, &dev->commandEncoder,
-                        dev->view2D.viewMatrix, dev->world2D);
-                    };
-                pass.inputs.push_back({ core::PassResourceType::VertexBuffer,
-                    core::PassResourceAccess::Read, "World2D_VB", 0 });
-                pass.inputs.push_back({ core::PassResourceType::IndirectBuffer,
-                    core::PassResourceAccess::Read, "BatchQueue_IB", 0 });
+                    dev->batchQueue.render(d, &dev->commandEncoder, dev->view2D.viewMatrix, dev->world2D);
+                };
+                pass.inputs.push_back(
+                    { core::PassResourceType::VertexBuffer, core::PassResourceAccess::Read, "World2D_VB", 0 });
+                pass.inputs.push_back(
+                    { core::PassResourceType::IndirectBuffer, core::PassResourceAccess::Read, "BatchQueue_IB", 0 });
                 dev->renderGraph.addPass(pass);
             }
 
@@ -711,9 +770,9 @@ extern "C" {
                 pass.enabled = true;
                 pass.onExecute = [dev](rhi::IDevice* d) {
                     dev->overlayQueue.render(d, &dev->commandEncoder, dev->view2D.viewMatrix);
-                    };
-                pass.inputs.push_back({ core::PassResourceType::VertexBuffer,
-                    core::PassResourceAccess::Read, "OverlayQueue_VB", 0 });
+                };
+                pass.inputs.push_back(
+                    { core::PassResourceType::VertexBuffer, core::PassResourceAccess::Read, "OverlayQueue_VB", 0 });
                 dev->renderGraph.addPass(pass);
             }
 
@@ -724,27 +783,25 @@ extern "C" {
                 pass.name = "CommandExecute";
                 pass.enabled = true;
                 pass.onExecute = [dev](rhi::IDevice* d) {
-                    const float camCenterF[2] = {
-                        static_cast<float>(dev->cameraCenter[0]),
-                        static_cast<float>(dev->cameraCenter[1])
-                    };
+                    const float camCenterF[2] = { static_cast<float>(dev->cameraCenter[0]),
+                        static_cast<float>(dev->cameraCenter[1]) };
                     dev->commandEncoder.execute(d,
                         dev->batchQueue.getVertexBuffer(),
                         dev->overlayQueue.getVertexBuffer(),
                         dev->batchQueue.getIndirectBuffer(),
                         dev->view2D.viewMatrix,
                         camCenterF);
-                    };
-                pass.inputs.push_back({ core::PassResourceType::VertexBuffer,
-                    core::PassResourceAccess::Read, "BatchQueue_VB", 0 });
-                pass.inputs.push_back({ core::PassResourceType::VertexBuffer,
-                    core::PassResourceAccess::Read, "OverlayQueue_VB", 0 });
-                pass.inputs.push_back({ core::PassResourceType::IndirectBuffer,
-                    core::PassResourceAccess::Read, "BatchQueue_IB", 0 });
-                pass.inputs.push_back({ core::PassResourceType::UniformBuffer,
-                    core::PassResourceAccess::Read, "ViewMatrix_UB", 0 });
-                pass.outputs.push_back({ core::PassResourceType::ColorTarget,
-                    core::PassResourceAccess::Write, "Backbuffer", 0 });
+                };
+                pass.inputs.push_back(
+                    { core::PassResourceType::VertexBuffer, core::PassResourceAccess::Read, "BatchQueue_VB", 0 });
+                pass.inputs.push_back(
+                    { core::PassResourceType::VertexBuffer, core::PassResourceAccess::Read, "OverlayQueue_VB", 0 });
+                pass.inputs.push_back(
+                    { core::PassResourceType::IndirectBuffer, core::PassResourceAccess::Read, "BatchQueue_IB", 0 });
+                pass.inputs.push_back(
+                    { core::PassResourceType::UniformBuffer, core::PassResourceAccess::Read, "ViewMatrix_UB", 0 });
+                pass.outputs.push_back(
+                    { core::PassResourceType::ColorTarget, core::PassResourceAccess::Write, "Backbuffer", 0 });
                 dev->renderGraph.addPass(pass);
             }
 
@@ -756,24 +813,28 @@ extern "C" {
                 pass.name = "Text";
                 pass.enabled = true;
                 pass.onExecute = [dev](rhi::IDevice* d) {
-                    if (dev->pendingTextItems.empty()) return;
+                    if (dev->pendingTextItems.empty())
+                    {
+                        return;
+                    }
                     std::vector<TextItem> items;
                     items.reserve(dev->pendingTextItems.size());
                     for (auto& pt : dev->pendingTextItems)
+                    {
                         items.push_back(pt.item);
+                    }
                     TextItemList list;
                     list.items = items.data();
                     list.count = static_cast<uint32_t>(items.size());
-                    dev->textAtlas.renderText(&list, dev->view2D.viewMatrix,
-                        dev->viewportWidth, dev->viewportHeight, d);
+                    dev->textAtlas.renderText(&list, dev->view2D.viewMatrix, dev->viewportWidth, dev->viewportHeight, d);
                     dev->pendingTextItems.clear();
-                    };
-                pass.inputs.push_back({ core::PassResourceType::Texture,
-                    core::PassResourceAccess::Read, "TextAtlas_Tex", 0 });
-                pass.inputs.push_back({ core::PassResourceType::VertexBuffer,
-                    core::PassResourceAccess::Read, "Text_VB", 0 });
-                pass.outputs.push_back({ core::PassResourceType::ColorTarget,
-                    core::PassResourceAccess::Write, "Backbuffer", 0 });
+                };
+                pass.inputs.push_back(
+                    { core::PassResourceType::Texture, core::PassResourceAccess::Read, "TextAtlas_Tex", 0 });
+                pass.inputs.push_back(
+                    { core::PassResourceType::VertexBuffer, core::PassResourceAccess::Read, "Text_VB", 0 });
+                pass.outputs.push_back(
+                    { core::PassResourceType::ColorTarget, core::PassResourceAccess::Write, "Backbuffer", 0 });
                 dev->renderGraph.addPass(pass);
             }
         }
@@ -790,11 +851,11 @@ extern "C" {
                     d->setClearColor(0.12f, 0.14f, 0.20f, 1.0f);
                     d->enableDepthTest(true);
                     d->enableBlend(true);
-                    };
-                pass.outputs.push_back({ core::PassResourceType::ColorTarget,
-                    core::PassResourceAccess::Write, "Backbuffer", 0 });
-                pass.outputs.push_back({ core::PassResourceType::DepthTarget,
-                    core::PassResourceAccess::Write, "DepthBuffer", 0 });
+                };
+                pass.outputs.push_back(
+                    { core::PassResourceType::ColorTarget, core::PassResourceAccess::Write, "Backbuffer", 0 });
+                pass.outputs.push_back(
+                    { core::PassResourceType::DepthTarget, core::PassResourceAccess::Write, "DepthBuffer", 0 });
                 dev->renderGraph.addPass(pass);
             }
 
@@ -805,20 +866,23 @@ extern "C" {
                 pass.name = "Mesh3D";
                 pass.enabled = true;
                 pass.onExecute = [dev](rhi::IDevice* d) {
-                    if (dev->meshManager.getInstanceCount() == 0) return;
+                    if (dev->meshManager.getInstanceCount() == 0)
+                    {
+                        return;
+                    }
                     dev->meshManager.update();
                     dev->meshManager.render(d, dev->view3D.viewMatrix, dev->view3D.projMatrix);
-                    };
-                pass.inputs.push_back({ core::PassResourceType::VertexBuffer,
-                    core::PassResourceAccess::Read, "MeshManager_VB", 0 });
-                pass.inputs.push_back({ core::PassResourceType::IndexBuffer,
-                    core::PassResourceAccess::Read, "MeshManager_IB", 0 });
-                pass.inputs.push_back({ core::PassResourceType::UniformBuffer,
-                    core::PassResourceAccess::Read, "ViewProj_UB", 0 });
-                pass.outputs.push_back({ core::PassResourceType::ColorTarget,
-                    core::PassResourceAccess::Write, "Backbuffer", 0 });
-                pass.outputs.push_back({ core::PassResourceType::DepthTarget,
-                    core::PassResourceAccess::Write, "DepthBuffer", 0 });
+                };
+                pass.inputs.push_back(
+                    { core::PassResourceType::VertexBuffer, core::PassResourceAccess::Read, "MeshManager_VB", 0 });
+                pass.inputs.push_back(
+                    { core::PassResourceType::IndexBuffer, core::PassResourceAccess::Read, "MeshManager_IB", 0 });
+                pass.inputs.push_back(
+                    { core::PassResourceType::UniformBuffer, core::PassResourceAccess::Read, "ViewProj_UB", 0 });
+                pass.outputs.push_back(
+                    { core::PassResourceType::ColorTarget, core::PassResourceAccess::Write, "Backbuffer", 0 });
+                pass.outputs.push_back(
+                    { core::PassResourceType::DepthTarget, core::PassResourceAccess::Write, "DepthBuffer", 0 });
                 dev->renderGraph.addPass(pass);
             }
         }
@@ -868,16 +932,16 @@ extern "C" {
 
     // ==================== 场景模式 ====================
 
-/**
- * @brief 开始场景模式
- *
- * 清除所有旧图元，重置图元ID计数器，准备接收新的场景数据。
- *
- * @param dev 渲染设备指针
- *
- * @note renderBeginScene() 是"场景重建入口"，不是每帧都应该调用。
- *       高频交互应使用 renderSubmitGeometry() / renderAddEntity() 等增量接口。
- */
+    /**
+     * @brief 开始场景模式
+     *
+     * 清除所有旧图元，重置图元ID计数器，准备接收新的场景数据。
+     *
+     * @param dev 渲染设备指针
+     *
+     * @note renderBeginScene() 是"场景重建入口"，不是每帧都应该调用。
+     *       高频交互应使用 renderSubmitGeometry() / renderAddEntity() 等增量接口。
+     */
     RENDER_API void renderBeginScene(RenderDevice* dev)
     {
         if (!dev)
@@ -898,18 +962,21 @@ extern "C" {
      */
     RENDER_API void renderEndScene(RenderDevice* dev)
     {
-        if (!dev) return;
+        if (!dev)
+        {
+            return;
+        }
         // 末态实体数日志已移除：仅在异常路径用 SY_ERROR 输出
     }
 
     // ==================== 统一几何提交 API ====================
 
-/**
- * @brief 提交单个几何图元（统一 API，公开入口）
- *
- * @note renderSubmitGeometry() 是"场景编译提交入口"，不是所有 overlay 的入口。
- *       overlay / text / mesh / env 应使用各自的独立提交接口。
- */
+    /**
+     * @brief 提交单个几何图元（统一 API，公开入口）
+     *
+     * @note renderSubmitGeometry() 是"场景编译提交入口"，不是所有 overlay 的入口。
+     *       overlay / text / mesh / env 应使用各自的独立提交接口。
+     */
     RENDER_API void renderSubmitGeometry(RenderDevice* dev, const GeometryPrimitive* primitive)
     {
         renderSubmitGeometryImpl(dev, primitive);
@@ -920,17 +987,25 @@ extern "C" {
      */
     RENDER_API void renderSubmitGeometries(RenderDevice* dev, const GeometryPrimitive* primitives, uint32_t count)
     {
-        if (!dev || !primitives || count == 0) return;
+        if (!dev || !primitives || count == 0)
+        {
+            return;
+        }
         for (uint32_t i = 0; i < count; ++i)
+        {
             renderSubmitGeometryImpl(dev, &primitives[i]);
+        }
     }
 
     // ==================== Camera Center ====================
 
     RENDER_API void renderSetCameraCenter(RenderDevice* dev, double cx, double cy)
     {
-        if (!dev) return;
+        if (!dev)
+        {
+            return;
+        }
         dev->cameraCenter[0] = cx;
         dev->cameraCenter[1] = cy;
     }
-} // extern "C"
+}  // extern "C"

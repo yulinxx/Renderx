@@ -116,5 +116,5 @@ namespace render
             HIGHLIGHT_3D_FRAG = highlight3dFragSource.empty() ? "" : highlight3dFragSource.c_str();
             CULLING_COMP = cullingCompSource.empty() ? "" : cullingCompSource.c_str();
         }
-    }
-}
+    }  // namespace shader
+}  // namespace render

@@ -40,8 +40,14 @@ namespace render
         inline int arcSegments(double angleRange)
         {
             int segs = static_cast<int>(angleRange * 20.0);
-            if (segs < kArcMinSegments) segs = kArcMinSegments;
-            if (segs > kArcMaxSegments) segs = kArcMaxSegments;
+            if (segs < kArcMinSegments)
+            {
+                segs = kArcMinSegments;
+            }
+            if (segs > kArcMaxSegments)
+            {
+                segs = kArcMaxSegments;
+            }
             return segs;
         }
 
@@ -57,9 +63,15 @@ namespace render
         inline int ellipseSegments(double angleRange)
         {
             int segs = static_cast<int>(angleRange / (2.0 * kPi) * kCircleSegments);
-            if (segs < kArcMinSegments) segs = kArcMinSegments;
-            if (segs > kCircleSegments) segs = kCircleSegments;
+            if (segs < kArcMinSegments)
+            {
+                segs = kArcMinSegments;
+            }
+            if (segs > kCircleSegments)
+            {
+                segs = kCircleSegments;
+            }
             return segs;
         }
-    } // namespace tess
-} // namespace render
+    }  // namespace tess
+}  // namespace render

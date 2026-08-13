@@ -19,11 +19,12 @@ namespace render
         delete m_impl;
     }
 
-    bool RenderWorld3D::initialize(uint32_t initialVertexCapacity,
-        uint32_t initialIndexCapacity)
+    bool RenderWorld3D::initialize(uint32_t initialVertexCapacity, uint32_t initialIndexCapacity)
     {
         if (!m_impl)
+        {
             m_impl = new Impl();
+        }
 
         m_impl->vertexPool.reserve(initialVertexCapacity);
         m_impl->indexPool.reserve(initialIndexCapacity);
@@ -41,11 +42,17 @@ namespace render
         }
     }
 
-    void RenderWorld3D::addEntity(EntityId id, const VertexP3N3* vertices,
-        uint32_t vertexCount, const uint32_t* indices,
-        uint32_t indexCount, uint16_t materialIdx)
+    void RenderWorld3D::addEntity(EntityId id,
+        const VertexP3N3* vertices,
+        uint32_t vertexCount,
+        const uint32_t* indices,
+        uint32_t indexCount,
+        uint16_t materialIdx)
     {
-        if (!m_impl || !vertices || vertexCount == 0) return;
+        if (!m_impl || !vertices || vertexCount == 0)
+        {
+            return;
+        }
 
         EntityEntry3D entry;
         entry.entityId = id;
@@ -78,7 +85,9 @@ namespace render
         }
 
         for (uint32_t i = 0; i < indexCount; ++i)
+        {
             m_impl->indexPool.push_back(indices[i]);
+        }
 
         uint32_t denseIdx = static_cast<uint32_t>(m_impl->entities.size());
         m_impl->entities.push_back(entry);
@@ -87,19 +96,30 @@ namespace render
 
     void RenderWorld3D::removeEntity(EntityId id)
     {
-        if (!m_impl) return;
+        if (!m_impl)
+        {
+            return;
+        }
         auto it = m_impl->entityIdToDense.find(id);
-        if (it == m_impl->entityIdToDense.end()) return;
+        if (it == m_impl->entityIdToDense.end())
+        {
+            return;
+        }
 
         uint32_t denseIdx = it->second;
         if (denseIdx < m_impl->entities.size())
+        {
             m_impl->entities[denseIdx].entityId = 0;
+        }
         m_impl->entityIdToDense.erase(it);
     }
 
     void RenderWorld3D::clear()
     {
-        if (!m_impl) return;
+        if (!m_impl)
+        {
+            return;
+        }
         m_impl->entities.clear();
         m_impl->vertexPool.clear();
         m_impl->indexPool.clear();
@@ -138,16 +158,29 @@ namespace render
 
     bool RenderWorld3D::hasDirtyEntities() const
     {
-        if (!m_impl) return false;
+        if (!m_impl)
+        {
+            return false;
+        }
         for (const auto& e : m_impl->entities)
-            if (e.dirty) return true;
+        {
+            if (e.dirty)
+            {
+                return true;
+            }
+        }
         return false;
     }
 
     void RenderWorld3D::clearDirtyFlags()
     {
-        if (!m_impl) return;
+        if (!m_impl)
+        {
+            return;
+        }
         for (auto& e : m_impl->entities)
+        {
             e.dirty = false;
+        }
     }
-} // namespace render
+}  // namespace render

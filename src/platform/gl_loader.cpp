@@ -3,11 +3,11 @@
 #include <cstring>
 
 #ifdef _WIN32
-#include <windows.h>
+    #include <windows.h>
 #elif defined(__linux__)
-#include <GL/glx.h>
+    #include <GL/glx.h>
 #elif defined(__APPLE__)
-#include <dlfcn.h>
+    #include <dlfcn.h>
 #endif
 
 static GLFuncs g_funcs;
@@ -45,9 +45,8 @@ static void* default_get_proc_address(const char* name)
 extern "C" RENDER_API bool gl_loader_init(void* getProcAddress)
 {
     typedef void* (*GetProcAddrFunc)(const char*);
-    GetProcAddrFunc getProc = getProcAddress
-        ? reinterpret_cast<GetProcAddrFunc>(getProcAddress)
-        : default_get_proc_address;
+    GetProcAddrFunc getProc =
+        getProcAddress ? reinterpret_cast<GetProcAddrFunc>(getProcAddress) : default_get_proc_address;
 
     memset(&g_funcs, 0, sizeof(g_funcs));
 
@@ -149,7 +148,8 @@ extern "C" RENDER_API bool gl_loader_init(void* getProcAddress)
     g_funcs.NamedBufferSubData = (PFNGLNAMEDBUFFERSUBDATAPROC)getProc("glNamedBufferSubData");
     g_funcs.MapNamedBufferRange = (PFNGLMAPNAMEDBUFFERRANGEPROC)getProc("glMapNamedBufferRange");
     g_funcs.UnmapNamedBuffer = (PFNGLUNMAPNAMEDBUFFERPROC)getProc("glUnmapNamedBuffer");
-    g_funcs.FlushMappedNamedBufferRange = (PFNGLFLUSHMAPPEDNAMEDBUFFERRANGEPROC)getProc("glFlushMappedNamedBufferRange");
+    g_funcs.FlushMappedNamedBufferRange =
+        (PFNGLFLUSHMAPPEDNAMEDBUFFERRANGEPROC)getProc("glFlushMappedNamedBufferRange");
     g_funcs.CopyNamedBufferSubData = (PFNGLCOPYNAMEDBUFFERSUBDATAPROC)getProc("glCopyNamedBufferSubData");
 
     g_funcs.Flush = (PFNGLFLUSHPROC)getProc("glFlush");
@@ -177,7 +177,9 @@ extern "C" RENDER_API bool gl_loader_init(void* getProcAddress)
     g_funcs.GetBooleanv = (PFNGLGETBOOLEANVPROC)getProc("glGetBooleanv");
 
     if (!g_funcs.GenBuffers || !g_funcs.BindVertexArray || !g_funcs.UseProgram)
+    {
         return false;
+    }
 
     return true;
 }

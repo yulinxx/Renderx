@@ -21,6 +21,7 @@ namespace render
         // ============================================================================
 
         CommandEncoder::CommandEncoder() = default;
+
         CommandEncoder::~CommandEncoder()
         {
             shutdown();
@@ -33,7 +34,9 @@ namespace render
         bool CommandEncoder::initialize(rhi::IDevice* device)
         {
             if (m_initialized || !device)
+            {
                 return false;
+            }
 
             m_device = device;
 
@@ -53,9 +56,7 @@ namespace render
                 lineDesc.srcBlend = rhi::BlendFactor::SrcAlpha;
                 lineDesc.dstBlend = rhi::BlendFactor::OneMinusSrcAlpha;
                 lineDesc.depthFunc = rhi::CompareFunc::Always;
-                m_overlayLinePipeline = m_psm
-                    ? m_psm->getOrCreatePipeline(lineDesc)
-                    : device->createPipeline(lineDesc);
+                m_overlayLinePipeline = m_psm ? m_psm->getOrCreatePipeline(lineDesc) : device->createPipeline(lineDesc);
                 if (m_overlayLinePipeline == rhi::NullHandle)
                 {
                     SY_ERROR("[CommandEncoder] failed to create overlay line pipeline");
@@ -64,9 +65,7 @@ namespace render
 
                 rhi::PipelineDesc triDesc = lineDesc;
                 triDesc.topology = rhi::PrimitiveTopology::TriangleList;
-                m_overlayTriPipeline = m_psm
-                    ? m_psm->getOrCreatePipeline(triDesc)
-                    : device->createPipeline(triDesc);
+                m_overlayTriPipeline = m_psm ? m_psm->getOrCreatePipeline(triDesc) : device->createPipeline(triDesc);
                 if (m_overlayTriPipeline == rhi::NullHandle)
                 {
                     SY_ERROR("[CommandEncoder] failed to create overlay triangle pipeline");
@@ -104,9 +103,7 @@ namespace render
                 desc.srcBlend = rhi::BlendFactor::SrcAlpha;
                 desc.dstBlend = rhi::BlendFactor::OneMinusSrcAlpha;
                 desc.depthFunc = rhi::CompareFunc::Always;
-                m_worldPipelines[i] = m_psm
-                    ? m_psm->getOrCreatePipeline(desc)
-                    : device->createPipeline(desc);
+                m_worldPipelines[i] = m_psm ? m_psm->getOrCreatePipeline(desc) : device->createPipeline(desc);
                 if (m_worldPipelines[i] == rhi::NullHandle)
                 {
                     SY_ERRORF("[CommandEncoder] failed to create world pipeline index=%u", i);
@@ -118,7 +115,8 @@ namespace render
             m_initialized = true;
 
             SY_DEBUGF("[CommandEncoder] Initialized with %u world pipelines + 2 overlay pipelines (PSM=%s)",
-                PRIMITIVE_TYPE_COUNT, m_psm ? "yes" : "no");
+                PRIMITIVE_TYPE_COUNT,
+                m_psm ? "yes" : "no");
             return true;
         }
 
@@ -135,7 +133,9 @@ namespace render
         void CommandEncoder::shutdown()
         {
             if (!m_initialized || !m_device)
+            {
                 return;
+            }
 
             if (m_overlayLinePipeline != rhi::NullHandle)
             {
@@ -175,12 +175,13 @@ namespace render
         // 命令提交
         // ============================================================================
 
-        void CommandEncoder::submitOverlay(PrimitiveType topology,
-            uint32_t vertexOffset, uint32_t vertexCount,
-            uint32_t zOrder)
+        void CommandEncoder::submitOverlay(
+            PrimitiveType topology, uint32_t vertexOffset, uint32_t vertexCount, uint32_t zOrder)
         {
             if (vertexCount == 0)
+            {
                 return;
+            }
 
             DrawCommand cmd;
             cmd.sortKey = buildSortKey(DrawSpace::Overlay, zOrder, topology, 0);
@@ -194,12 +195,17 @@ namespace render
             m_commands.push_back(cmd);
         }
 
-        void CommandEncoder::submitWorld(PrimitiveType topology, uint16_t materialIndex,
-            uint32_t indirectOffset, uint32_t indirectCount,
-            uint32_t zOrder, float lineWidth)
+        void CommandEncoder::submitWorld(PrimitiveType topology,
+            uint16_t materialIndex,
+            uint32_t indirectOffset,
+            uint32_t indirectCount,
+            uint32_t zOrder,
+            float lineWidth)
         {
             if (indirectCount == 0)
+            {
                 return;
+            }
 
             DrawCommand cmd;
             cmd.sortKey = buildSortKey(DrawSpace::World2D, zOrder, topology, materialIndex);
@@ -218,8 +224,8 @@ namespace render
         // 排序键构建
         // ============================================================================
 
-        BatchKey CommandEncoder::buildSortKey(DrawSpace space, uint32_t zOrder,
-            PrimitiveType topology, uint16_t materialIndex)
+        BatchKey CommandEncoder::buildSortKey(
+            DrawSpace space, uint32_t zOrder, PrimitiveType topology, uint16_t materialIndex)
         {
             BatchKey key = 0;
             key |= (static_cast<BatchKey>(space) & 0xFF) << 0;
@@ -238,12 +244,12 @@ namespace render
             // overlay 只区分三角形和线段两类
             switch (topology)
             {
-                case PrimitiveType::TriangleList:
-                case PrimitiveType::TriangleStrip:
-                case PrimitiveType::TriangleFan:
-                    return m_overlayTriPipeline;
-                default:
-                    return m_overlayLinePipeline;
+            case PrimitiveType::TriangleList:
+            case PrimitiveType::TriangleStrip:
+            case PrimitiveType::TriangleFan:
+                return m_overlayTriPipeline;
+            default:
+                return m_overlayLinePipeline;
             }
         }
 
@@ -251,7 +257,9 @@ namespace render
         {
             uint32_t idx = static_cast<uint32_t>(topology);
             if (idx < PRIMITIVE_TYPE_COUNT)
+            {
                 return m_worldPipelines[idx];
+            }
             return m_worldPipelines[0];
         }
 
@@ -273,10 +281,9 @@ namespace render
             }
 
             // 按 sortKey 排序，使相同 space/topology/material 的命令连续
-            std::sort(m_commands.begin(), m_commands.end(),
-                [](const DrawCommand& a, const DrawCommand& b) {
-                    return a.sortKey < b.sortKey;
-                });
+            std::sort(m_commands.begin(), m_commands.end(), [](const DrawCommand& a, const DrawCommand& b) {
+                return a.sortKey < b.sortKey;
+            });
 
             uint32_t cmdCount = static_cast<uint32_t>(m_commands.size());
 
@@ -285,39 +292,37 @@ namespace render
             for (uint32_t i = 1; i < cmdCount; ++i)
             {
                 if (m_commands[i].sortKey != m_commands[i - 1].sortKey)
+                {
                     ++m_lastBatchCount;
+                }
             }
 
             // 当前绑定的状态，用于避免重复绑定
-            rhi::PipelineHandle     boundPipeline = {};
-            rhi::BufferHandle       boundVB = rhi::NullHandle;
-            DrawSpace               boundSpace = DrawSpace::World2D;
-            PrimitiveType           boundTopology = PrimitiveType::PointList;
-            uint16_t                boundMaterial = 0;
-            bool                    stateDirty = true;
+            rhi::PipelineHandle boundPipeline = {};
+            rhi::BufferHandle boundVB = rhi::NullHandle;
+            DrawSpace boundSpace = DrawSpace::World2D;
+            PrimitiveType boundTopology = PrimitiveType::PointList;
+            uint16_t boundMaterial = 0;
+            bool stateDirty = true;
 
             // Camera-relative rendering: World2D vertices are already relative to
             // camera center (subtracted in double precision during tessellation).
             // Extract only the scale from the view matrix (no translation) to avoid
             // catastrophic cancellation when both scale*worldPos and translation are large.
-            const float worldScaleMatrix[9] = {
-                viewMatrix[0], 0.0f, 0.0f,
-                0.0f, viewMatrix[4], 0.0f,
-                0.0f, 0.0f, 1.0f
-            };
+            const float worldScaleMatrix[9] = { viewMatrix[0], 0.0f, 0.0f, 0.0f, viewMatrix[4], 0.0f, 0.0f, 0.0f, 1.0f };
 
             // Keep the relative origin in double precision until the final conversion
             // to the uniform type. The camera center is derived from the same matrix
             // in renderSetView2D(), so the transform and the submitted vertices use
             // one consistent origin on every zoom step.
-            const float safeCameraCenter[2] = {
-                std::isfinite(cameraCenter[0]) ? cameraCenter[0] : 0.0f,
-                std::isfinite(cameraCenter[1]) ? cameraCenter[1] : 0.0f
-            };
+            const float safeCameraCenter[2] = { std::isfinite(cameraCenter[0]) ? cameraCenter[0] : 0.0f,
+                std::isfinite(cameraCenter[1]) ? cameraCenter[1] : 0.0f };
 
             // Phase 8: 如果启用了 DrawBatcher，先重置合批器
             if (m_drawBatcher)
+            {
                 m_drawBatcher->reset();
+            }
 
             for (uint32_t i = 0; i < cmdCount; ++i)
             {
@@ -326,22 +331,25 @@ namespace render
                 // 检测状态变化
                 bool spaceChanged = (i == 0) || (cmd.space != boundSpace);
                 bool topologyChanged = (i == 0) || (cmd.topology != boundTopology);
-                bool materialChanged = (cmd.space == DrawSpace::World2D) &&
-                    ((i == 0) || (cmd.materialIndex != boundMaterial));
+                bool materialChanged =
+                    (cmd.space == DrawSpace::World2D) && ((i == 0) || (cmd.materialIndex != boundMaterial));
 
                 if (spaceChanged || topologyChanged)
                 {
                     // 选择 pipeline
-                    rhi::PipelineHandle pipeline = (cmd.space == DrawSpace::Overlay)
-                        ? getOverlayPipeline(cmd.topology)
-                        : getWorldPipeline(cmd.topology);
+                    rhi::PipelineHandle pipeline = (cmd.space == DrawSpace::Overlay) ? getOverlayPipeline(cmd.topology)
+                                                                                     : getWorldPipeline(cmd.topology);
 
                     if (pipeline != boundPipeline)
                     {
                         if (m_psm)
+                        {
                             m_psm->bindPipeline(pipeline);
+                        }
                         else
+                        {
                             device->bindPipeline(pipeline);
+                        }
                         boundPipeline = pipeline;
 
                         if (cmd.space == DrawSpace::World2D)
@@ -392,7 +400,7 @@ namespace render
                     }
                 }
 
-                (void)stateDirty; // 保留给未来材质属性切换使用
+                (void)stateDirty;  // 保留给未来材质属性切换使用
 
                 // 执行绘制
                 if (cmd.space == DrawSpace::Overlay)
@@ -400,22 +408,18 @@ namespace render
                     if (m_drawBatcher)
                     {
                         // Phase 8: 收集 overlay 命令到合批器，跳过立即绘制
-                        m_drawBatcher->appendOverlayCmd(boundPipeline,
-                            cmd.overlay.vertexOffset,
-                            cmd.overlay.vertexCount);
+                        m_drawBatcher->appendOverlayCmd(
+                            boundPipeline, cmd.overlay.vertexOffset, cmd.overlay.vertexCount);
                     }
                     else
                     {
-                        device->draw(cmd.overlay.vertexCount, 1,
-                            cmd.overlay.vertexOffset, 0);
+                        device->draw(cmd.overlay.vertexCount, 1, cmd.overlay.vertexOffset, 0);
                     }
                 }
                 else
                 {
-                    device->drawIndirect(indirectBuf,
-                        cmd.world.indirectOffset,
-                        cmd.world.indirectCount,
-                        sizeof(DrawIndirectCmd));
+                    device->drawIndirect(
+                        indirectBuf, cmd.world.indirectOffset, cmd.world.indirectCount, sizeof(DrawIndirectCmd));
                 }
             }
 
@@ -434,16 +438,17 @@ namespace render
                         if (group.pipeline != boundPipeline)
                         {
                             if (m_psm)
+                            {
                                 m_psm->bindPipeline(group.pipeline);
+                            }
                             else
+                            {
                                 device->bindPipeline(group.pipeline);
+                            }
                             boundPipeline = group.pipeline;
                         }
 
-                        device->drawIndirect(mdiBuf,
-                        group.indirectOffset,
-                        group.drawCount,
-                        sizeof(DrawIndirectCmd));
+                        device->drawIndirect(mdiBuf, group.indirectOffset, group.drawCount, sizeof(DrawIndirectCmd));
                     }
                 }
             }
@@ -457,5 +462,5 @@ namespace render
         {
             return static_cast<uint32_t>(m_commands.size());
         }
-    } // namespace core
-} // namespace render
+    }  // namespace core
+}  // namespace render

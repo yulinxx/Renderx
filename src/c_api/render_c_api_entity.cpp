@@ -11,41 +11,59 @@
 
 using namespace render;
 
-extern "C" {
+extern "C"
+{
     // ==================== World2D 图元管理 ====================
 
-    RENDER_API uint32_t renderAddEntity(RenderDevice* dev, EntityId id,
-        const VertexP3C3* vertices, uint32_t vertexCount,
-        PrimitiveType type, uint16_t materialIdx)
+    RENDER_API uint32_t renderAddEntity(RenderDevice* dev,
+        EntityId id,
+        const VertexP3C3* vertices,
+        uint32_t vertexCount,
+        PrimitiveType type,
+        uint16_t materialIdx)
     {
-        if (!dev) return 0;
+        if (!dev)
+        {
+            return 0;
+        }
         dev->addEntity(id, vertices, vertexCount, type, materialIdx);
         return 1;
     }
 
-    RENDER_API void renderModifyEntity(RenderDevice* dev, EntityId id,
-        const VertexP3C3* vertices, uint32_t vertexCount,
-        uint16_t materialIdx)
+    RENDER_API void renderModifyEntity(
+        RenderDevice* dev, EntityId id, const VertexP3C3* vertices, uint32_t vertexCount, uint16_t materialIdx)
     {
-        if (!dev) return;
+        if (!dev)
+        {
+            return;
+        }
         dev->modifyEntity(id, vertices, vertexCount, materialIdx);
     }
 
     RENDER_API void renderRemoveEntity(RenderDevice* dev, EntityId id)
     {
-        if (!dev) return;
+        if (!dev)
+        {
+            return;
+        }
         dev->removeEntity(id);
     }
 
     RENDER_API void renderSetEntityVisibility(RenderDevice* dev, EntityId id, int32_t visible)
     {
-        if (!dev) return;
+        if (!dev)
+        {
+            return;
+        }
         dev->setEntityVisibility(id, visible != 0);
     }
 
     RENDER_API void renderApplyUpdates(RenderDevice* dev, const void* packet, uint32_t packetSize)
     {
-        if (!dev || !packet) return;
+        if (!dev || !packet)
+        {
+            return;
+        }
 
         const uint8_t* ptr = static_cast<const uint8_t*>(packet);
         const uint8_t* end = ptr + packetSize;
@@ -65,16 +83,19 @@ extern "C" {
 
             switch (upd.op)
             {
-                case UpdateOp::Add:
-                    dev->addEntity(upd.entityId, verts, upd.vertexCount,
-                        static_cast<PrimitiveType>(upd.primitiveType), upd.materialIndex);
-                    break;
-                case UpdateOp::Modify:
-                    dev->modifyEntity(upd.entityId, verts, upd.vertexCount, upd.materialIndex);
-                    break;
-                case UpdateOp::Remove:
-                    dev->removeEntity(upd.entityId);
-                    break;
+            case UpdateOp::Add:
+                dev->addEntity(upd.entityId,
+                    verts,
+                    upd.vertexCount,
+                    static_cast<PrimitiveType>(upd.primitiveType),
+                    upd.materialIndex);
+                break;
+            case UpdateOp::Modify:
+                dev->modifyEntity(upd.entityId, verts, upd.vertexCount, upd.materialIndex);
+                break;
+            case UpdateOp::Remove:
+                dev->removeEntity(upd.entityId);
+                break;
             }
         }
     }
@@ -82,38 +103,53 @@ extern "C" {
     // ==================== 3D 网格管理 ====================
 
     RENDER_API MeshId renderRegisterMesh(RenderDevice* dev,
-        const float* positions, const float* normals,
+        const float* positions,
+        const float* normals,
         const uint32_t* indices,
-        uint32_t vertexCount, uint32_t indexCount)
+        uint32_t vertexCount,
+        uint32_t indexCount)
     {
-        if (!dev) return INVALID_MESH_ID;
+        if (!dev)
+        {
+            return INVALID_MESH_ID;
+        }
         return dev->meshManager.registerMesh(positions, normals, indices, vertexCount, indexCount);
     }
 
     RENDER_API void renderUnregisterMesh(RenderDevice* dev, MeshId mesh)
     {
-        if (!dev) return;
+        if (!dev)
+        {
+            return;
+        }
         dev->meshManager.unregisterMesh(mesh);
     }
 
-    RENDER_API uint32_t renderAddInstance(RenderDevice* dev, MeshId mesh,
-        const float modelMatrix[16], uint32_t materialIdx,
-        const float color[4])
+    RENDER_API uint32_t renderAddInstance(
+        RenderDevice* dev, MeshId mesh, const float modelMatrix[16], uint32_t materialIdx, const float color[4])
     {
-        if (!dev) return UINT32_MAX;
+        if (!dev)
+        {
+            return UINT32_MAX;
+        }
         return dev->meshManager.addInstance(mesh, modelMatrix, materialIdx, color);
     }
 
-    RENDER_API void renderModifyInstance(RenderDevice* dev, uint32_t instanceId,
-        const float modelMatrix[16])
+    RENDER_API void renderModifyInstance(RenderDevice* dev, uint32_t instanceId, const float modelMatrix[16])
     {
-        if (!dev) return;
+        if (!dev)
+        {
+            return;
+        }
         dev->meshManager.modifyInstance(instanceId, modelMatrix);
     }
 
     RENDER_API void renderRemoveInstance(RenderDevice* dev, uint32_t instanceId)
     {
-        if (!dev) return;
+        if (!dev)
+        {
+            return;
+        }
         dev->meshManager.removeInstance(instanceId);
     }
 
@@ -121,24 +157,37 @@ extern "C" {
 
     RENDER_API uint16_t renderAddMaterial(RenderDevice* dev, const MaterialDesc* desc)
     {
-        if (!dev) return 0;
+        if (!dev)
+        {
+            return 0;
+        }
         return dev->addMaterial(*desc);
     }
 
     RENDER_API void renderUpdateMaterial(RenderDevice* dev, uint16_t idx, const MaterialDesc* desc)
     {
-        if (!dev) return;
+        if (!dev)
+        {
+            return;
+        }
         dev->updateMaterial(idx, *desc);
     }
 
     // ==================== World3D 图元管理 ====================
 
-    RENDER_API void renderAddEntity3D(RenderDevice* dev, EntityId id,
-        const float* positions, const float* normals,
-        uint32_t vertexCount, const uint32_t* indices,
-        uint32_t indexCount, uint16_t materialIndex)
+    RENDER_API void renderAddEntity3D(RenderDevice* dev,
+        EntityId id,
+        const float* positions,
+        const float* normals,
+        uint32_t vertexCount,
+        const uint32_t* indices,
+        uint32_t indexCount,
+        uint16_t materialIndex)
     {
-        if (!dev) return;
+        if (!dev)
+        {
+            return;
+        }
         std::vector<VertexP3N3> verts(vertexCount);
         for (uint32_t i = 0; i < vertexCount; ++i)
         {
@@ -154,13 +203,19 @@ extern "C" {
 
     RENDER_API void renderRemoveEntity3D(RenderDevice* dev, EntityId id)
     {
-        if (!dev) return;
+        if (!dev)
+        {
+            return;
+        }
         dev->world3D.removeEntity(id);
     }
 
     RENDER_API void renderClearWorld3D(RenderDevice* dev)
     {
-        if (!dev) return;
+        if (!dev)
+        {
+            return;
+        }
         dev->world3D.clear();
     }
-} // extern "C"
+}  // extern "C"

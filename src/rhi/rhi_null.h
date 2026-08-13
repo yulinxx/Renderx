@@ -18,93 +18,116 @@
 
 #include <cstdint>
 
-namespace render::rhi {
+namespace render::rhi
+{
 
-class NullDevice : public IDevice {
-public:
-    NullDevice() = default;
-    ~NullDevice() override = default;
+    class NullDevice : public IDevice
+    {
+    public:
+        NullDevice() = default;
+        ~NullDevice() override = default;
 
-    bool initialize(void* nativeWindow, uint32_t width, uint32_t height) override;
-    void shutdown() override;
+        bool initialize(void* nativeWindow, uint32_t width, uint32_t height) override;
+        void shutdown() override;
 
-    BufferHandle   createBuffer(const BufferDesc&) override;
-    void           destroyBuffer(BufferHandle) override;
-    TextureHandle  createTexture(const TextureDesc&) override;
-    void           destroyTexture(TextureHandle) override;
-    PipelineHandle createPipeline(const PipelineDesc&) override;
-    void           destroyPipeline(PipelineHandle) override;
+        BufferHandle createBuffer(const BufferDesc&) override;
+        void destroyBuffer(BufferHandle) override;
+        TextureHandle createTexture(const TextureDesc&) override;
+        void destroyTexture(TextureHandle) override;
+        PipelineHandle createPipeline(const PipelineDesc&) override;
+        void destroyPipeline(PipelineHandle) override;
 
-    void uploadBuffer(BufferHandle, uint64_t offset, uint64_t size, const void* data) override;
-    void uploadTexture(TextureHandle, uint32_t mip, const void* data, uint32_t rowPitch) override;
-    void* mapBuffer(BufferHandle, uint64_t offset, uint64_t size, uint32_t mapFlags) override;
-    void unmapBuffer(BufferHandle) override;
-    void flushMappedRange(BufferHandle, uint64_t offset, uint64_t size) override;
+        void uploadBuffer(BufferHandle, uint64_t offset, uint64_t size, const void* data) override;
+        void uploadTexture(TextureHandle, uint32_t mip, const void* data, uint32_t rowPitch) override;
+        void* mapBuffer(BufferHandle, uint64_t offset, uint64_t size, uint32_t mapFlags) override;
+        void unmapBuffer(BufferHandle) override;
+        void flushMappedRange(BufferHandle, uint64_t offset, uint64_t size) override;
 
-    void beginFrame() override;
-    void endFrame() override;
-    void present() override;
+        void beginFrame() override;
+        void endFrame() override;
+        void present() override;
 
-    void bindPipeline(PipelineHandle) override;
-    void bindVertexBuffer(uint32_t slot, BufferHandle, uint64_t offset) override;
-    void bindIndexBuffer(BufferHandle, uint64_t offset) override;
-    void bindUniformBuffer(uint32_t set, uint32_t binding, BufferHandle, uint64_t offset, uint64_t size) override;
-    void bindShaderStorageBuffer(uint32_t set, uint32_t binding, BufferHandle, uint64_t offset, uint64_t size) override;
-    void bindTexture(uint32_t set, uint32_t binding, TextureHandle) override;
-    void setViewport(const Viewport&) override;
-    void setScissor(const Scissor&) override;
-    void setLineWidth(float width) override;
+        void bindPipeline(PipelineHandle) override;
+        void bindVertexBuffer(uint32_t slot, BufferHandle, uint64_t offset) override;
+        void bindIndexBuffer(BufferHandle, uint64_t offset) override;
+        void bindUniformBuffer(uint32_t set, uint32_t binding, BufferHandle, uint64_t offset, uint64_t size) override;
+        void bindShaderStorageBuffer(
+            uint32_t set, uint32_t binding, BufferHandle, uint64_t offset, uint64_t size) override;
+        void bindTexture(uint32_t set, uint32_t binding, TextureHandle) override;
+        void setViewport(const Viewport&) override;
+        void setScissor(const Scissor&) override;
+        void setLineWidth(float width) override;
 
-    void setUniformMatrix3(const char* name, const float* data) override;
-    void setUniformMatrix4(const char* name, const float* data) override;
-    void setUniformFloat(const char* name, float value) override;
-    void setUniformInt(const char* name, int32_t value) override;
-    void setUniformVec2(const char* name, const float* data) override;
-    void setUniformVec3(const char* name, const float* data) override;
-    void setUniformVec4(const char* name, const float* data) override;
+        void setUniformMatrix3(const char* name, const float* data) override;
+        void setUniformMatrix4(const char* name, const float* data) override;
+        void setUniformFloat(const char* name, float value) override;
+        void setUniformInt(const char* name, int32_t value) override;
+        void setUniformVec2(const char* name, const float* data) override;
+        void setUniformVec3(const char* name, const float* data) override;
+        void setUniformVec4(const char* name, const float* data) override;
 
-    void draw(uint32_t vertexCount, uint32_t instanceCount, uint32_t firstVertex, uint32_t firstInstance) override;
-    void drawIndexed(uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, int32_t vertexOffset, uint32_t firstInstance) override;
-    void drawIndirect(BufferHandle indirectBuffer, uint64_t offset, uint32_t drawCount, uint32_t stride) override;
-    void drawIndexedIndirect(BufferHandle indirectBuffer, uint64_t offset, uint32_t drawCount, uint32_t stride) override;
+        void draw(uint32_t vertexCount, uint32_t instanceCount, uint32_t firstVertex, uint32_t firstInstance) override;
+        void drawIndexed(uint32_t indexCount,
+            uint32_t instanceCount,
+            uint32_t firstIndex,
+            int32_t vertexOffset,
+            uint32_t firstInstance) override;
+        void drawIndirect(BufferHandle indirectBuffer, uint64_t offset, uint32_t drawCount, uint32_t stride) override;
+        void drawIndexedIndirect(
+            BufferHandle indirectBuffer, uint64_t offset, uint32_t drawCount, uint32_t stride) override;
 
-    void dispatchCompute(uint32_t groupsX, uint32_t groupsY, uint32_t groupsZ) override;
-    void memoryBarrier(uint32_t barrierFlags) override;
+        void dispatchCompute(uint32_t groupsX, uint32_t groupsY, uint32_t groupsZ) override;
+        void memoryBarrier(uint32_t barrierFlags) override;
 
-    void setClearColor(float r, float g, float b, float a) override;
-    void clear(uint32_t flags) override;
-    void enableDepthTest(bool enable) override;
-    void enableBlend(bool enable) override;
+        void setClearColor(float r, float g, float b, float a) override;
+        void clear(uint32_t flags) override;
+        void enableDepthTest(bool enable) override;
+        void enableBlend(bool enable) override;
 
-    void resize(uint32_t width, uint32_t height) override;
-    uint64_t getGPUMemoryUsage() const override;
-    void*    getNativeContext() override;
+        void resize(uint32_t width, uint32_t height) override;
+        uint64_t getGPUMemoryUsage() const override;
+        void* getNativeContext() override;
 
-    // Null backend tracks resource counts for testing validation
-    uint64_t getBufferCount() const { return m_nextBufferId - 1; }
-    uint64_t getTextureCount() const { return m_nextTextureId - 1; }
-    uint64_t getPipelineCount() const { return m_nextPipelineId - 1; }
-    uint32_t getDrawCallCount() const { return m_drawCallCount; }
+        // Null backend tracks resource counts for testing validation
+        uint64_t getBufferCount() const
+        {
+            return m_nextBufferId - 1;
+        }
 
-private:
-    BufferHandle   allocBufferHandle();
-    TextureHandle  allocTextureHandle();
-    PipelineHandle allocPipelineHandle();
+        uint64_t getTextureCount() const
+        {
+            return m_nextTextureId - 1;
+        }
 
-private:
-    bool m_initialized = false;
-    uint32_t m_width = 0;
-    uint32_t m_height = 0;
-    float m_clearColor[4] = {0.f, 0.f, 0.f, 1.f};
+        uint64_t getPipelineCount() const
+        {
+            return m_nextPipelineId - 1;
+        }
 
-    uint64_t m_nextBufferId = 1;
-    uint64_t m_nextTextureId = 1;
-    uint64_t m_nextPipelineId = 1;
+        uint32_t getDrawCallCount() const
+        {
+            return m_drawCallCount;
+        }
 
-    uint32_t m_drawCallCount = 0;
-    bool m_depthTestEnabled = false;
-    bool m_blendEnabled = false;
-    float m_lineWidth = 1.0f;
-};
+    private:
+        BufferHandle allocBufferHandle();
+        TextureHandle allocTextureHandle();
+        PipelineHandle allocPipelineHandle();
 
-}
+    private:
+        bool m_initialized = false;
+        uint32_t m_width = 0;
+        uint32_t m_height = 0;
+        float m_clearColor[4] = { 0.f, 0.f, 0.f, 1.f };
+
+        uint64_t m_nextBufferId = 1;
+        uint64_t m_nextTextureId = 1;
+        uint64_t m_nextPipelineId = 1;
+
+        uint32_t m_drawCallCount = 0;
+        bool m_depthTestEnabled = false;
+        bool m_blendEnabled = false;
+        float m_lineWidth = 1.0f;
+    };
+
+}  // namespace render::rhi

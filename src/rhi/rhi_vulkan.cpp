@@ -16,10 +16,10 @@
 #include "rhi_types.h"
 
 #ifdef _WIN32
-#ifndef VK_USE_PLATFORM_WIN32_KHR
-#define VK_USE_PLATFORM_WIN32_KHR
-#endif
-#include <windows.h>
+    #ifndef VK_USE_PLATFORM_WIN32_KHR
+        #define VK_USE_PLATFORM_WIN32_KHR
+    #endif
+    #include <windows.h>
 #endif
 #include <vulkan/vulkan.h>
 
@@ -45,7 +45,7 @@ namespace render::rhi
     static constexpr uint64_t kIndexMask = 0x0FFFFFFFFFFFFFFFULL;
     static constexpr uint64_t kTypeShift = 60;
 
-    static constexpr uint64_t kStagingBufferSize = 1 << 20; // 1 MB staging fallback threshold
+    static constexpr uint64_t kStagingBufferSize = 1 << 20;  // 1 MB staging fallback threshold
 
     static constexpr uint64_t kTypeBuffer = 1ULL << kTypeShift;
     static constexpr uint64_t kTypeTexture = 2ULL << kTypeShift;
@@ -62,34 +62,34 @@ namespace render::rhi
 
     struct VulkanDevice::BufferResource
     {
-        VkBuffer       buffer = VK_NULL_HANDLE;
+        VkBuffer buffer = VK_NULL_HANDLE;
         VkDeviceMemory memory = VK_NULL_HANDLE;
-        VkDeviceSize   size = 0;
-        BufferUsage    usage = BufferUsage::Vertex;
-        MemoryType     memoryType = MemoryType::GPU_Only;
-        bool           isMapped = false;
+        VkDeviceSize size = 0;
+        BufferUsage usage = BufferUsage::Vertex;
+        MemoryType memoryType = MemoryType::GPU_Only;
+        bool isMapped = false;
         void* mappedPtr = nullptr;
         std::vector<uint8_t> stagingMemory;
     };
 
     struct VulkanDevice::TextureResource
     {
-        VkImage        image = VK_NULL_HANDLE;
+        VkImage image = VK_NULL_HANDLE;
         VkDeviceMemory memory = VK_NULL_HANDLE;
-        VkImageView    view = VK_NULL_HANDLE;
-        VkSampler      sampler = VK_NULL_HANDLE;
-        uint32_t       width = 0;
-        uint32_t       height = 0;
-        Format         format = Format::RGBA8;
-        uint32_t       mipLevels = 1;
+        VkImageView view = VK_NULL_HANDLE;
+        VkSampler sampler = VK_NULL_HANDLE;
+        uint32_t width = 0;
+        uint32_t height = 0;
+        Format format = Format::RGBA8;
+        uint32_t mipLevels = 1;
     };
 
     struct VulkanDevice::PipelineResource
     {
-        VkPipeline     pipeline = VK_NULL_HANDLE;
+        VkPipeline pipeline = VK_NULL_HANDLE;
         VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
         PrimitiveTopology topology = PrimitiveTopology::TriangleList;
-        VertexFormat   vertexFormat = VertexFormat::P3C3;
+        VertexFormat vertexFormat = VertexFormat::P3C3;
     };
 
     // ---------------------------------------------------------------------------
@@ -100,13 +100,20 @@ namespace render::rhi
     {
         switch (fmt)
         {
-            case VertexFormat::P3C3:   return VK_FORMAT_R32G32B32_SFLOAT;
-            case VertexFormat::P3C4:   return VK_FORMAT_R32G32B32_SFLOAT;
-            case VertexFormat::P3N3:   return VK_FORMAT_R32G32B32_SFLOAT;
-            case VertexFormat::P3T2:   return VK_FORMAT_R32G32B32_SFLOAT;
-            case VertexFormat::P3T2C4: return VK_FORMAT_R32G32B32_SFLOAT;
-            case VertexFormat::P2T2C4: return VK_FORMAT_R32G32_SFLOAT;
-            default:                   return VK_FORMAT_R32G32B32_SFLOAT;
+        case VertexFormat::P3C3:
+            return VK_FORMAT_R32G32B32_SFLOAT;
+        case VertexFormat::P3C4:
+            return VK_FORMAT_R32G32B32_SFLOAT;
+        case VertexFormat::P3N3:
+            return VK_FORMAT_R32G32B32_SFLOAT;
+        case VertexFormat::P3T2:
+            return VK_FORMAT_R32G32B32_SFLOAT;
+        case VertexFormat::P3T2C4:
+            return VK_FORMAT_R32G32B32_SFLOAT;
+        case VertexFormat::P2T2C4:
+            return VK_FORMAT_R32G32_SFLOAT;
+        default:
+            return VK_FORMAT_R32G32B32_SFLOAT;
         }
     }
 
@@ -114,13 +121,20 @@ namespace render::rhi
     {
         switch (fmt)
         {
-            case VertexFormat::P3C3:   return VK_FORMAT_R32G32B32_SFLOAT;
-            case VertexFormat::P3C4:   return VK_FORMAT_R32G32B32A32_SFLOAT;
-            case VertexFormat::P3N3:   return VK_FORMAT_R32G32B32_SFLOAT;
-            case VertexFormat::P3T2:   return VK_FORMAT_R32G32_SFLOAT;
-            case VertexFormat::P3T2C4: return VK_FORMAT_R32G32B32A32_SFLOAT;
-            case VertexFormat::P2T2C4: return VK_FORMAT_R32G32B32A32_SFLOAT;
-            default:                   return VK_FORMAT_UNDEFINED;
+        case VertexFormat::P3C3:
+            return VK_FORMAT_R32G32B32_SFLOAT;
+        case VertexFormat::P3C4:
+            return VK_FORMAT_R32G32B32A32_SFLOAT;
+        case VertexFormat::P3N3:
+            return VK_FORMAT_R32G32B32_SFLOAT;
+        case VertexFormat::P3T2:
+            return VK_FORMAT_R32G32_SFLOAT;
+        case VertexFormat::P3T2C4:
+            return VK_FORMAT_R32G32B32A32_SFLOAT;
+        case VertexFormat::P2T2C4:
+            return VK_FORMAT_R32G32B32A32_SFLOAT;
+        default:
+            return VK_FORMAT_UNDEFINED;
         }
     }
 
@@ -128,13 +142,20 @@ namespace render::rhi
     {
         switch (fmt)
         {
-            case VertexFormat::P3C3:   return 24;
-            case VertexFormat::P3C4:   return 28;
-            case VertexFormat::P3N3:   return 24;
-            case VertexFormat::P3T2:   return 20;
-            case VertexFormat::P3T2C4: return 36;
-            case VertexFormat::P2T2C4: return 32;
-            default:                   return 0;
+        case VertexFormat::P3C3:
+            return 24;
+        case VertexFormat::P3C4:
+            return 28;
+        case VertexFormat::P3N3:
+            return 24;
+        case VertexFormat::P3T2:
+            return 20;
+        case VertexFormat::P3T2C4:
+            return 36;
+        case VertexFormat::P2T2C4:
+            return 32;
+        default:
+            return 0;
         }
     }
 
@@ -146,14 +167,22 @@ namespace render::rhi
     {
         switch (fmt)
         {
-            case Format::RGBA8:   return VK_FORMAT_R8G8B8A8_UNORM;
-            case Format::RGBA32F: return VK_FORMAT_R32G32B32A32_SFLOAT;
-            case Format::RG32F:   return VK_FORMAT_R32G32_SFLOAT;
-            case Format::R32F:    return VK_FORMAT_R32_SFLOAT;
-            case Format::D32F:    return VK_FORMAT_D32_SFLOAT;
-            case Format::D24S8:   return VK_FORMAT_D24_UNORM_S8_UINT;
-            case Format::R8:      return VK_FORMAT_R8_UNORM;
-            default:              return VK_FORMAT_UNDEFINED;
+        case Format::RGBA8:
+            return VK_FORMAT_R8G8B8A8_UNORM;
+        case Format::RGBA32F:
+            return VK_FORMAT_R32G32B32A32_SFLOAT;
+        case Format::RG32F:
+            return VK_FORMAT_R32G32_SFLOAT;
+        case Format::R32F:
+            return VK_FORMAT_R32_SFLOAT;
+        case Format::D32F:
+            return VK_FORMAT_D32_SFLOAT;
+        case Format::D24S8:
+            return VK_FORMAT_D24_UNORM_S8_UINT;
+        case Format::R8:
+            return VK_FORMAT_R8_UNORM;
+        default:
+            return VK_FORMAT_UNDEFINED;
         }
     }
 
@@ -161,14 +190,22 @@ namespace render::rhi
     {
         switch (topo)
         {
-            case PrimitiveTopology::PointList:     return VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
-            case PrimitiveTopology::LineList:      return VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
-            case PrimitiveTopology::LineStrip:     return VK_PRIMITIVE_TOPOLOGY_LINE_STRIP;
-            case PrimitiveTopology::LineLoop:      return VK_PRIMITIVE_TOPOLOGY_LINE_STRIP;
-            case PrimitiveTopology::TriangleList:  return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-            case PrimitiveTopology::TriangleStrip: return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
-            case PrimitiveTopology::TriangleFan:   return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN;
-            default:                               return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+        case PrimitiveTopology::PointList:
+            return VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
+        case PrimitiveTopology::LineList:
+            return VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
+        case PrimitiveTopology::LineStrip:
+            return VK_PRIMITIVE_TOPOLOGY_LINE_STRIP;
+        case PrimitiveTopology::LineLoop:
+            return VK_PRIMITIVE_TOPOLOGY_LINE_STRIP;
+        case PrimitiveTopology::TriangleList:
+            return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+        case PrimitiveTopology::TriangleStrip:
+            return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
+        case PrimitiveTopology::TriangleFan:
+            return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN;
+        default:
+            return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
         }
     }
 
@@ -176,13 +213,20 @@ namespace render::rhi
     {
         switch (func)
         {
-            case CompareFunc::Never:      return VK_COMPARE_OP_NEVER;
-            case CompareFunc::Less:       return VK_COMPARE_OP_LESS;
-            case CompareFunc::Equal:      return VK_COMPARE_OP_EQUAL;
-            case CompareFunc::LessEqual:  return VK_COMPARE_OP_LESS_OR_EQUAL;
-            case CompareFunc::Greater:    return VK_COMPARE_OP_GREATER;
-            case CompareFunc::Always:     return VK_COMPARE_OP_ALWAYS;
-            default:                      return VK_COMPARE_OP_ALWAYS;
+        case CompareFunc::Never:
+            return VK_COMPARE_OP_NEVER;
+        case CompareFunc::Less:
+            return VK_COMPARE_OP_LESS;
+        case CompareFunc::Equal:
+            return VK_COMPARE_OP_EQUAL;
+        case CompareFunc::LessEqual:
+            return VK_COMPARE_OP_LESS_OR_EQUAL;
+        case CompareFunc::Greater:
+            return VK_COMPARE_OP_GREATER;
+        case CompareFunc::Always:
+            return VK_COMPARE_OP_ALWAYS;
+        default:
+            return VK_COMPARE_OP_ALWAYS;
         }
     }
 
@@ -190,11 +234,16 @@ namespace render::rhi
     {
         switch (factor)
         {
-            case BlendFactor::Zero:              return VK_BLEND_FACTOR_ZERO;
-            case BlendFactor::One:               return VK_BLEND_FACTOR_ONE;
-            case BlendFactor::SrcAlpha:          return VK_BLEND_FACTOR_SRC_ALPHA;
-            case BlendFactor::OneMinusSrcAlpha:  return VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
-            default:                             return VK_BLEND_FACTOR_ONE;
+        case BlendFactor::Zero:
+            return VK_BLEND_FACTOR_ZERO;
+        case BlendFactor::One:
+            return VK_BLEND_FACTOR_ONE;
+        case BlendFactor::SrcAlpha:
+            return VK_BLEND_FACTOR_SRC_ALPHA;
+        case BlendFactor::OneMinusSrcAlpha:
+            return VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+        default:
+            return VK_BLEND_FACTOR_ONE;
         }
     }
 
@@ -209,8 +258,7 @@ namespace render::rhi
 
         for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++)
         {
-            if ((typeFilter & (1 << i)) &&
-                (memProperties.memoryTypes[i].propertyFlags & properties) == properties)
+            if ((typeFilter & (1 << i)) && (memProperties.memoryTypes[i].propertyFlags & properties) == properties)
             {
                 return i;
             }
@@ -353,8 +401,14 @@ namespace render::rhi
 
         // --- Create logical device ---
         std::set<uint32_t> uniqueQueueFamilies;
-        if (m_graphicsQueueFamily >= 0) uniqueQueueFamilies.insert(m_graphicsQueueFamily);
-        if (m_presentQueueFamily >= 0) uniqueQueueFamilies.insert(m_presentQueueFamily);
+        if (m_graphicsQueueFamily >= 0)
+        {
+            uniqueQueueFamilies.insert(m_graphicsQueueFamily);
+        }
+        if (m_presentQueueFamily >= 0)
+        {
+            uniqueQueueFamilies.insert(m_presentQueueFamily);
+        }
 
         std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
         std::vector<float> queuePriorities = { 1.0f };
@@ -371,9 +425,7 @@ namespace render::rhi
 
         VkPhysicalDeviceFeatures deviceFeatures{};
 
-        std::vector<const char*> deviceExtensions = {
-            VK_KHR_SWAPCHAIN_EXTENSION_NAME
-        };
+        std::vector<const char*> deviceExtensions = { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
 
         VkDeviceCreateInfo deviceCreateInfo{};
         deviceCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
@@ -447,7 +499,8 @@ namespace render::rhi
 
         m_initialized = true;
         SY_DEBUGF("VulkanDevice::initialize: success (queue families: gfx=%d, present=%d)",
-            m_graphicsQueueFamily, m_presentQueueFamily);
+            m_graphicsQueueFamily,
+            m_presentQueueFamily);
         return true;
 #else
         SY_ERRORF("VulkanDevice::initialize: Win32 platform not available");
@@ -457,7 +510,10 @@ namespace render::rhi
 
     void VulkanDevice::shutdown()
     {
-        if (!m_initialized) return;
+        if (!m_initialized)
+        {
+            return;
+        }
 
         vkDeviceWaitIdle(m_device);
 
@@ -465,9 +521,13 @@ namespace render::rhi
         for (auto& [handle, res] : m_pipelines)
         {
             if (res->pipeline != VK_NULL_HANDLE)
+            {
                 vkDestroyPipeline(m_device, res->pipeline, nullptr);
+            }
             if (res->pipelineLayout != VK_NULL_HANDLE)
+            {
                 vkDestroyPipelineLayout(m_device, res->pipelineLayout, nullptr);
+            }
         }
         m_pipelines.clear();
 
@@ -475,13 +535,21 @@ namespace render::rhi
         for (auto& [handle, res] : m_textures)
         {
             if (res->sampler != VK_NULL_HANDLE)
+            {
                 vkDestroySampler(m_device, res->sampler, nullptr);
+            }
             if (res->view != VK_NULL_HANDLE)
+            {
                 vkDestroyImageView(m_device, res->view, nullptr);
+            }
             if (res->image != VK_NULL_HANDLE)
+            {
                 vkDestroyImage(m_device, res->image, nullptr);
+            }
             if (res->memory != VK_NULL_HANDLE)
+            {
                 vkFreeMemory(m_device, res->memory, nullptr);
+            }
         }
         m_textures.clear();
 
@@ -489,9 +557,13 @@ namespace render::rhi
         for (auto& [handle, res] : m_buffers)
         {
             if (res->buffer != VK_NULL_HANDLE)
+            {
                 vkDestroyBuffer(m_device, res->buffer, nullptr);
+            }
             if (res->memory != VK_NULL_HANDLE)
+            {
                 vkFreeMemory(m_device, res->memory, nullptr);
+            }
         }
         m_buffers.clear();
 
@@ -499,9 +571,13 @@ namespace render::rhi
         for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
         {
             if (m_inFlightFences[i] != VK_NULL_HANDLE)
+            {
                 vkDestroyFence(m_device, m_inFlightFences[i], nullptr);
+            }
             if (m_commandBuffers[i] != VK_NULL_HANDLE)
+            {
                 vkFreeCommandBuffers(m_device, m_commandPool, 1, &m_commandBuffers[i]);
+            }
         }
         vkDestroyCommandPool(m_device, m_commandPool, nullptr);
 
@@ -509,11 +585,15 @@ namespace render::rhi
 
         // Destroy swapchain
         for (auto& framebuffer : m_swapchainFramebuffers)
+        {
             vkDestroyFramebuffer(m_device, framebuffer, nullptr);
+        }
         vkDestroyPipelineCache(m_device, m_pipelineCache, nullptr);
         vkDestroyRenderPass(m_device, m_renderPass, nullptr);
         for (auto& imageView : m_swapchainImageViews)
+        {
             vkDestroyImageView(m_device, imageView, nullptr);
+        }
         vkDestroySwapchainKHR(m_device, m_swapchain, nullptr);
 
         vkDestroySurfaceKHR(m_instance, m_surface, nullptr);
@@ -538,8 +618,7 @@ namespace render::rhi
         VkExtent2D extent = chooseSwapExtent(details.capabilities, width, height);
 
         uint32_t imageCount = details.capabilities.minImageCount + 1;
-        if (details.capabilities.maxImageCount > 0 &&
-            imageCount > details.capabilities.maxImageCount)
+        if (details.capabilities.maxImageCount > 0 && imageCount > details.capabilities.maxImageCount)
         {
             imageCount = details.capabilities.maxImageCount;
         }
@@ -553,8 +632,7 @@ namespace render::rhi
         createInfo.imageExtent = extent;
         createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
-        uint32_t queueFamilyIndices[] = {
-            static_cast<uint32_t>(m_graphicsQueueFamily),
+        uint32_t queueFamilyIndices[] = { static_cast<uint32_t>(m_graphicsQueueFamily),
             static_cast<uint32_t>(m_presentQueueFamily) };
         if (m_graphicsQueueFamily != m_presentQueueFamily)
         {
@@ -718,7 +796,8 @@ namespace render::rhi
         return true;
     }
 
-    VulkanDevice::SwapchainSupportDetails VulkanDevice::querySwapchainSupport(VkPhysicalDevice device, VkSurfaceKHR surface)
+    VulkanDevice::SwapchainSupportDetails VulkanDevice::querySwapchainSupport(
+        VkPhysicalDevice device, VkSurfaceKHR surface)
     {
         SwapchainSupportDetails details;
         vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, surface, &details.capabilities);
@@ -746,8 +825,7 @@ namespace render::rhi
     {
         for (const auto& format : available)
         {
-            if (format.format == VK_FORMAT_B8G8R8A8_SRGB &&
-                format.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR)
+            if (format.format == VK_FORMAT_B8G8R8A8_SRGB && format.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR)
             {
                 return format;
             }
@@ -767,7 +845,8 @@ namespace render::rhi
         return VK_PRESENT_MODE_FIFO_KHR;
     }
 
-    VkExtent2D VulkanDevice::chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities, uint32_t width, uint32_t height)
+    VkExtent2D VulkanDevice::chooseSwapExtent(
+        const VkSurfaceCapabilitiesKHR& capabilities, uint32_t width, uint32_t height)
     {
         if (capabilities.currentExtent.width != UINT32_MAX)
         {
@@ -776,10 +855,10 @@ namespace render::rhi
         else
         {
             VkExtent2D actualExtent = { width, height };
-            actualExtent.width = std::max(capabilities.minImageExtent.width,
-                std::min(capabilities.maxImageExtent.width, actualExtent.width));
-            actualExtent.height = std::max(capabilities.minImageExtent.height,
-                std::min(capabilities.maxImageExtent.height, actualExtent.height));
+            actualExtent.width = std::max(
+                capabilities.minImageExtent.width, std::min(capabilities.maxImageExtent.width, actualExtent.width));
+            actualExtent.height = std::max(
+                capabilities.minImageExtent.height, std::min(capabilities.maxImageExtent.height, actualExtent.height));
             return actualExtent;
         }
     }
@@ -798,13 +877,27 @@ namespace render::rhi
         VkBufferUsageFlags usageFlags = 0;
         switch (desc.usage)
         {
-            case BufferUsage::Vertex:      usageFlags = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT; break;
-            case BufferUsage::Index:       usageFlags = VK_BUFFER_USAGE_INDEX_BUFFER_BIT; break;
-            case BufferUsage::Uniform:     usageFlags = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT; break;
-            case BufferUsage::Indirect:    usageFlags = VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT; break;
-            case BufferUsage::ShaderVisible: usageFlags = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT; break;
-            case BufferUsage::Staging:     usageFlags = VK_BUFFER_USAGE_TRANSFER_SRC_BIT; break;
-            case BufferUsage::ShaderStorage: usageFlags = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT; break;
+        case BufferUsage::Vertex:
+            usageFlags = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+            break;
+        case BufferUsage::Index:
+            usageFlags = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+            break;
+        case BufferUsage::Uniform:
+            usageFlags = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+            break;
+        case BufferUsage::Indirect:
+            usageFlags = VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
+            break;
+        case BufferUsage::ShaderVisible:
+            usageFlags = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+            break;
+        case BufferUsage::Staging:
+            usageFlags = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+            break;
+        case BufferUsage::ShaderStorage:
+            usageFlags = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+            break;
         }
 
         // Always include transfer dst for uploads
@@ -825,11 +918,11 @@ namespace render::rhi
         VkMemoryAllocateInfo allocInfo{};
         allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
         allocInfo.allocationSize = memRequirements.size;
-        allocInfo.memoryTypeIndex = findMemoryType(
-            m_physicalDevice, memRequirements.memoryTypeBits,
+        allocInfo.memoryTypeIndex = findMemoryType(m_physicalDevice,
+            memRequirements.memoryTypeBits,
             (desc.memory == MemoryType::CPU_Visible || desc.memory == MemoryType::GPU_CPU_Coherent)
-            ? VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
-            : VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+                ? VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+                : VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
         if (vkAllocateMemory(m_device, &allocInfo, nullptr, &res->memory) != VK_SUCCESS)
         {
@@ -850,9 +943,13 @@ namespace render::rhi
         if (it != m_buffers.end())
         {
             if (it->second->buffer != VK_NULL_HANDLE)
+            {
                 vkDestroyBuffer(m_device, it->second->buffer, nullptr);
+            }
             if (it->second->memory != VK_NULL_HANDLE)
+            {
                 vkFreeMemory(m_device, it->second->memory, nullptr);
+            }
             m_buffers.erase(it);
         }
     }
@@ -885,8 +982,8 @@ namespace render::rhi
         }
         else
         {
-            imageInfo.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT |
-                VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+            imageInfo.usage =
+                VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
         }
         imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
         imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
@@ -903,8 +1000,8 @@ namespace render::rhi
         VkMemoryAllocateInfo allocInfo{};
         allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
         allocInfo.allocationSize = memRequirements.size;
-        allocInfo.memoryTypeIndex = findMemoryType(
-            m_physicalDevice, memRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        allocInfo.memoryTypeIndex =
+            findMemoryType(m_physicalDevice, memRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
         if (vkAllocateMemory(m_device, &allocInfo, nullptr, &res->memory) != VK_SUCCESS)
         {
@@ -920,10 +1017,9 @@ namespace render::rhi
         viewInfo.image = res->image;
         viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
         viewInfo.format = vkFormat;
-        viewInfo.subresourceRange.aspectMask =
-            (desc.format == Format::D32F) ? VK_IMAGE_ASPECT_DEPTH_BIT :
-            (desc.format == Format::D24S8) ? (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT) :
-            VK_IMAGE_ASPECT_COLOR_BIT;
+        viewInfo.subresourceRange.aspectMask = (desc.format == Format::D32F) ? VK_IMAGE_ASPECT_DEPTH_BIT
+            : (desc.format == Format::D24S8) ? (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT)
+                                             : VK_IMAGE_ASPECT_COLOR_BIT;
         viewInfo.subresourceRange.baseMipLevel = 0;
         viewInfo.subresourceRange.levelCount = desc.mipLevels;
         viewInfo.subresourceRange.baseArrayLayer = 0;
@@ -972,13 +1068,21 @@ namespace render::rhi
         if (it != m_textures.end())
         {
             if (it->second->sampler != VK_NULL_HANDLE)
+            {
                 vkDestroySampler(m_device, it->second->sampler, nullptr);
+            }
             if (it->second->view != VK_NULL_HANDLE)
+            {
                 vkDestroyImageView(m_device, it->second->view, nullptr);
+            }
             if (it->second->image != VK_NULL_HANDLE)
+            {
                 vkDestroyImage(m_device, it->second->image, nullptr);
+            }
             if (it->second->memory != VK_NULL_HANDLE)
+            {
                 vkFreeMemory(m_device, it->second->memory, nullptr);
+            }
             m_textures.erase(it);
         }
     }
@@ -1023,8 +1127,9 @@ namespace render::rhi
         {
             vertexAttributes.push_back(colorAttr);
         }
-        offset += (colorAttr.format == VK_FORMAT_UNDEFINED) ? 0 :
-            (desc.vertexFormat == VertexFormat::P2T2C4 || desc.vertexFormat == VertexFormat::P3T2C4) ? 16 : 12;
+        offset += (colorAttr.format == VK_FORMAT_UNDEFINED)                                            ? 0
+            : (desc.vertexFormat == VertexFormat::P2T2C4 || desc.vertexFormat == VertexFormat::P3T2C4) ? 16
+                                                                                                       : 12;
 
         // Normal or TexCoord attribute
         if (offset > 0)
@@ -1033,7 +1138,7 @@ namespace render::rhi
             attr.binding = 0;
             attr.location = 2;
             attr.offset = offset;
-            attr.format = vertexFormatColorToVulkan(desc.vertexFormat); // Simplified: use same format for other attrs
+            attr.format = vertexFormatColorToVulkan(desc.vertexFormat);  // Simplified: use same format for other attrs
             if (attr.format != VK_FORMAT_UNDEFINED)
             {
                 vertexAttributes.push_back(attr);
@@ -1093,8 +1198,7 @@ namespace render::rhi
         // Color blending
         VkPipelineColorBlendAttachmentState colorBlendAttachment{};
         colorBlendAttachment.colorWriteMask =
-            VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
-            VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+            VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
         colorBlendAttachment.blendEnable = desc.blendEnable ? VK_TRUE : VK_FALSE;
         colorBlendAttachment.srcColorBlendFactor = toVulkanBlendFactor(desc.srcBlend);
         colorBlendAttachment.dstColorBlendFactor = toVulkanBlendFactor(desc.dstBlend);
@@ -1159,16 +1263,23 @@ namespace render::rhi
         if (it != m_pipelines.end())
         {
             if (it->second->pipeline != VK_NULL_HANDLE)
+            {
                 vkDestroyPipeline(m_device, it->second->pipeline, nullptr);
+            }
             if (it->second->pipelineLayout != VK_NULL_HANDLE)
+            {
                 vkDestroyPipelineLayout(m_device, it->second->pipelineLayout, nullptr);
+            }
             m_pipelines.erase(it);
         }
     }
 
     void VulkanDevice::uploadBuffer(BufferHandle handle, uint64_t offset, uint64_t size, const void* data)
     {
-        if (!data || size == 0) return;
+        if (!data || size == 0)
+        {
+            return;
+        }
 
         auto it = m_buffers.find(handle);
         if (it == m_buffers.end())
@@ -1216,8 +1327,8 @@ namespace render::rhi
             VkMemoryAllocateInfo allocInfo{};
             allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
             allocInfo.allocationSize = memRequirements.size;
-            allocInfo.memoryTypeIndex = findMemoryType(
-                m_physicalDevice, memRequirements.memoryTypeBits,
+            allocInfo.memoryTypeIndex = findMemoryType(m_physicalDevice,
+                memRequirements.memoryTypeBits,
                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 
             vkAllocateMemory(m_device, &allocInfo, nullptr, &stagingBufferMemory);
@@ -1286,8 +1397,8 @@ namespace render::rhi
         VkMemoryAllocateInfo allocInfo{};
         allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
         allocInfo.allocationSize = memRequirements.size;
-        allocInfo.memoryTypeIndex = findMemoryType(
-            m_physicalDevice, memRequirements.memoryTypeBits,
+        allocInfo.memoryTypeIndex = findMemoryType(m_physicalDevice,
+            memRequirements.memoryTypeBits,
             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 
         vkAllocateMemory(m_device, &allocInfo, nullptr, &stagingBufferMemory);
@@ -1316,8 +1427,7 @@ namespace render::rhi
         region.imageOffset = { 0, 0, 0 };
         region.imageExtent = { mipWidth, mipHeight, 1 };
 
-        vkCmdCopyBufferToImage(commandBuffer, stagingBuffer, res->image,
-            VK_IMAGE_LAYOUT_UNDEFINED, 1, &region);
+        vkCmdCopyBufferToImage(commandBuffer, stagingBuffer, res->image, VK_IMAGE_LAYOUT_UNDEFINED, 1, &region);
 
         vkEndCommandBuffer(commandBuffer);
 
@@ -1370,10 +1480,14 @@ namespace render::rhi
     void VulkanDevice::unmapBuffer(BufferHandle handle)
     {
         auto it = m_buffers.find(handle);
-        if (it == m_buffers.end()) return;
+        if (it == m_buffers.end())
+        {
+            return;
+        }
 
         auto& res = it->second;
-        if (res->isMapped && (res->memoryType == MemoryType::CPU_Visible || res->memoryType == MemoryType::GPU_CPU_Coherent))
+        if (res->isMapped &&
+            (res->memoryType == MemoryType::CPU_Visible || res->memoryType == MemoryType::GPU_CPU_Coherent))
         {
             vkUnmapMemory(m_device, res->memory);
             res->isMapped = false;
@@ -1384,7 +1498,10 @@ namespace render::rhi
     void VulkanDevice::flushMappedRange(BufferHandle handle, uint64_t offset, uint64_t size)
     {
         auto it = m_buffers.find(handle);
-        if (it == m_buffers.end()) return;
+        if (it == m_buffers.end())
+        {
+            return;
+        }
 
         VkMappedMemoryRange range{};
         range.sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE;
@@ -1400,8 +1517,7 @@ namespace render::rhi
         vkWaitForFences(m_device, 1, &m_inFlightFences[m_currentFrame], VK_TRUE, UINT64_MAX);
         vkResetFences(m_device, 1, &m_inFlightFences[m_currentFrame]);
 
-        vkAcquireNextImageKHR(m_device, m_swapchain, UINT64_MAX,
-            VK_NULL_HANDLE, VK_NULL_HANDLE, &m_currentImageIndex);
+        vkAcquireNextImageKHR(m_device, m_swapchain, UINT64_MAX, VK_NULL_HANDLE, VK_NULL_HANDLE, &m_currentImageIndex);
 
         m_commandBufferIndex = m_currentFrame;
 
@@ -1547,7 +1663,8 @@ namespace render::rhi
         vkCmdBindIndexBuffer(commandBuffer, it->second->buffer, offset, VK_INDEX_TYPE_UINT32);
     }
 
-    void VulkanDevice::bindUniformBuffer(uint32_t set, uint32_t binding, BufferHandle handle, uint64_t offset, uint64_t size)
+    void VulkanDevice::bindUniformBuffer(
+        uint32_t set, uint32_t binding, BufferHandle handle, uint64_t offset, uint64_t size)
     {
         auto it = m_buffers.find(handle);
         if (it == m_buffers.end())
@@ -1557,8 +1674,8 @@ namespace render::rhi
         }
 
         VkCommandBuffer commandBuffer = m_commandBuffers[m_commandBufferIndex];
-        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-            m_pipelineLayout, set, 1, &m_descriptorSets[set], 0, nullptr);
+        vkCmdBindDescriptorSets(
+            commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipelineLayout, set, 1, &m_descriptorSets[set], 0, nullptr);
 
         VkDescriptorBufferInfo bufferInfo{};
         bufferInfo.buffer = it->second->buffer;
@@ -1577,7 +1694,8 @@ namespace render::rhi
         vkUpdateDescriptorSets(m_device, 1, &descriptorWrite, 0, nullptr);
     }
 
-    void VulkanDevice::bindShaderStorageBuffer(uint32_t set, uint32_t binding, BufferHandle handle, uint64_t offset, uint64_t size)
+    void VulkanDevice::bindShaderStorageBuffer(
+        uint32_t set, uint32_t binding, BufferHandle handle, uint64_t offset, uint64_t size)
     {
         auto it = m_buffers.find(handle);
         if (it == m_buffers.end())
@@ -1587,8 +1705,8 @@ namespace render::rhi
         }
 
         VkCommandBuffer commandBuffer = m_commandBuffers[m_commandBufferIndex];
-        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-            m_pipelineLayout, set, 1, &m_descriptorSets[set], 0, nullptr);
+        vkCmdBindDescriptorSets(
+            commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipelineLayout, set, 1, &m_descriptorSets[set], 0, nullptr);
 
         VkDescriptorBufferInfo bufferInfo{};
         bufferInfo.buffer = it->second->buffer;
@@ -1617,8 +1735,8 @@ namespace render::rhi
         }
 
         VkCommandBuffer commandBuffer = m_commandBuffers[m_commandBufferIndex];
-        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-            m_pipelineLayout, set, 1, &m_descriptorSets[set], 0, nullptr);
+        vkCmdBindDescriptorSets(
+            commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipelineLayout, set, 1, &m_descriptorSets[set], 0, nullptr);
 
         VkDescriptorImageInfo imageInfo{};
         imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
@@ -1757,7 +1875,8 @@ namespace render::rhi
         vkCmdDraw(commandBuffer, vertexCount, instanceCount, firstVertex, firstInstance);
     }
 
-    void VulkanDevice::drawIndexed(uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, int32_t vertexOffset, uint32_t firstInstance)
+    void VulkanDevice::drawIndexed(
+        uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, int32_t vertexOffset, uint32_t firstInstance)
     {
         m_drawCallCount += instanceCount > 0 ? instanceCount : 1;
         VkCommandBuffer commandBuffer = m_commandBuffers[m_commandBufferIndex];
@@ -1778,7 +1897,8 @@ namespace render::rhi
         vkCmdDrawIndirect(commandBuffer, it->second->buffer, offset, drawCount, stride);
     }
 
-    void VulkanDevice::drawIndexedIndirect(BufferHandle indirectBuffer, uint64_t offset, uint32_t drawCount, uint32_t stride)
+    void VulkanDevice::drawIndexedIndirect(
+        BufferHandle indirectBuffer, uint64_t offset, uint32_t drawCount, uint32_t stride)
     {
         auto it = m_buffers.find(indirectBuffer);
         if (it == m_buffers.end())
@@ -1807,8 +1927,15 @@ namespace render::rhi
 
         VkCommandBuffer commandBuffer = m_commandBuffers[m_commandBufferIndex];
         vkCmdPipelineBarrier(commandBuffer,
-            VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-            0, 1, &memoryBarrierInfo, 0, nullptr, 0, nullptr);
+            VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+            VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+            0,
+            1,
+            &memoryBarrierInfo,
+            0,
+            nullptr,
+            0,
+            nullptr);
     }
 
     void VulkanDevice::setClearColor(float r, float g, float b, float a)
@@ -1839,7 +1966,10 @@ namespace render::rhi
 
     void VulkanDevice::resize(uint32_t width, uint32_t height)
     {
-        if (!m_initialized) return;
+        if (!m_initialized)
+        {
+            return;
+        }
 
         vkDeviceWaitIdle(m_device);
 
@@ -1876,4 +2006,4 @@ namespace render::rhi
     {
         return new VulkanDevice();
     }
-} // namespace render::rhi
+}  // namespace render::rhi

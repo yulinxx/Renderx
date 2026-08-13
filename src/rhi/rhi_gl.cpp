@@ -8,16 +8,19 @@
 #include <unordered_map>
 
 #ifdef _WIN32
-#include <GL/gl.h>
+    #include <GL/gl.h>
 #elif defined(__linux__)
-#include <GL/glx.h>
+    #include <GL/glx.h>
 #endif
 
 namespace render::rhi
 {
     GLDevice::~GLDevice()
     {
-        if (m_initialized) shutdown();
+        if (m_initialized)
+        {
+            shutdown();
+        }
     }
 
     bool GLDevice::initialize(void* nativeWindow, uint32_t width, uint32_t height)
@@ -56,7 +59,10 @@ namespace render::rhi
 
     void GLDevice::shutdown()
     {
-        if (!m_initialized) return;
+        if (!m_initialized)
+        {
+            return;
+        }
 
         auto* g = gl();
 
@@ -158,7 +164,8 @@ namespace render::rhi
                 // 注意：必须包含 GL_MAP_READ_BIT，否则后续 mapBuffer 用 GL_MAP_READ_BIT
                 // 读取该缓冲（如 GPU 剔除回读 count/visibility buffer）会失败返回 nullptr，
                 // 导致 GPU 剔除结果永远为 0，只能回退 CPU 四叉树。
-                GLbitfield flags = GL_DYNAMIC_STORAGE_BIT | GL_MAP_READ_BIT | GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT;
+                GLbitfield flags = GL_DYNAMIC_STORAGE_BIT | GL_MAP_READ_BIT | GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT |
+                    GL_MAP_COHERENT_BIT;
                 g->NamedBufferStorage(entry.glName, (GLsizeiptr)desc.size, nullptr, flags);
             }
             else
@@ -172,7 +179,8 @@ namespace render::rhi
             g->BindBuffer(GL_ARRAY_BUFFER, entry.glName);
             if (desc.memory == MemoryType::GPU_CPU_Coherent && g->BufferStorage)
             {
-                GLbitfield flags = GL_DYNAMIC_STORAGE_BIT | GL_MAP_READ_BIT | GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT;
+                GLbitfield flags = GL_DYNAMIC_STORAGE_BIT | GL_MAP_READ_BIT | GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT |
+                    GL_MAP_COHERENT_BIT;
                 g->BufferStorage(GL_ARRAY_BUFFER, (GLsizeiptr)desc.size, nullptr, flags);
             }
             else
@@ -187,9 +195,15 @@ namespace render::rhi
 
     void GLDevice::destroyBuffer(BufferHandle handle)
     {
-        if (handle == NullHandle) return;
+        if (handle == NullHandle)
+        {
+            return;
+        }
         auto idx = size_t(handle - 1);
-        if (idx >= m_buffers.size()) return;
+        if (idx >= m_buffers.size())
+        {
+            return;
+        }
 
         auto* g = gl();
         auto& entry = m_buffers[idx];
@@ -215,9 +229,7 @@ namespace render::rhi
         if (g->CreateTextures)
         {
             g->CreateTextures(GL_TEXTURE_2D, 1, &entry.glName);
-            g->TextureStorage2D(entry.glName, desc.mipLevels,
-                formatToGLInternal(desc.format),
-                desc.width, desc.height);
+            g->TextureStorage2D(entry.glName, desc.mipLevels, formatToGLInternal(desc.format), desc.width, desc.height);
             g->TextureParameteri(entry.glName, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
             g->TextureParameteri(entry.glName, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
             g->TextureParameteri(entry.glName, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -227,9 +239,14 @@ namespace render::rhi
         {
             g->GenTextures(1, &entry.glName);
             g->BindTexture(GL_TEXTURE_2D, entry.glName);
-            g->TexImage2D(GL_TEXTURE_2D, 0, formatToGLInternal(desc.format),
-                desc.width, desc.height, 0,
-                formatToGLFormat(desc.format), formatToGLType(desc.format),
+            g->TexImage2D(GL_TEXTURE_2D,
+                0,
+                formatToGLInternal(desc.format),
+                desc.width,
+                desc.height,
+                0,
+                formatToGLFormat(desc.format),
+                formatToGLType(desc.format),
                 nullptr);
             g->TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
             g->TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
@@ -243,9 +260,15 @@ namespace render::rhi
 
     void GLDevice::destroyTexture(TextureHandle handle)
     {
-        if (handle == NullHandle) return;
+        if (handle == NullHandle)
+        {
+            return;
+        }
         auto idx = size_t(handle - 1);
-        if (idx >= m_textures.size()) return;
+        if (idx >= m_textures.size())
+        {
+            return;
+        }
 
         auto* g = gl();
         auto& entry = m_textures[idx];
@@ -270,7 +293,9 @@ namespace render::rhi
 
             // compute shader 名称映射
             if (std::strcmp(csSource, "culling_comp") == 0)
+            {
                 csSource = shader::CULLING_COMP;
+            }
 
             uint32_t cs = compileShader(GL_COMPUTE_SHADER, csSource);
             if (!cs)
@@ -305,20 +330,20 @@ namespace render::rhi
             }
 
             entry.program = prog;
-            entry.topology = rhi::PrimitiveTopology::PointList; // compute pipeline 不使用
+            entry.topology = rhi::PrimitiveTopology::PointList;  // compute pipeline 不使用
             entry.depthTest = false;
             entry.depthWrite = false;
             entry.blendEnable = false;
 
             // 预注册 compute shader 的 uniform 位置
-            static const std::vector<std::string> computeUniforms = {
-                "uViewProjMatrix", "uEntityCount", "uModelMatrix"
-            };
+            static const std::vector<std::string> computeUniforms = { "uViewProjMatrix", "uEntityCount", "uModelMatrix" };
             for (const auto& name : computeUniforms)
             {
                 GLint loc = g->GetUniformLocation(prog, name.c_str());
                 if (loc >= 0)
+                {
                     entry.uniformLocations[name] = loc;
+                }
             }
 
             std::fprintf(stderr, "[RHI_GL] compute pipeline created: program=%u\n", prog);
@@ -329,44 +354,140 @@ namespace render::rhi
         const char* vsSource = desc.vertexShader;
         const char* fsSource = desc.fragmentShader;
 
-        if (strcmp(desc.vertexShader, "passthrough_vert") == 0) vsSource = shader::SCENE_2D_VERT;
-        else if (strcmp(desc.vertexShader, "passthrough_frag") == 0) vsSource = shader::SCENE_2D_FRAG;
-        else if (strcmp(desc.vertexShader, "overlay_vert") == 0) vsSource = shader::OVERLAY_VERT;
-        else if (strcmp(desc.vertexShader, "overlay_frag") == 0) vsSource = shader::OVERLAY_FRAG;
-        else if (strcmp(desc.vertexShader, "overlay_screen_vert") == 0) vsSource = shader::OVERLAY_SCREEN_VERT;
-        else if (strcmp(desc.vertexShader, "overlay_screen_frag") == 0) vsSource = shader::OVERLAY_SCREEN_FRAG;
-        else if (strcmp(desc.vertexShader, "mesh_3d_vert") == 0) vsSource = shader::MESH_3D_VERT;
-        else if (strcmp(desc.vertexShader, "mesh_3d_frag") == 0) vsSource = shader::MESH_3D_FRAG;
-        else if (strcmp(desc.vertexShader, "mesh_3d_instanced_vert") == 0) vsSource = shader::MESH_3D_INSTANCED_VERT;
-        else if (strcmp(desc.vertexShader, "text_sdf_vert") == 0) vsSource = shader::TEXT_SDF_VERT;
-        else if (strcmp(desc.vertexShader, "text_sdf_frag") == 0) vsSource = shader::TEXT_SDF_FRAG;
-        else if (strcmp(desc.vertexShader, "bitmap_vert") == 0) vsSource = shader::BITMAP_VERT;
-        else if (strcmp(desc.vertexShader, "bitmap_frag") == 0) vsSource = shader::BITMAP_FRAG;
-        else if (strcmp(desc.vertexShader, "highlight_3d_vert") == 0) vsSource = shader::HIGHLIGHT_3D_VERT;
-        else if (strcmp(desc.vertexShader, "highlight_3d_frag") == 0) vsSource = shader::HIGHLIGHT_3D_FRAG;
+        if (strcmp(desc.vertexShader, "passthrough_vert") == 0)
+        {
+            vsSource = shader::SCENE_2D_VERT;
+        }
+        else if (strcmp(desc.vertexShader, "passthrough_frag") == 0)
+        {
+            vsSource = shader::SCENE_2D_FRAG;
+        }
+        else if (strcmp(desc.vertexShader, "overlay_vert") == 0)
+        {
+            vsSource = shader::OVERLAY_VERT;
+        }
+        else if (strcmp(desc.vertexShader, "overlay_frag") == 0)
+        {
+            vsSource = shader::OVERLAY_FRAG;
+        }
+        else if (strcmp(desc.vertexShader, "overlay_screen_vert") == 0)
+        {
+            vsSource = shader::OVERLAY_SCREEN_VERT;
+        }
+        else if (strcmp(desc.vertexShader, "overlay_screen_frag") == 0)
+        {
+            vsSource = shader::OVERLAY_SCREEN_FRAG;
+        }
+        else if (strcmp(desc.vertexShader, "mesh_3d_vert") == 0)
+        {
+            vsSource = shader::MESH_3D_VERT;
+        }
+        else if (strcmp(desc.vertexShader, "mesh_3d_frag") == 0)
+        {
+            vsSource = shader::MESH_3D_FRAG;
+        }
+        else if (strcmp(desc.vertexShader, "mesh_3d_instanced_vert") == 0)
+        {
+            vsSource = shader::MESH_3D_INSTANCED_VERT;
+        }
+        else if (strcmp(desc.vertexShader, "text_sdf_vert") == 0)
+        {
+            vsSource = shader::TEXT_SDF_VERT;
+        }
+        else if (strcmp(desc.vertexShader, "text_sdf_frag") == 0)
+        {
+            vsSource = shader::TEXT_SDF_FRAG;
+        }
+        else if (strcmp(desc.vertexShader, "bitmap_vert") == 0)
+        {
+            vsSource = shader::BITMAP_VERT;
+        }
+        else if (strcmp(desc.vertexShader, "bitmap_frag") == 0)
+        {
+            vsSource = shader::BITMAP_FRAG;
+        }
+        else if (strcmp(desc.vertexShader, "highlight_3d_vert") == 0)
+        {
+            vsSource = shader::HIGHLIGHT_3D_VERT;
+        }
+        else if (strcmp(desc.vertexShader, "highlight_3d_frag") == 0)
+        {
+            vsSource = shader::HIGHLIGHT_3D_FRAG;
+        }
 
-        if (strcmp(desc.fragmentShader, "passthrough_vert") == 0) fsSource = shader::SCENE_2D_VERT;
-        else if (strcmp(desc.fragmentShader, "passthrough_frag") == 0) fsSource = shader::SCENE_2D_FRAG;
-        else if (strcmp(desc.fragmentShader, "overlay_vert") == 0) fsSource = shader::OVERLAY_VERT;
-        else if (strcmp(desc.fragmentShader, "overlay_frag") == 0) fsSource = shader::OVERLAY_FRAG;
-        else if (strcmp(desc.fragmentShader, "overlay_screen_vert") == 0) fsSource = shader::OVERLAY_SCREEN_VERT;
-        else if (strcmp(desc.fragmentShader, "overlay_screen_frag") == 0) fsSource = shader::OVERLAY_SCREEN_FRAG;
-        else if (strcmp(desc.fragmentShader, "mesh_3d_vert") == 0) fsSource = shader::MESH_3D_VERT;
-        else if (strcmp(desc.fragmentShader, "mesh_3d_frag") == 0) fsSource = shader::MESH_3D_FRAG;
-        else if (strcmp(desc.fragmentShader, "mesh_3d_instanced_vert") == 0) fsSource = shader::MESH_3D_INSTANCED_VERT;
-        else if (strcmp(desc.fragmentShader, "text_sdf_vert") == 0) fsSource = shader::TEXT_SDF_VERT;
-        else if (strcmp(desc.fragmentShader, "text_sdf_frag") == 0) fsSource = shader::TEXT_SDF_FRAG;
-        else if (strcmp(desc.fragmentShader, "bitmap_vert") == 0) fsSource = shader::BITMAP_VERT;
-        else if (strcmp(desc.fragmentShader, "bitmap_frag") == 0) fsSource = shader::BITMAP_FRAG;
-        else if (strcmp(desc.fragmentShader, "highlight_3d_vert") == 0) fsSource = shader::HIGHLIGHT_3D_VERT;
-        else if (strcmp(desc.fragmentShader, "highlight_3d_frag") == 0) fsSource = shader::HIGHLIGHT_3D_FRAG;
+        if (strcmp(desc.fragmentShader, "passthrough_vert") == 0)
+        {
+            fsSource = shader::SCENE_2D_VERT;
+        }
+        else if (strcmp(desc.fragmentShader, "passthrough_frag") == 0)
+        {
+            fsSource = shader::SCENE_2D_FRAG;
+        }
+        else if (strcmp(desc.fragmentShader, "overlay_vert") == 0)
+        {
+            fsSource = shader::OVERLAY_VERT;
+        }
+        else if (strcmp(desc.fragmentShader, "overlay_frag") == 0)
+        {
+            fsSource = shader::OVERLAY_FRAG;
+        }
+        else if (strcmp(desc.fragmentShader, "overlay_screen_vert") == 0)
+        {
+            fsSource = shader::OVERLAY_SCREEN_VERT;
+        }
+        else if (strcmp(desc.fragmentShader, "overlay_screen_frag") == 0)
+        {
+            fsSource = shader::OVERLAY_SCREEN_FRAG;
+        }
+        else if (strcmp(desc.fragmentShader, "mesh_3d_vert") == 0)
+        {
+            fsSource = shader::MESH_3D_VERT;
+        }
+        else if (strcmp(desc.fragmentShader, "mesh_3d_frag") == 0)
+        {
+            fsSource = shader::MESH_3D_FRAG;
+        }
+        else if (strcmp(desc.fragmentShader, "mesh_3d_instanced_vert") == 0)
+        {
+            fsSource = shader::MESH_3D_INSTANCED_VERT;
+        }
+        else if (strcmp(desc.fragmentShader, "text_sdf_vert") == 0)
+        {
+            fsSource = shader::TEXT_SDF_VERT;
+        }
+        else if (strcmp(desc.fragmentShader, "text_sdf_frag") == 0)
+        {
+            fsSource = shader::TEXT_SDF_FRAG;
+        }
+        else if (strcmp(desc.fragmentShader, "bitmap_vert") == 0)
+        {
+            fsSource = shader::BITMAP_VERT;
+        }
+        else if (strcmp(desc.fragmentShader, "bitmap_frag") == 0)
+        {
+            fsSource = shader::BITMAP_FRAG;
+        }
+        else if (strcmp(desc.fragmentShader, "highlight_3d_vert") == 0)
+        {
+            fsSource = shader::HIGHLIGHT_3D_VERT;
+        }
+        else if (strcmp(desc.fragmentShader, "highlight_3d_frag") == 0)
+        {
+            fsSource = shader::HIGHLIGHT_3D_FRAG;
+        }
 
         uint32_t vs = compileShader(GL_VERTEX_SHADER, vsSource);
         uint32_t fs = compileShader(GL_FRAGMENT_SHADER, fsSource);
         if (!vs || !fs)
         {
-            if (vs) g->DeleteShader(vs);
-            if (fs) g->DeleteShader(fs);
+            if (vs)
+            {
+                g->DeleteShader(vs);
+            }
+            if (fs)
+            {
+                g->DeleteShader(fs);
+            }
             entry = GLPipelineEntry{};
             m_pipelineFreeList.push_back(uint32_t(handle - 1));
             return NullHandle;
@@ -393,12 +514,18 @@ namespace render::rhi
         entry.dstBlend = desc.dstBlend;
         entry.depthFunc = desc.depthFunc;
 
-        static const std::vector<std::string> commonUniforms = {
-            "uViewMatrix", "uProjMatrix", "uModelMatrix",
-            "uViewportSize", "uFontAtlas", "uTexture",
-            "uLightDir", "uAmbientColor", "uDiffuseColor",
-            "uSpecularColor", "uShininess", "uHighlightColor"
-        };
+        static const std::vector<std::string> commonUniforms = { "uViewMatrix",
+            "uProjMatrix",
+            "uModelMatrix",
+            "uViewportSize",
+            "uFontAtlas",
+            "uTexture",
+            "uLightDir",
+            "uAmbientColor",
+            "uDiffuseColor",
+            "uSpecularColor",
+            "uShininess",
+            "uHighlightColor" };
         for (const auto& name : commonUniforms)
         {
             GLint loc = g->GetUniformLocation(prog, name.c_str());
@@ -413,9 +540,15 @@ namespace render::rhi
 
     void GLDevice::destroyPipeline(PipelineHandle handle)
     {
-        if (handle == NullHandle) return;
+        if (handle == NullHandle)
+        {
+            return;
+        }
         auto idx = size_t(handle - 1);
-        if (idx >= m_pipelines.size()) return;
+        if (idx >= m_pipelines.size())
+        {
+            return;
+        }
 
         auto* g = gl();
         auto& entry = m_pipelines[idx];
@@ -429,9 +562,15 @@ namespace render::rhi
 
     void GLDevice::uploadBuffer(BufferHandle handle, uint64_t offset, uint64_t size, const void* data)
     {
-        if (handle == NullHandle || !data) return;
+        if (handle == NullHandle || !data)
+        {
+            return;
+        }
         auto& entry = m_buffers[size_t(handle - 1)];
-        if (!entry.glName) return;
+        if (!entry.glName)
+        {
+            return;
+        }
 
         auto* g = gl();
         if (g->NamedBufferSubData)
@@ -449,46 +588,99 @@ namespace render::rhi
 
     void GLDevice::uploadTexture(TextureHandle handle, uint32_t mip, const void* data, uint32_t rowPitch)
     {
-        if (handle == NullHandle || !data) return;
+        if (handle == NullHandle || !data)
+        {
+            return;
+        }
         auto& entry = m_textures[size_t(handle - 1)];
-        if (!entry.glName) return;
+        if (!entry.glName)
+        {
+            return;
+        }
 
         auto* g = gl();
         uint32_t fmt = formatToGLFormat(entry.format);
         uint32_t type = formatToGLType(entry.format);
 
-        if (rowPitch == 0) rowPitch = entry.width * getFormatBytesPerPixel(entry.format);
+        if (rowPitch == 0)
+        {
+            rowPitch = entry.width * getFormatBytesPerPixel(entry.format);
+        }
 
         if (g->TextureSubImage2D)
         {
-            g->TextureSubImage2D(entry.glName, (GLint)mip, 0, 0,
-                entry.width, entry.height, fmt, type, (const void*)((const char*)data + rowPitch * mip));
+            g->TextureSubImage2D(entry.glName,
+                (GLint)mip,
+                0,
+                0,
+                entry.width,
+                entry.height,
+                fmt,
+                type,
+                (const void*)((const char*)data + rowPitch * mip));
         }
         else
         {
             g->BindTexture(GL_TEXTURE_2D, entry.glName);
-            g->TexSubImage2D(GL_TEXTURE_2D, (GLint)mip, 0, 0,
-                entry.width, entry.height, fmt, type, (const void*)((const char*)data + rowPitch * mip));
+            g->TexSubImage2D(GL_TEXTURE_2D,
+                (GLint)mip,
+                0,
+                0,
+                entry.width,
+                entry.height,
+                fmt,
+                type,
+                (const void*)((const char*)data + rowPitch * mip));
             g->BindTexture(GL_TEXTURE_2D, 0);
         }
     }
 
     void* GLDevice::mapBuffer(BufferHandle handle, uint64_t offset, uint64_t size, uint32_t mapFlags)
     {
-        if (handle == NullHandle) return nullptr;
+        if (handle == NullHandle)
+        {
+            return nullptr;
+        }
         auto& entry = m_buffers[size_t(handle - 1)];
-        if (!entry.glName) return nullptr;
+        if (!entry.glName)
+        {
+            return nullptr;
+        }
 
         auto* g = gl();
         GLbitfield glFlags = 0;
-        if (mapFlags & GL_MAP_READ_BIT)   glFlags |= GL_MAP_READ_BIT;
-        if (mapFlags & GL_MAP_WRITE_BIT)  glFlags |= GL_MAP_WRITE_BIT;
-        if (mapFlags & GL_MAP_INVALIDATE_RANGE_BIT)   glFlags |= GL_MAP_INVALIDATE_RANGE_BIT;
-        if (mapFlags & GL_MAP_INVALIDATE_BUFFER_BIT)  glFlags |= GL_MAP_INVALIDATE_BUFFER_BIT;
-        if (mapFlags & GL_MAP_FLUSH_EXPLICIT_BIT)     glFlags |= GL_MAP_FLUSH_EXPLICIT_BIT;
-        if (mapFlags & GL_MAP_UNSYNCHRONIZED_BIT)     glFlags |= GL_MAP_UNSYNCHRONIZED_BIT;
-        if (mapFlags & GL_MAP_PERSISTENT_BIT)         glFlags |= GL_MAP_PERSISTENT_BIT;
-        if (mapFlags & GL_MAP_COHERENT_BIT)           glFlags |= GL_MAP_COHERENT_BIT;
+        if (mapFlags & GL_MAP_READ_BIT)
+        {
+            glFlags |= GL_MAP_READ_BIT;
+        }
+        if (mapFlags & GL_MAP_WRITE_BIT)
+        {
+            glFlags |= GL_MAP_WRITE_BIT;
+        }
+        if (mapFlags & GL_MAP_INVALIDATE_RANGE_BIT)
+        {
+            glFlags |= GL_MAP_INVALIDATE_RANGE_BIT;
+        }
+        if (mapFlags & GL_MAP_INVALIDATE_BUFFER_BIT)
+        {
+            glFlags |= GL_MAP_INVALIDATE_BUFFER_BIT;
+        }
+        if (mapFlags & GL_MAP_FLUSH_EXPLICIT_BIT)
+        {
+            glFlags |= GL_MAP_FLUSH_EXPLICIT_BIT;
+        }
+        if (mapFlags & GL_MAP_UNSYNCHRONIZED_BIT)
+        {
+            glFlags |= GL_MAP_UNSYNCHRONIZED_BIT;
+        }
+        if (mapFlags & GL_MAP_PERSISTENT_BIT)
+        {
+            glFlags |= GL_MAP_PERSISTENT_BIT;
+        }
+        if (mapFlags & GL_MAP_COHERENT_BIT)
+        {
+            glFlags |= GL_MAP_COHERENT_BIT;
+        }
 
         void* ptr = nullptr;
         if (g->MapNamedBufferRange)
@@ -508,9 +700,15 @@ namespace render::rhi
 
     void GLDevice::unmapBuffer(BufferHandle handle)
     {
-        if (handle == NullHandle) return;
+        if (handle == NullHandle)
+        {
+            return;
+        }
         auto& entry = m_buffers[size_t(handle - 1)];
-        if (!entry.glName || !entry.mappedPtr) return;
+        if (!entry.glName || !entry.mappedPtr)
+        {
+            return;
+        }
 
         auto* g = gl();
         if (g->UnmapNamedBuffer)
@@ -528,9 +726,15 @@ namespace render::rhi
 
     void GLDevice::flushMappedRange(BufferHandle handle, uint64_t offset, uint64_t size)
     {
-        if (handle == NullHandle) return;
+        if (handle == NullHandle)
+        {
+            return;
+        }
         auto& entry = m_buffers[size_t(handle - 1)];
-        if (!entry.glName || !entry.mappedPtr) return;
+        if (!entry.glName || !entry.mappedPtr)
+        {
+            return;
+        }
 
         auto* g = gl();
         if (g->FlushMappedNamedBufferRange)
@@ -571,15 +775,19 @@ namespace render::rhi
         g->Flush();
     }
 
-    void GLDevice::present()
-    {
-    }
+    void GLDevice::present() {}
 
     void GLDevice::bindPipeline(PipelineHandle handle)
     {
-        if (handle == NullHandle) return;
+        if (handle == NullHandle)
+        {
+            return;
+        }
         auto& entry = m_pipelines[size_t(handle - 1)];
-        if (!entry.program) return;
+        if (!entry.program)
+        {
+            return;
+        }
 
         auto* g = gl();
         g->UseProgram(entry.program);
@@ -592,12 +800,24 @@ namespace render::rhi
             uint32_t depthFuncGL = GL_LESS;
             switch (entry.depthFunc)
             {
-                case CompareFunc::Never:     depthFuncGL = 0x0200; break;
-                case CompareFunc::Less:      depthFuncGL = GL_LESS; break;
-                case CompareFunc::Equal:     depthFuncGL = 0x0202; break;
-                case CompareFunc::LessEqual: depthFuncGL = GL_LEQUAL; break;
-                case CompareFunc::Greater:   depthFuncGL = 0x0204; break;
-                case CompareFunc::Always:    depthFuncGL = 0x0207; break;
+            case CompareFunc::Never:
+                depthFuncGL = 0x0200;
+                break;
+            case CompareFunc::Less:
+                depthFuncGL = GL_LESS;
+                break;
+            case CompareFunc::Equal:
+                depthFuncGL = 0x0202;
+                break;
+            case CompareFunc::LessEqual:
+                depthFuncGL = GL_LEQUAL;
+                break;
+            case CompareFunc::Greater:
+                depthFuncGL = 0x0204;
+                break;
+            case CompareFunc::Always:
+                depthFuncGL = 0x0207;
+                break;
             }
             g->DepthFunc(depthFuncGL);
         }
@@ -616,13 +836,17 @@ namespace render::rhi
             auto toGLBlend = [](BlendFactor f) -> uint32_t {
                 switch (f)
                 {
-                    case BlendFactor::Zero:           return 0x0000;
-                    case BlendFactor::One:            return 0x0001;
-                    case BlendFactor::SrcAlpha:       return GL_SRC_ALPHA;
-                    case BlendFactor::OneMinusSrcAlpha: return GL_ONE_MINUS_SRC_ALPHA;
+                case BlendFactor::Zero:
+                    return 0x0000;
+                case BlendFactor::One:
+                    return 0x0001;
+                case BlendFactor::SrcAlpha:
+                    return GL_SRC_ALPHA;
+                case BlendFactor::OneMinusSrcAlpha:
+                    return GL_ONE_MINUS_SRC_ALPHA;
                 }
                 return 0x0000;
-                };
+            };
             g->BlendFunc(toGLBlend(entry.srcBlend), toGLBlend(entry.dstBlend));
         }
         else
@@ -634,9 +858,15 @@ namespace render::rhi
 
     void GLDevice::bindVertexBuffer(uint32_t slot, BufferHandle handle, uint64_t offset)
     {
-        if (handle == NullHandle || slot >= 4) return;
+        if (handle == NullHandle || slot >= 4)
+        {
+            return;
+        }
         auto& entry = m_buffers[size_t(handle - 1)];
-        if (!entry.glName) return;
+        if (!entry.glName)
+        {
+            return;
+        }
 
         auto* g = gl();
         // 根据当前管线的顶点格式计算跨度，避免 stride=0 被误算为单个属性大小
@@ -668,9 +898,15 @@ namespace render::rhi
 
     void GLDevice::bindIndexBuffer(BufferHandle handle, uint64_t offset)
     {
-        if (handle == NullHandle) return;
+        if (handle == NullHandle)
+        {
+            return;
+        }
         auto& entry = m_buffers[size_t(handle - 1)];
-        if (!entry.glName) return;
+        if (!entry.glName)
+        {
+            return;
+        }
 
         auto* g = gl();
         if (g->VertexArrayElementBuffer)
@@ -686,22 +922,39 @@ namespace render::rhi
         m_currentIBOOffset = offset;
     }
 
-    void GLDevice::bindUniformBuffer(uint32_t /*set*/, uint32_t binding, BufferHandle handle, uint64_t offset, uint64_t size)
+    void GLDevice::bindUniformBuffer(
+        uint32_t /*set*/, uint32_t binding, BufferHandle handle, uint64_t offset, uint64_t size)
     {
-        if (handle == NullHandle) return;
+        if (handle == NullHandle)
+        {
+            return;
+        }
         auto& entry = m_buffers[size_t(handle - 1)];
-        if (!entry.glName) return;
+        if (!entry.glName)
+        {
+            return;
+        }
 
         auto* g = gl();
         g->BindBufferRange(GL_UNIFORM_BUFFER, binding, entry.glName, (GLintptr)offset, (GLsizeiptr)size);
     }
 
-    void GLDevice::bindShaderStorageBuffer(uint32_t /*set*/, uint32_t binding, BufferHandle handle, uint64_t offset, uint64_t size)
+    void GLDevice::bindShaderStorageBuffer(
+        uint32_t /*set*/, uint32_t binding, BufferHandle handle, uint64_t offset, uint64_t size)
     {
-        if (!m_initialized) return;
-        if (handle == NullHandle) return;
+        if (!m_initialized)
+        {
+            return;
+        }
+        if (handle == NullHandle)
+        {
+            return;
+        }
         auto& entry = m_buffers[size_t(handle - 1)];
-        if (!entry.glName) return;
+        if (!entry.glName)
+        {
+            return;
+        }
 
         auto* g = gl();
         g->BindBufferRange(GL_SHADER_STORAGE_BUFFER, binding, entry.glName, (GLintptr)offset, (GLsizeiptr)size);
@@ -709,9 +962,15 @@ namespace render::rhi
 
     void GLDevice::bindTexture(uint32_t /*set*/, uint32_t binding, TextureHandle handle)
     {
-        if (handle == NullHandle) return;
+        if (handle == NullHandle)
+        {
+            return;
+        }
         auto& entry = m_textures[size_t(handle - 1)];
-        if (!entry.glName) return;
+        if (!entry.glName)
+        {
+            return;
+        }
 
         auto* g = gl();
         if (g->BindTextureUnit)
@@ -744,7 +1003,11 @@ namespace render::rhi
         }
     }
 
-    void GLDevice::drawIndexed(uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, int32_t /*vertexOffset*/, uint32_t /*firstInstance*/)
+    void GLDevice::drawIndexed(uint32_t indexCount,
+        uint32_t instanceCount,
+        uint32_t firstIndex,
+        int32_t /*vertexOffset*/,
+        uint32_t /*firstInstance*/)
     {
         auto* g = gl();
         uint32_t topo = GL_TRIANGLES;
@@ -757,8 +1020,8 @@ namespace render::rhi
 
         if (instanceCount > 1)
         {
-            g->DrawElementsInstanced(topo, (GLsizei)indexCount, GL_UNSIGNED_INT,
-                (const void*)indices, (GLsizei)instanceCount);
+            g->DrawElementsInstanced(
+                topo, (GLsizei)indexCount, GL_UNSIGNED_INT, (const void*)indices, (GLsizei)instanceCount);
         }
         else
         {
@@ -768,9 +1031,15 @@ namespace render::rhi
 
     void GLDevice::drawIndirect(BufferHandle indirectBuffer, uint64_t offset, uint32_t drawCount, uint32_t stride)
     {
-        if (indirectBuffer == NullHandle) return;
+        if (indirectBuffer == NullHandle)
+        {
+            return;
+        }
         auto& entry = m_buffers[size_t(indirectBuffer - 1)];
-        if (!entry.glName) return;
+        if (!entry.glName)
+        {
+            return;
+        }
 
         auto* g = gl();
         uint32_t topo = GL_TRIANGLES;
@@ -805,9 +1074,15 @@ namespace render::rhi
 
     void GLDevice::drawIndexedIndirect(BufferHandle indirectBuffer, uint64_t offset, uint32_t drawCount, uint32_t stride)
     {
-        if (indirectBuffer == NullHandle) return;
+        if (indirectBuffer == NullHandle)
+        {
+            return;
+        }
         auto& entry = m_buffers[size_t(indirectBuffer - 1)];
-        if (!entry.glName) return;
+        if (!entry.glName)
+        {
+            return;
+        }
 
         auto* g = gl();
         uint32_t topo = GL_TRIANGLES;
@@ -823,7 +1098,8 @@ namespace render::rhi
         }
         else if (g->MultiDrawElementsIndirect)
         {
-            g->MultiDrawElementsIndirect(topo, GL_UNSIGNED_INT, (const void*)(uintptr_t)offset, (GLsizei)drawCount, (GLsizei)stride);
+            g->MultiDrawElementsIndirect(
+                topo, GL_UNSIGNED_INT, (const void*)(uintptr_t)offset, (GLsizei)drawCount, (GLsizei)stride);
         }
         else
         {
@@ -892,10 +1168,19 @@ namespace render::rhi
 
     void GLDevice::setUniformMatrix3(const char* name, const float* data)
     {
-        if (!name || !data) return;
-        if (m_currentPipeline == NullHandle) return;
+        if (!name || !data)
+        {
+            return;
+        }
+        if (m_currentPipeline == NullHandle)
+        {
+            return;
+        }
         auto& entry = m_pipelines[size_t(m_currentPipeline - 1)];
-        if (!entry.program) return;
+        if (!entry.program)
+        {
+            return;
+        }
 
         auto* g = gl();
         auto it = entry.uniformLocations.find(name);
@@ -908,10 +1193,19 @@ namespace render::rhi
 
     void GLDevice::setUniformMatrix4(const char* name, const float* data)
     {
-        if (!name || !data) return;
-        if (m_currentPipeline == NullHandle) return;
+        if (!name || !data)
+        {
+            return;
+        }
+        if (m_currentPipeline == NullHandle)
+        {
+            return;
+        }
         auto& entry = m_pipelines[size_t(m_currentPipeline - 1)];
-        if (!entry.program) return;
+        if (!entry.program)
+        {
+            return;
+        }
 
         auto* g = gl();
         auto it = entry.uniformLocations.find(name);
@@ -924,10 +1218,19 @@ namespace render::rhi
 
     void GLDevice::setUniformFloat(const char* name, float value)
     {
-        if (!name) return;
-        if (m_currentPipeline == NullHandle) return;
+        if (!name)
+        {
+            return;
+        }
+        if (m_currentPipeline == NullHandle)
+        {
+            return;
+        }
         auto& entry = m_pipelines[size_t(m_currentPipeline - 1)];
-        if (!entry.program) return;
+        if (!entry.program)
+        {
+            return;
+        }
 
         auto* g = gl();
         auto it = entry.uniformLocations.find(name);
@@ -940,10 +1243,19 @@ namespace render::rhi
 
     void GLDevice::setUniformInt(const char* name, int32_t value)
     {
-        if (!name) return;
-        if (m_currentPipeline == NullHandle) return;
+        if (!name)
+        {
+            return;
+        }
+        if (m_currentPipeline == NullHandle)
+        {
+            return;
+        }
         auto& entry = m_pipelines[size_t(m_currentPipeline - 1)];
-        if (!entry.program) return;
+        if (!entry.program)
+        {
+            return;
+        }
 
         auto* g = gl();
         auto it = entry.uniformLocations.find(name);
@@ -956,10 +1268,19 @@ namespace render::rhi
 
     void GLDevice::setUniformVec2(const char* name, const float* data)
     {
-        if (!name || !data) return;
-        if (m_currentPipeline == NullHandle) return;
+        if (!name || !data)
+        {
+            return;
+        }
+        if (m_currentPipeline == NullHandle)
+        {
+            return;
+        }
         auto& entry = m_pipelines[size_t(m_currentPipeline - 1)];
-        if (!entry.program) return;
+        if (!entry.program)
+        {
+            return;
+        }
 
         auto* g = gl();
         auto it = entry.uniformLocations.find(name);
@@ -972,10 +1293,19 @@ namespace render::rhi
 
     void GLDevice::setUniformVec3(const char* name, const float* data)
     {
-        if (!name || !data) return;
-        if (m_currentPipeline == NullHandle) return;
+        if (!name || !data)
+        {
+            return;
+        }
+        if (m_currentPipeline == NullHandle)
+        {
+            return;
+        }
         auto& entry = m_pipelines[size_t(m_currentPipeline - 1)];
-        if (!entry.program) return;
+        if (!entry.program)
+        {
+            return;
+        }
 
         auto* g = gl();
         auto it = entry.uniformLocations.find(name);
@@ -988,10 +1318,19 @@ namespace render::rhi
 
     void GLDevice::setUniformVec4(const char* name, const float* data)
     {
-        if (!name || !data) return;
-        if (m_currentPipeline == NullHandle) return;
+        if (!name || !data)
+        {
+            return;
+        }
+        if (m_currentPipeline == NullHandle)
+        {
+            return;
+        }
         auto& entry = m_pipelines[size_t(m_currentPipeline - 1)];
-        if (!entry.program) return;
+        if (!entry.program)
+        {
+            return;
+        }
 
         auto* g = gl();
         auto it = entry.uniformLocations.find(name);
@@ -1014,8 +1353,14 @@ namespace render::rhi
     {
         auto* g = gl();
         GLbitfield mask = 0;
-        if (flags & GL_COLOR_BUFFER_BIT) mask |= GL_COLOR_BUFFER_BIT;
-        if (flags & GL_DEPTH_BUFFER_BIT) mask |= GL_DEPTH_BUFFER_BIT;
+        if (flags & GL_COLOR_BUFFER_BIT)
+        {
+            mask |= GL_COLOR_BUFFER_BIT;
+        }
+        if (flags & GL_DEPTH_BUFFER_BIT)
+        {
+            mask |= GL_DEPTH_BUFFER_BIT;
+        }
         g->ClearColor(m_clearColor[0], m_clearColor[1], m_clearColor[2], m_clearColor[3]);
         g->Clear(mask);
     }
@@ -1068,13 +1413,27 @@ namespace render::rhi
             uint64_t bpp = 4;
             switch (entry.format)
             {
-                case Format::RGBA8:   bpp = 4; break;
-                case Format::RGBA32F: bpp = 16; break;
-                case Format::RG32F:   bpp = 8; break;
-                case Format::R32F:    bpp = 4; break;
-                case Format::D32F:    bpp = 4; break;
-                case Format::D24S8:   bpp = 4; break;
-                case Format::R8:      bpp = 1; break;
+            case Format::RGBA8:
+                bpp = 4;
+                break;
+            case Format::RGBA32F:
+                bpp = 16;
+                break;
+            case Format::RG32F:
+                bpp = 8;
+                break;
+            case Format::R32F:
+                bpp = 4;
+                break;
+            case Format::D32F:
+                bpp = 4;
+                break;
+            case Format::D24S8:
+                bpp = 4;
+                break;
+            case Format::R8:
+                bpp = 1;
+                break;
             }
             total += entry.width * entry.height * bpp * entry.mipLevels;
         }
@@ -1090,16 +1449,22 @@ namespace render::rhi
     {
         switch (stage)
         {
-            case ShaderStage::Vertex:   return GL_VERTEX_SHADER;
-            case ShaderStage::Fragment: return GL_FRAGMENT_SHADER;
-            case ShaderStage::Compute:  return GL_COMPUTE_SHADER;
+        case ShaderStage::Vertex:
+            return GL_VERTEX_SHADER;
+        case ShaderStage::Fragment:
+            return GL_FRAGMENT_SHADER;
+        case ShaderStage::Compute:
+            return GL_COMPUTE_SHADER;
         }
         return GL_VERTEX_SHADER;
     }
 
     uint32_t GLDevice::compileShader(uint32_t type, const char* source)
     {
-        if (!source || source[0] == '\0') return 0;
+        if (!source || source[0] == '\0')
+        {
+            return 0;
+        }
 
         auto* g = gl();
         uint32_t shader = g->CreateShader(type);
@@ -1125,9 +1490,13 @@ namespace render::rhi
         return shader;
     }
 
-    uint32_t GLDevice::compileShaderSPIRV(ShaderStage stage, const uint32_t* spirvWords, uint32_t wordCount, const char* entryPoint)
+    uint32_t GLDevice::compileShaderSPIRV(
+        ShaderStage stage, const uint32_t* spirvWords, uint32_t wordCount, const char* entryPoint)
     {
-        if (!spirvWords || wordCount == 0) return 0;
+        if (!spirvWords || wordCount == 0)
+        {
+            return 0;
+        }
 
         auto* g = gl();
         if (!g->ShaderBinary || !g->SpecializeShader)
@@ -1170,7 +1539,10 @@ namespace render::rhi
 
     uint32_t GLDevice::createComputeProgram(const ShaderModuleDesc* modules, uint32_t count)
     {
-        if (!modules || count == 0) return 0;
+        if (!modules || count == 0)
+        {
+            return 0;
+        }
 
         const ShaderModuleDesc* csModule = nullptr;
         for (uint32_t i = 0; i < count; ++i)
@@ -1190,14 +1562,18 @@ namespace render::rhi
         uint32_t cs = 0;
         if (csModule->spirvWords && csModule->spirvWordCount > 0)
         {
-            cs = compileShaderSPIRV(ShaderStage::Compute, csModule->spirvWords, csModule->spirvWordCount, csModule->entryPoint);
+            cs = compileShaderSPIRV(
+                ShaderStage::Compute, csModule->spirvWords, csModule->spirvWordCount, csModule->entryPoint);
         }
         else if (csModule->source)
         {
             cs = compileShader(GL_COMPUTE_SHADER, csModule->source);
         }
 
-        if (!cs) return 0;
+        if (!cs)
+        {
+            return 0;
+        }
 
         auto* g = gl();
         uint32_t prog = g->CreateProgram();
@@ -1255,13 +1631,20 @@ namespace render::rhi
     {
         switch (topo)
         {
-            case PrimitiveTopology::PointList:     return GL_POINTS;
-            case PrimitiveTopology::LineList:      return GL_LINES;
-            case PrimitiveTopology::LineStrip:     return GL_LINE_STRIP;
-            case PrimitiveTopology::LineLoop:      return GL_LINE_LOOP;
-            case PrimitiveTopology::TriangleList:  return GL_TRIANGLES;
-            case PrimitiveTopology::TriangleStrip: return GL_TRIANGLE_STRIP;
-            case PrimitiveTopology::TriangleFan:   return GL_TRIANGLE_FAN;
+        case PrimitiveTopology::PointList:
+            return GL_POINTS;
+        case PrimitiveTopology::LineList:
+            return GL_LINES;
+        case PrimitiveTopology::LineStrip:
+            return GL_LINE_STRIP;
+        case PrimitiveTopology::LineLoop:
+            return GL_LINE_LOOP;
+        case PrimitiveTopology::TriangleList:
+            return GL_TRIANGLES;
+        case PrimitiveTopology::TriangleStrip:
+            return GL_TRIANGLE_STRIP;
+        case PrimitiveTopology::TriangleFan:
+            return GL_TRIANGLE_FAN;
         }
         return GL_TRIANGLES;
     }
@@ -1270,13 +1653,20 @@ namespace render::rhi
     {
         switch (fmt)
         {
-            case Format::RGBA8:   return GL_RGBA8;
-            case Format::RGBA32F: return 0x8814;
-            case Format::RG32F:   return 0x8230;
-            case Format::R32F:    return 0x822E;
-            case Format::D32F:    return 0x8CAC;
-            case Format::D24S8:   return 0x88F0;
-            case Format::R8:      return 0x8229;
+        case Format::RGBA8:
+            return GL_RGBA8;
+        case Format::RGBA32F:
+            return 0x8814;
+        case Format::RG32F:
+            return 0x8230;
+        case Format::R32F:
+            return 0x822E;
+        case Format::D32F:
+            return 0x8CAC;
+        case Format::D24S8:
+            return 0x88F0;
+        case Format::R8:
+            return 0x8229;
         }
         return GL_RGBA8;
     }
@@ -1285,13 +1675,19 @@ namespace render::rhi
     {
         switch (fmt)
         {
-            case Format::RGBA8:
-            case Format::RGBA32F: return GL_RGBA;
-            case Format::RG32F:   return 0x8227;
-            case Format::R32F:    return 0x1903;
-            case Format::D32F:    return 0x1902;
-            case Format::D24S8:   return 0x84F9;
-            case Format::R8:      return 0x1903;
+        case Format::RGBA8:
+        case Format::RGBA32F:
+            return GL_RGBA;
+        case Format::RG32F:
+            return 0x8227;
+        case Format::R32F:
+            return 0x1903;
+        case Format::D32F:
+            return 0x1902;
+        case Format::D24S8:
+            return 0x84F9;
+        case Format::R8:
+            return 0x1903;
         }
         return GL_RGBA;
     }
@@ -1300,13 +1696,17 @@ namespace render::rhi
     {
         switch (fmt)
         {
-            case Format::RGBA8:   return GL_UNSIGNED_BYTE;
-            case Format::RGBA32F:
-            case Format::RG32F:
-            case Format::R32F:
-            case Format::D32F:    return GL_FLOAT;
-            case Format::D24S8:   return 0x84FA;
-            case Format::R8:      return GL_UNSIGNED_BYTE;
+        case Format::RGBA8:
+            return GL_UNSIGNED_BYTE;
+        case Format::RGBA32F:
+        case Format::RG32F:
+        case Format::R32F:
+        case Format::D32F:
+            return GL_FLOAT;
+        case Format::D24S8:
+            return 0x84FA;
+        case Format::R8:
+            return GL_UNSIGNED_BYTE;
         }
         return GL_UNSIGNED_BYTE;
     }
@@ -1315,13 +1715,20 @@ namespace render::rhi
     {
         switch (fmt)
         {
-            case Format::RGBA8:   return 4;
-            case Format::RGBA32F: return 16;
-            case Format::RG32F:   return 8;
-            case Format::R32F:    return 4;
-            case Format::D32F:    return 4;
-            case Format::D24S8:   return 4;
-            case Format::R8:      return 1;
+        case Format::RGBA8:
+            return 4;
+        case Format::RGBA32F:
+            return 16;
+        case Format::RG32F:
+            return 8;
+        case Format::R32F:
+            return 4;
+        case Format::D32F:
+            return 4;
+        case Format::D24S8:
+            return 4;
+        case Format::R8:
+            return 1;
         }
         return 4;
     }
@@ -1330,12 +1737,18 @@ namespace render::rhi
     {
         switch (fmt)
         {
-            case VertexFormat::P3C3:   return 6 * sizeof(float); // pos(3) + col(3) = 24
-            case VertexFormat::P3C4:   return 7 * sizeof(float); // pos(3) + col(4) = 28
-            case VertexFormat::P3N3:   return 6 * sizeof(float); // pos(3) + nor(3) = 24
-            case VertexFormat::P3T2:   return 5 * sizeof(float); // pos(3) + uv(2) = 20
-            case VertexFormat::P3T2C4: return 9 * sizeof(float); // pos(3) + uv(2) + col(4) = 36
-            case VertexFormat::P2T2C4: return 8 * sizeof(float); // pos(2) + uv(2) + col(4) = 32
+        case VertexFormat::P3C3:
+            return 6 * sizeof(float);  // pos(3) + col(3) = 24
+        case VertexFormat::P3C4:
+            return 7 * sizeof(float);  // pos(3) + col(4) = 28
+        case VertexFormat::P3N3:
+            return 6 * sizeof(float);  // pos(3) + nor(3) = 24
+        case VertexFormat::P3T2:
+            return 5 * sizeof(float);  // pos(3) + uv(2) = 20
+        case VertexFormat::P3T2C4:
+            return 9 * sizeof(float);  // pos(3) + uv(2) + col(4) = 36
+        case VertexFormat::P2T2C4:
+            return 8 * sizeof(float);  // pos(2) + uv(2) + col(4) = 32
         }
         return 0;
     }
@@ -1349,146 +1762,146 @@ namespace render::rhi
 
         switch (fmt)
         {
-            case VertexFormat::P3C3:
+        case VertexFormat::P3C3:
+        {
+            if (g->VertexArrayAttribFormat)
             {
-                if (g->VertexArrayAttribFormat)
-                {
-                    g->VertexArrayAttribFormat(m_vao, 0, 3, GL_FLOAT, GL_FALSE, 0);
-                    g->VertexArrayAttribFormat(m_vao, 1, 3, GL_FLOAT, GL_FALSE, 12);
-                    g->EnableVertexArrayAttrib(m_vao, 0);
-                    g->EnableVertexArrayAttrib(m_vao, 1);
-                    g->VertexArrayAttribBinding(m_vao, 0, 0);
-                    g->VertexArrayAttribBinding(m_vao, 1, 0);
-                }
-                else
-                {
-                    g->BindBuffer(GL_ARRAY_BUFFER, m_buffers[size_t(m_currentVBOs[0] - 1)].glName);
-                    g->VertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 24, (void*)0);
-                    g->VertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 24, (void*)12);
-                    g->EnableVertexAttribArray(0);
-                    g->EnableVertexAttribArray(1);
-                    g->BindBuffer(GL_ARRAY_BUFFER, 0);
-                }
-                break;
+                g->VertexArrayAttribFormat(m_vao, 0, 3, GL_FLOAT, GL_FALSE, 0);
+                g->VertexArrayAttribFormat(m_vao, 1, 3, GL_FLOAT, GL_FALSE, 12);
+                g->EnableVertexArrayAttrib(m_vao, 0);
+                g->EnableVertexArrayAttrib(m_vao, 1);
+                g->VertexArrayAttribBinding(m_vao, 0, 0);
+                g->VertexArrayAttribBinding(m_vao, 1, 0);
             }
-            case VertexFormat::P3C4:
+            else
             {
-                if (g->VertexArrayAttribFormat)
-                {
-                    g->VertexArrayAttribFormat(m_vao, 0, 3, GL_FLOAT, GL_FALSE, 0);
-                    g->VertexArrayAttribFormat(m_vao, 1, 4, GL_FLOAT, GL_FALSE, 12);
-                    g->EnableVertexArrayAttrib(m_vao, 0);
-                    g->EnableVertexArrayAttrib(m_vao, 1);
-                    g->VertexArrayAttribBinding(m_vao, 0, 0);
-                    g->VertexArrayAttribBinding(m_vao, 1, 0);
-                }
-                else
-                {
-                    g->BindBuffer(GL_ARRAY_BUFFER, m_buffers[size_t(m_currentVBOs[0] - 1)].glName);
-                    g->VertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 28, (void*)0);
-                    g->VertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 28, (void*)12);
-                    g->EnableVertexAttribArray(0);
-                    g->EnableVertexAttribArray(1);
-                    g->BindBuffer(GL_ARRAY_BUFFER, 0);
-                }
-                break;
+                g->BindBuffer(GL_ARRAY_BUFFER, m_buffers[size_t(m_currentVBOs[0] - 1)].glName);
+                g->VertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 24, (void*)0);
+                g->VertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 24, (void*)12);
+                g->EnableVertexAttribArray(0);
+                g->EnableVertexAttribArray(1);
+                g->BindBuffer(GL_ARRAY_BUFFER, 0);
             }
-            case VertexFormat::P3N3:
+            break;
+        }
+        case VertexFormat::P3C4:
+        {
+            if (g->VertexArrayAttribFormat)
             {
-                if (g->VertexArrayAttribFormat)
-                {
-                    g->VertexArrayAttribFormat(m_vao, 0, 3, GL_FLOAT, GL_FALSE, 0);
-                    g->VertexArrayAttribFormat(m_vao, 1, 3, GL_FLOAT, GL_FALSE, 12);
-                    g->EnableVertexArrayAttrib(m_vao, 0);
-                    g->EnableVertexArrayAttrib(m_vao, 1);
-                    g->VertexArrayAttribBinding(m_vao, 0, 0);
-                    g->VertexArrayAttribBinding(m_vao, 1, 0);
-                }
-                else
-                {
-                    g->BindBuffer(GL_ARRAY_BUFFER, m_buffers[size_t(m_currentVBOs[0] - 1)].glName);
-                    g->VertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 24, (void*)0);
-                    g->VertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 24, (void*)12);
-                    g->EnableVertexAttribArray(0);
-                    g->EnableVertexAttribArray(1);
-                    g->BindBuffer(GL_ARRAY_BUFFER, 0);
-                }
-                break;
+                g->VertexArrayAttribFormat(m_vao, 0, 3, GL_FLOAT, GL_FALSE, 0);
+                g->VertexArrayAttribFormat(m_vao, 1, 4, GL_FLOAT, GL_FALSE, 12);
+                g->EnableVertexArrayAttrib(m_vao, 0);
+                g->EnableVertexArrayAttrib(m_vao, 1);
+                g->VertexArrayAttribBinding(m_vao, 0, 0);
+                g->VertexArrayAttribBinding(m_vao, 1, 0);
             }
-            case VertexFormat::P3T2:
+            else
             {
-                if (g->VertexArrayAttribFormat)
-                {
-                    g->VertexArrayAttribFormat(m_vao, 0, 3, GL_FLOAT, GL_FALSE, 0);
-                    g->VertexArrayAttribFormat(m_vao, 1, 2, GL_FLOAT, GL_FALSE, 12);
-                    g->EnableVertexArrayAttrib(m_vao, 0);
-                    g->EnableVertexArrayAttrib(m_vao, 1);
-                    g->VertexArrayAttribBinding(m_vao, 0, 0);
-                    g->VertexArrayAttribBinding(m_vao, 1, 0);
-                }
-                else
-                {
-                    g->BindBuffer(GL_ARRAY_BUFFER, m_buffers[size_t(m_currentVBOs[0] - 1)].glName);
-                    g->VertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 20, (void*)0);
-                    g->VertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 20, (void*)12);
-                    g->EnableVertexAttribArray(0);
-                    g->EnableVertexAttribArray(1);
-                    g->BindBuffer(GL_ARRAY_BUFFER, 0);
-                }
-                break;
+                g->BindBuffer(GL_ARRAY_BUFFER, m_buffers[size_t(m_currentVBOs[0] - 1)].glName);
+                g->VertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 28, (void*)0);
+                g->VertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 28, (void*)12);
+                g->EnableVertexAttribArray(0);
+                g->EnableVertexAttribArray(1);
+                g->BindBuffer(GL_ARRAY_BUFFER, 0);
             }
-            case VertexFormat::P3T2C4:
+            break;
+        }
+        case VertexFormat::P3N3:
+        {
+            if (g->VertexArrayAttribFormat)
             {
-                if (g->VertexArrayAttribFormat)
-                {
-                    g->VertexArrayAttribFormat(m_vao, 0, 3, GL_FLOAT, GL_FALSE, 0);
-                    g->VertexArrayAttribFormat(m_vao, 1, 2, GL_FLOAT, GL_FALSE, 12);
-                    g->VertexArrayAttribFormat(m_vao, 2, 4, GL_FLOAT, GL_FALSE, 20);
-                    g->EnableVertexArrayAttrib(m_vao, 0);
-                    g->EnableVertexArrayAttrib(m_vao, 1);
-                    g->EnableVertexArrayAttrib(m_vao, 2);
-                    g->VertexArrayAttribBinding(m_vao, 0, 0);
-                    g->VertexArrayAttribBinding(m_vao, 1, 0);
-                    g->VertexArrayAttribBinding(m_vao, 2, 0);
-                }
-                else
-                {
-                    g->BindBuffer(GL_ARRAY_BUFFER, m_buffers[size_t(m_currentVBOs[0] - 1)].glName);
-                    g->VertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 36, (void*)0);
-                    g->VertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 36, (void*)12);
-                    g->VertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, 36, (void*)20);
-                    g->EnableVertexAttribArray(0);
-                    g->EnableVertexAttribArray(1);
-                    g->EnableVertexAttribArray(2);
-                    g->BindBuffer(GL_ARRAY_BUFFER, 0);
-                }
-                break;
+                g->VertexArrayAttribFormat(m_vao, 0, 3, GL_FLOAT, GL_FALSE, 0);
+                g->VertexArrayAttribFormat(m_vao, 1, 3, GL_FLOAT, GL_FALSE, 12);
+                g->EnableVertexArrayAttrib(m_vao, 0);
+                g->EnableVertexArrayAttrib(m_vao, 1);
+                g->VertexArrayAttribBinding(m_vao, 0, 0);
+                g->VertexArrayAttribBinding(m_vao, 1, 0);
             }
-            case VertexFormat::P2T2C4:
+            else
             {
-                if (g->BindVertexBuffer)
-                {
-                    g->BindVertexBuffer(0, m_buffers[size_t(m_currentVBOs[0] - 1)].glName, 0, 32);
-                    g->VertexAttribFormat(0, 2, GL_FLOAT, GL_FALSE, 0);
-                    g->VertexAttribFormat(1, 2, GL_FLOAT, GL_FALSE, 8);
-                    g->VertexAttribFormat(2, 4, GL_FLOAT, GL_FALSE, 16);
-                    g->VertexAttribBinding(0, 0);
-                    g->VertexAttribBinding(1, 0);
-                    g->VertexAttribBinding(2, 0);
-                }
-                else
-                {
-                    g->BindBuffer(GL_ARRAY_BUFFER, m_buffers[size_t(m_currentVBOs[0] - 1)].glName);
-                    g->VertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 32, (void*)0);
-                    g->VertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 32, (void*)8);
-                    g->VertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, 32, (void*)16);
-                    g->EnableVertexAttribArray(0);
-                    g->EnableVertexAttribArray(1);
-                    g->EnableVertexAttribArray(2);
-                    g->BindBuffer(GL_ARRAY_BUFFER, 0);
-                }
-                break;
+                g->BindBuffer(GL_ARRAY_BUFFER, m_buffers[size_t(m_currentVBOs[0] - 1)].glName);
+                g->VertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 24, (void*)0);
+                g->VertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 24, (void*)12);
+                g->EnableVertexAttribArray(0);
+                g->EnableVertexAttribArray(1);
+                g->BindBuffer(GL_ARRAY_BUFFER, 0);
             }
+            break;
+        }
+        case VertexFormat::P3T2:
+        {
+            if (g->VertexArrayAttribFormat)
+            {
+                g->VertexArrayAttribFormat(m_vao, 0, 3, GL_FLOAT, GL_FALSE, 0);
+                g->VertexArrayAttribFormat(m_vao, 1, 2, GL_FLOAT, GL_FALSE, 12);
+                g->EnableVertexArrayAttrib(m_vao, 0);
+                g->EnableVertexArrayAttrib(m_vao, 1);
+                g->VertexArrayAttribBinding(m_vao, 0, 0);
+                g->VertexArrayAttribBinding(m_vao, 1, 0);
+            }
+            else
+            {
+                g->BindBuffer(GL_ARRAY_BUFFER, m_buffers[size_t(m_currentVBOs[0] - 1)].glName);
+                g->VertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 20, (void*)0);
+                g->VertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 20, (void*)12);
+                g->EnableVertexAttribArray(0);
+                g->EnableVertexAttribArray(1);
+                g->BindBuffer(GL_ARRAY_BUFFER, 0);
+            }
+            break;
+        }
+        case VertexFormat::P3T2C4:
+        {
+            if (g->VertexArrayAttribFormat)
+            {
+                g->VertexArrayAttribFormat(m_vao, 0, 3, GL_FLOAT, GL_FALSE, 0);
+                g->VertexArrayAttribFormat(m_vao, 1, 2, GL_FLOAT, GL_FALSE, 12);
+                g->VertexArrayAttribFormat(m_vao, 2, 4, GL_FLOAT, GL_FALSE, 20);
+                g->EnableVertexArrayAttrib(m_vao, 0);
+                g->EnableVertexArrayAttrib(m_vao, 1);
+                g->EnableVertexArrayAttrib(m_vao, 2);
+                g->VertexArrayAttribBinding(m_vao, 0, 0);
+                g->VertexArrayAttribBinding(m_vao, 1, 0);
+                g->VertexArrayAttribBinding(m_vao, 2, 0);
+            }
+            else
+            {
+                g->BindBuffer(GL_ARRAY_BUFFER, m_buffers[size_t(m_currentVBOs[0] - 1)].glName);
+                g->VertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 36, (void*)0);
+                g->VertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 36, (void*)12);
+                g->VertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, 36, (void*)20);
+                g->EnableVertexAttribArray(0);
+                g->EnableVertexAttribArray(1);
+                g->EnableVertexAttribArray(2);
+                g->BindBuffer(GL_ARRAY_BUFFER, 0);
+            }
+            break;
+        }
+        case VertexFormat::P2T2C4:
+        {
+            if (g->BindVertexBuffer)
+            {
+                g->BindVertexBuffer(0, m_buffers[size_t(m_currentVBOs[0] - 1)].glName, 0, 32);
+                g->VertexAttribFormat(0, 2, GL_FLOAT, GL_FALSE, 0);
+                g->VertexAttribFormat(1, 2, GL_FLOAT, GL_FALSE, 8);
+                g->VertexAttribFormat(2, 4, GL_FLOAT, GL_FALSE, 16);
+                g->VertexAttribBinding(0, 0);
+                g->VertexAttribBinding(1, 0);
+                g->VertexAttribBinding(2, 0);
+            }
+            else
+            {
+                g->BindBuffer(GL_ARRAY_BUFFER, m_buffers[size_t(m_currentVBOs[0] - 1)].glName);
+                g->VertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 32, (void*)0);
+                g->VertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 32, (void*)8);
+                g->VertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, 32, (void*)16);
+                g->EnableVertexAttribArray(0);
+                g->EnableVertexAttribArray(1);
+                g->EnableVertexAttribArray(2);
+                g->BindBuffer(GL_ARRAY_BUFFER, 0);
+            }
+            break;
+        }
         }
     }
 
@@ -1496,4 +1909,4 @@ namespace render::rhi
     {
         return new GLDevice();
     }
-}
+}  // namespace render::rhi

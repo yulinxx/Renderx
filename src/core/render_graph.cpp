@@ -40,7 +40,9 @@ namespace render
         void RenderGraph::shutdown()
         {
             if (!m_initialized)
+            {
                 return;
+            }
 
             m_passes.clear();
             m_device = nullptr;
@@ -53,13 +55,15 @@ namespace render
         {
             if (!m_initialized)
             {
-                SY_ERRORF("RenderGraph::addPass: not initialized, pass '%s' ignored", desc.name ? desc.name : "(unnamed)");
+                SY_ERRORF(
+                    "RenderGraph::addPass: not initialized, pass '%s' ignored", desc.name ? desc.name : "(unnamed)");
                 return;
             }
             PassEntry entry;
             entry.desc = desc;
             m_passes.push_back(std::move(entry));
-            //SY_DEBUGF("RenderGraph::addPass: '%s' (total=%zu)", desc.name ? desc.name : "(unnamed)", m_passes.size());
+            // SY_DEBUGF("RenderGraph::addPass: '%s' (total=%zu)", desc.name ? desc.name : "(unnamed)",
+            // m_passes.size());
         }
 
         void RenderGraph::clear()
@@ -103,7 +107,9 @@ namespace render
                 {
                     if (logSummary)
                     {
-                        SY_DEBUGF("RenderGraph::execute: [%u] '%s' skipped (disabled)", i, entry.desc.name ? entry.desc.name : "");
+                        SY_DEBUGF("RenderGraph::execute: [%u] '%s' skipped (disabled)",
+                            i,
+                            entry.desc.name ? entry.desc.name : "");
                     }
                     continue;
                 }
@@ -150,7 +156,9 @@ namespace render
         const char* RenderGraph::getPassName(uint32_t index) const
         {
             if (index >= m_passes.size())
+            {
                 return nullptr;
+            }
             return m_passes[index].desc.name;
         }
 
@@ -173,7 +181,9 @@ namespace render
         bool RenderGraph::isPassEnabled(uint32_t index) const
         {
             if (index >= m_passes.size())
+            {
                 return false;
+            }
             return m_passes[index].desc.enabled;
         }
 
@@ -194,23 +204,30 @@ namespace render
                         if (out.handle != 0 && out.handle == in.handle)
                         {
                             SY_DEBUGF("RenderGraph::checkResourceConflicts: [%u:%s] -> [%u:%s] resource %u (name='%s')",
-                                i, prev.desc.name ? prev.desc.name : "",
-                                i + 1, next.desc.name ? next.desc.name : "",
-                                out.handle, out.name);
+                                i,
+                                prev.desc.name ? prev.desc.name : "",
+                                i + 1,
+                                next.desc.name ? next.desc.name : "",
+                                out.handle,
+                                out.name);
                         }
                     }
                     for (const auto& out2 : next.desc.outputs)
                     {
                         if (out.handle != 0 && out.handle == out2.handle && out.access == PassResourceAccess::Write)
                         {
-                            SY_WARNF("RenderGraph::checkResourceConflicts: [%u:%s] writes and [%u:%s] writes same resource %u (name='%s')",
-                                i, prev.desc.name ? prev.desc.name : "",
-                                i + 1, next.desc.name ? next.desc.name : "",
-                                out.handle, out.name);
+                            SY_WARNF("RenderGraph::checkResourceConflicts: [%u:%s] writes and [%u:%s] writes same "
+                                     "resource %u (name='%s')",
+                                i,
+                                prev.desc.name ? prev.desc.name : "",
+                                i + 1,
+                                next.desc.name ? next.desc.name : "",
+                                out.handle,
+                                out.name);
                         }
                     }
                 }
             }
         }
-    } // namespace core
-} // namespace render
+    }  // namespace core
+}  // namespace render

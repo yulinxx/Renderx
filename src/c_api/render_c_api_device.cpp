@@ -15,47 +15,62 @@
 #include "render_c_api_internal.h"
 
 #if defined(__APPLE__)
-#include <mach-o/dyld.h>
+    #include <mach-o/dyld.h>
 #endif
 
 using namespace render;
 
-extern "C" {
+extern "C"
+{
     // ==================== 设备生命周期 ====================
 
-/**
- * @brief 统一初始化所有渲染模块
- *
- * 返回 false 时已打印错误日志，调用方负责清理已分配的资源。
- */
+    /**
+     * @brief 统一初始化所有渲染模块
+     *
+     * 返回 false 时已打印错误日志，调用方负责清理已分配的资源。
+     */
     static bool initModules(RenderDevice* dev, const DeviceDesc* desc)
     {
         // 初始化顺序：基础模块 -> 高级模块 -> 依赖 PSM 的模块 -> 特殊模块
         // Null backend: 仅分配内部数据结构，不创建 GPU 资源
 
         if (!dev->world2D.initialize())
+        {
             return false;
+        }
 
         if (!dev->batchQueue.initialize(dev->rhiDevice))
+        {
             return false;
+        }
 
         if (!dev->overlayQueue.initialize(dev->rhiDevice))
+        {
             return false;
+        }
 
         if (!dev->pipelineStateManager.initialize(dev->rhiDevice))
+        {
             return false;
+        }
 
         if (!dev->commandEncoder.initialize(dev->rhiDevice))
+        {
             return false;
+        }
 
         // Phase 7: 将 PSM 注入 CommandEncoder，使其复用管线缓存
         dev->commandEncoder.setPipelineStateManager(&dev->pipelineStateManager);
 
         if (!dev->renderGraph.initialize(dev->rhiDevice))
+        {
             return false;
+        }
 
         if (!dev->drawBatcher.initialize(dev->rhiDevice))
+        {
             return false;
+        }
 
         dev->commandEncoder.setDrawBatcher(&dev->drawBatcher);
 
@@ -63,19 +78,29 @@ extern "C" {
         // SSBO 占用：entityData 64MB + visibility 4MB + indirect 16MB ≈ 84MB GPU
         // 覆盖大型 DXF 装配图 / 地理图场景（原 65536 太小，普通工程图也会触顶）
         if (!dev->persistentEntityManager.initialize(dev->rhiDevice, 1u << 20))
+        {
             return false;
+        }
 
         if (!dev->meshManager.initialize(dev->rhiDevice))
+        {
             return false;
+        }
 
         if (!dev->world3D.initialize())
+        {
             return false;
+        }
 
         if (!dev->textAtlas.initialize(dev->rhiDevice))
+        {
             return false;
+        }
 
         if (!dev->screenTextRenderer.initialize(dev->rhiDevice))
+        {
             return false;
+        }
 
         // SceneEnv 需要 shader，仅在 OpenGL/Vulkan 后端初始化
         // Null backend 不创建 GPU 管线，跳过 SceneEnv
@@ -83,10 +108,14 @@ extern "C" {
         if (desc->backend == BackendType::OpenGL || desc->backend == BackendType::Vulkan)
         {
             if (!dev->sceneEnv.initialize(dev->rhiDevice))
+            {
                 return false;
+            }
 
             if (!dev->bitmapRenderer.initialize(dev->rhiDevice))
+            {
                 return false;
+            }
         }
         else
         {
@@ -98,43 +127,46 @@ extern "C" {
 
     RENDER_API RenderDevice* renderCreateDevice(const DeviceDesc* desc)
     {
-        if (!desc) return nullptr;
+        if (!desc)
+        {
+            return nullptr;
+        }
 
         auto* dev = new RenderDevice();
 
         // 根据后端类型创建 RHI 设备
         switch (desc->backend)
         {
-            case BackendType::OpenGL:
-                dev->rhiDevice = rhi::createGLDevice();
-                break;
-            case BackendType::Null:
-                // Null backend: no GPU operations, for testing only
-                dev->rhiDevice = rhi::createNullDevice();
-                break;
-            case BackendType::Vulkan:
+        case BackendType::OpenGL:
+            dev->rhiDevice = rhi::createGLDevice();
+            break;
+        case BackendType::Null:
+            // Null backend: no GPU operations, for testing only
+            dev->rhiDevice = rhi::createNullDevice();
+            break;
+        case BackendType::Vulkan:
 #ifdef RENDERX_HAS_VULKAN
-                // Vulkan backend: cross-platform GPU backend
-                dev->rhiDevice = rhi::createVulkanDevice();
+            // Vulkan backend: cross-platform GPU backend
+            dev->rhiDevice = rhi::createVulkanDevice();
 #else
-                delete dev;
-                SY_ERRORF("renderCreateDevice: Vulkan backend not compiled (RENDERX_HAS_VULKAN not defined)");
-                return nullptr;
+            delete dev;
+            SY_ERRORF("renderCreateDevice: Vulkan backend not compiled (RENDERX_HAS_VULKAN not defined)");
+            return nullptr;
 #endif
-                break;
-            case BackendType::Metal:
+            break;
+        case BackendType::Metal:
 #ifdef RENDERX_HAS_METAL
-                dev->rhiDevice = rhi::createMetalDevice();
+            dev->rhiDevice = rhi::createMetalDevice();
 #else
-                delete dev;
-                SY_ERRORF("renderCreateDevice: Metal backend not compiled (RENDERX_HAS_METAL not defined)");
-                return nullptr;
+            delete dev;
+            SY_ERRORF("renderCreateDevice: Metal backend not compiled (RENDERX_HAS_METAL not defined)");
+            return nullptr;
 #endif
-                break;
-            default:
-                delete dev;
-                SY_ERRORF("renderCreateDevice: unsupported backend type");
-                return nullptr;
+            break;
+        default:
+            delete dev;
+            SY_ERRORF("renderCreateDevice: unsupported backend type");
+            return nullptr;
         }
 
         if (!dev->rhiDevice)
@@ -201,11 +233,9 @@ extern "C" {
                         ifs.seekg(0);
                         ifs.read(reinterpret_cast<char*>(buf.data()), fileSize);
 
-                        dev->screenTextRenderer.loadFont(buf.data(),
-                            static_cast<uint32_t>(buf.size()), 18.0f);
+                        dev->screenTextRenderer.loadFont(buf.data(), static_cast<uint32_t>(buf.size()), 18.0f);
 
-                        SY_DEBUGF("renderCreateDevice: default screen font loaded (%.1f KB)",
-                            buf.size() / 1024.0f);
+                        SY_DEBUGF("renderCreateDevice: default screen font loaded (%.1f KB)", buf.size() / 1024.0f);
                     }
                 }
                 else
@@ -245,7 +275,10 @@ extern "C" {
      */
     RENDER_API void renderDestroyDevice(RenderDevice* dev)
     {
-        if (!dev) return;
+        if (!dev)
+        {
+            return;
+        }
 
         // 按逆序关闭渲染模块
         dev->bitmapRenderer.shutdown();
@@ -253,8 +286,8 @@ extern "C" {
         dev->textAtlas.shutdown();
         dev->screenTextRenderer.shutdown();
         dev->meshManager.shutdown();
-        dev->persistentEntityManager.shutdown(); // Phase 9
-        dev->drawBatcher.shutdown();       // Phase 8
+        dev->persistentEntityManager.shutdown();  // Phase 9
+        dev->drawBatcher.shutdown();              // Phase 8
         dev->pipelineStateManager.shutdown();
         dev->renderGraph.shutdown();
         dev->commandEncoder.shutdown();
@@ -281,7 +314,10 @@ extern "C" {
      */
     RENDER_API void renderResize(RenderDevice* dev, uint32_t width, uint32_t height)
     {
-        if (!dev || !dev->rhiDevice) return;
+        if (!dev || !dev->rhiDevice)
+        {
+            return;
+        }
         dev->rhiDevice->resize(width, height);
         dev->viewportWidth = width;
         dev->viewportHeight = height;
@@ -297,10 +333,12 @@ extern "C" {
      * @param viewWidth 视图宽度
      * @param viewHeight 视图高度
      */
-    RENDER_API void renderSetView2D(RenderDevice* dev, const float viewMatrix[9],
-        float viewWidth, float viewHeight)
+    RENDER_API void renderSetView2D(RenderDevice* dev, const float viewMatrix[9], float viewWidth, float viewHeight)
     {
-        if (!dev) return;
+        if (!dev)
+        {
+            return;
+        }
         std::memcpy(dev->view2D.viewMatrix, viewMatrix, 9 * sizeof(float));
         dev->view2D.viewWidth = viewWidth;
         dev->view2D.viewHeight = viewHeight;
@@ -312,8 +350,7 @@ extern "C" {
         // 线段断裂、虚线化或短暂消失的问题。
         const float scaleX = viewMatrix[0];
         const float scaleY = viewMatrix[4];
-        if (std::abs(scaleX) > 1e-12f && std::abs(scaleY) > 1e-12f &&
-            std::isfinite(scaleX) && std::isfinite(scaleY) &&
+        if (std::abs(scaleX) > 1e-12f && std::abs(scaleY) > 1e-12f && std::isfinite(scaleX) && std::isfinite(scaleY) &&
             std::isfinite(viewMatrix[6]) && std::isfinite(viewMatrix[7]))
         {
             dev->cameraCenter[0] = -static_cast<double>(viewMatrix[6]) / static_cast<double>(scaleX);
@@ -328,28 +365,35 @@ extern "C" {
      * @param viewMatrix 4x4视图矩阵
      * @param projMatrix 4x4投影矩阵
      */
-    RENDER_API void renderSetView3D(RenderDevice* dev, const float viewMatrix[16],
-        const float projMatrix[16])
+    RENDER_API void renderSetView3D(RenderDevice* dev, const float viewMatrix[16], const float projMatrix[16])
     {
-        if (!dev) return;
+        if (!dev)
+        {
+            return;
+        }
         std::memcpy(dev->view3D.viewMatrix, viewMatrix, 16 * sizeof(float));
         std::memcpy(dev->view3D.projMatrix, projMatrix, 16 * sizeof(float));
     }
 
     RENDER_API void renderSetViewMode(RenderDevice* dev, ViewMode mode)
     {
-        if (!dev) return;
+        if (!dev)
+        {
+            return;
+        }
         if (dev->viewMode != mode)
         {
             dev->viewMode = mode;
-            SY_DEBUGF("renderSetViewMode: switched to %s mode",
-                mode == ViewMode::Mode2D ? "2D" : "3D");
+            SY_DEBUGF("renderSetViewMode: switched to %s mode", mode == ViewMode::Mode2D ? "2D" : "3D");
         }
     }
 
     RENDER_API void renderSetClearColor(RenderDevice* dev, float r, float g, float b, float a)
     {
-        if (!dev) return;
+        if (!dev)
+        {
+            return;
+        }
         dev->clearColor[0] = r;
         dev->clearColor[1] = g;
         dev->clearColor[2] = b;
@@ -370,7 +414,10 @@ extern "C" {
      */
     RENDER_API void renderGetStats(RenderDevice* dev, RenderStats* stats)
     {
-        if (!dev || !stats) return;
+        if (!dev || !stats)
+        {
+            return;
+        }
         *stats = dev->stats;
     }
 
@@ -382,7 +429,10 @@ extern "C" {
      */
     RENDER_API uint32_t renderGetEntityCount(RenderDevice* dev)
     {
-        if (!dev) return 0;
+        if (!dev)
+        {
+            return 0;
+        }
         return dev->getEntityCount();
     }
 
@@ -394,7 +444,10 @@ extern "C" {
      */
     RENDER_API uint64_t renderGetGPUMemoryUsage(RenderDevice* dev)
     {
-        if (!dev || !dev->rhiDevice) return 0;
+        if (!dev || !dev->rhiDevice)
+        {
+            return 0;
+        }
         return dev->rhiDevice->getGPUMemoryUsage();
     }
 
@@ -408,7 +461,10 @@ extern "C" {
      */
     RENDER_API void* renderGetNativeContext(RenderDevice* dev)
     {
-        if (!dev || !dev->rhiDevice) return nullptr;
+        if (!dev || !dev->rhiDevice)
+        {
+            return nullptr;
+        }
         return dev->rhiDevice->getNativeContext();
     }
 
@@ -419,7 +475,10 @@ extern "C" {
      */
     RENDER_API void renderLoadScreenFont(RenderDevice* dev, const void* fontData, uint32_t dataSize, float pixelHeight)
     {
-        if (!dev || !fontData || dataSize == 0) return;
+        if (!dev || !fontData || dataSize == 0)
+        {
+            return;
+        }
         dev->screenTextRenderer.loadFont(fontData, dataSize, pixelHeight);
     }
 
@@ -428,7 +487,10 @@ extern "C" {
      */
     RENDER_API void renderSetScreenTexts(RenderDevice* dev, const ScreenTextItem* items, uint32_t count)
     {
-        if (!dev) return;
+        if (!dev)
+        {
+            return;
+        }
         dev->submitScreenTexts(items, count);
     }
-} // extern "C"
+}  // extern "C"

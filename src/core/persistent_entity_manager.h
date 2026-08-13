@@ -17,217 +17,240 @@
 #include <vector>
 #include <cstdint>
 
-namespace render {
-namespace core {
-
-/// 持久图元元数据（CPU 侧）
-struct PersistentEntity
+namespace render
 {
-    uint32_t id;               ///< 图元唯一标识
-    float    bboxMin[3];       ///< 轴对齐包围盒最小点
-    float    bboxMax[3];       ///< 轴对齐包围盒最大点
-    float    worldPos[3];      ///< 世界空间位置（用于距离排序等）
-    uint32_t vertexOffset;     ///< 在全局顶点缓冲中的偏移
-    uint32_t vertexCount;      ///< 顶点数量
-    uint32_t materialIndex;    ///< 材质索引
-    uint32_t flags;            ///< 标志位：bit0=可见性, bit1=静态
-};
+    namespace core
+    {
 
-/// 持久图元 GPU 数据布局（与 SSBO 严格对齐）
-struct alignas(16) EntityGpuData
-{
-    float bboxMin[4];          ///< xyz + padding
-    float bboxMax[4];          ///< xyz + padding
-    float worldPos[4];         ///< xyz + padding
-    uint32_t vertexOffset;     ///< 顶点偏移
-    uint32_t vertexCount;      ///< 顶点数量
-    uint32_t materialIndex;    ///< 材质索引
-    uint32_t flags;            ///< 标志位
-};
+        /// 持久图元元数据（CPU 侧）
+        struct PersistentEntity
+        {
+            uint32_t id;             ///< 图元唯一标识
+            float bboxMin[3];        ///< 轴对齐包围盒最小点
+            float bboxMax[3];        ///< 轴对齐包围盒最大点
+            float worldPos[3];       ///< 世界空间位置（用于距离排序等）
+            uint32_t vertexOffset;   ///< 在全局顶点缓冲中的偏移
+            uint32_t vertexCount;    ///< 顶点数量
+            uint32_t materialIndex;  ///< 材质索引
+            uint32_t flags;          ///< 标志位：bit0=可见性, bit1=静态
+        };
 
-/**
- * @brief 持久图元管理器
- *
- * 管理一组稳定图元的 GPU 端数据，提供增量更新和 GPU 剔除能力。
- *
- * 使用流程：
- *   1. initialize()                         // 初始化 SSBO
- *   2. addEntity() / removeEntity() / updateEntity()  // CPU 侧维护
- *   3. uploadChanges()                      // 增量上传到 GPU
- *   4. executeCulling(viewProjMatrix)       // GPU 视锥剔除
- *   5. generateIndirectCommands(outputBuf)  // 生成间接绘制命令
- */
-class PersistentEntityManager {
-public:
-    PersistentEntityManager() = default;
-    ~PersistentEntityManager() { shutdown(); }
+        /// 持久图元 GPU 数据布局（与 SSBO 严格对齐）
+        struct alignas(16) EntityGpuData
+        {
+            float bboxMin[4];        ///< xyz + padding
+            float bboxMax[4];        ///< xyz + padding
+            float worldPos[4];       ///< xyz + padding
+            uint32_t vertexOffset;   ///< 顶点偏移
+            uint32_t vertexCount;    ///< 顶点数量
+            uint32_t materialIndex;  ///< 材质索引
+            uint32_t flags;          ///< 标志位
+        };
 
-    /**
-     * @brief 初始化管理器
-     *
-     * 创建图元元数据 SSBO 和可见性结果缓冲。
-     *
-     * @param device RHI 设备指针
-     * @param maxEntities 最大支持的图元数量（决定 SSBO 大小）
-     * @return true 初始化成功，false 初始化失败
-     */
-    bool initialize(rhi::IDevice* device, uint32_t maxEntities = 1u << 20);
+        /**
+         * @brief 持久图元管理器
+         *
+         * 管理一组稳定图元的 GPU 端数据，提供增量更新和 GPU 剔除能力。
+         *
+         * 使用流程：
+         *   1. initialize()                         // 初始化 SSBO
+         *   2. addEntity() / removeEntity() / updateEntity()  // CPU 侧维护
+         *   3. uploadChanges()                      // 增量上传到 GPU
+         *   4. executeCulling(viewProjMatrix)       // GPU 视锥剔除
+         *   5. generateIndirectCommands(outputBuf)  // 生成间接绘制命令
+         */
+        class PersistentEntityManager
+        {
+        public:
+            PersistentEntityManager() = default;
 
-    /**
-     * @brief 关闭并释放 GPU 资源
-     */
-    void shutdown();
+            ~PersistentEntityManager()
+            {
+                shutdown();
+            }
 
-    /**
-     * @brief 添加图元
-     *
-     * @param entity 图元元数据
-     * @param renderWorldIndex 对应的 RenderWorld dense 数组索引（用于索引空间转换）
-     * @return 图元在管理器中的索引，失败返回 UINT32_MAX
-     */
-    uint32_t addEntity(const PersistentEntity& entity, uint32_t renderWorldIndex = UINT32_MAX);
+            /**
+             * @brief 初始化管理器
+             *
+             * 创建图元元数据 SSBO 和可见性结果缓冲。
+             *
+             * @param device RHI 设备指针
+             * @param maxEntities 最大支持的图元数量（决定 SSBO 大小）
+             * @return true 初始化成功，false 初始化失败
+             */
+            bool initialize(rhi::IDevice* device, uint32_t maxEntities = 1u << 20);
 
-    /**
-     * @brief 移除图元
-     *
-     * 采用惰性删除策略，标记为无效，下次 uploadChanges 时同步到 GPU。
-     *
-     * @param index 图元索引
-     */
-    void removeEntity(uint32_t index);
+            /**
+             * @brief 关闭并释放 GPU 资源
+             */
+            void shutdown();
 
-    /**
-     * @brief 清空所有图元
-     *
-     * 重置图元计数，保留 GPU 缓冲容量。用于每帧从 RenderWorld 全量同步前。
-     */
-    void clearEntities();
+            /**
+             * @brief 添加图元
+             *
+             * @param entity 图元元数据
+             * @param renderWorldIndex 对应的 RenderWorld dense 数组索引（用于索引空间转换）
+             * @return 图元在管理器中的索引，失败返回 UINT32_MAX
+             */
+            uint32_t addEntity(const PersistentEntity& entity, uint32_t renderWorldIndex = UINT32_MAX);
 
-    /**
-     * @brief 更新图元数据
-     *
-     * @param index 图元索引
-     * @param entity 新的图元元数据
-     */
-    void updateEntity(uint32_t index, const PersistentEntity& entity);
+            /**
+             * @brief 移除图元
+             *
+             * 采用惰性删除策略，标记为无效，下次 uploadChanges 时同步到 GPU。
+             *
+             * @param index 图元索引
+             */
+            void removeEntity(uint32_t index);
 
-    /**
-     * @brief 增量上传变更到 GPU
-     *
-     * 只上传自上次调用以来发生变化的图元，减少 CPU-GPU 传输量。
-     */
-    void uploadChanges();
+            /**
+             * @brief 清空所有图元
+             *
+             * 重置图元计数，保留 GPU 缓冲容量。用于每帧从 RenderWorld 全量同步前。
+             */
+            void clearEntities();
 
-    /**
-     * @brief 执行 GPU 视锥剔除
-     *
-     * 绑定 compute pipeline，dispatch compute shader 对 SSBO 中的图元
-     * 进行 2D AABB-视图矩形测试，结果写入可见性缓冲。
-     *
-     * 剔除语义与 CPU 侧四叉树 queryVisible 保持一致：
-     * 世界空间包围盒与视图矩形做 AABB 相交测试。
-     *
-     * @param viewMinX 视图矩形最小 X（世界空间）
-     * @param viewMinY 视图矩形最小 Y（世界空间）
-     * @param viewMaxX 视图矩形最大 X（世界空间）
-     * @param viewMaxY 视图矩形最大 Y（世界空间）
-     */
-    void executeCulling(float viewMinX, float viewMinY,
-                        float viewMaxX, float viewMaxY);
+            /**
+             * @brief 更新图元数据
+             *
+             * @param index 图元索引
+             * @param entity 新的图元元数据
+             */
+            void updateEntity(uint32_t index, const PersistentEntity& entity);
 
-    /**
-     * @brief 生成间接绘制命令
-     *
-     * 根据 GPU 剔除结果，为可见图元生成 indirect draw 命令，
-     * 写入指定的 indirect buffer。
-     *
-     * @param outIndirectBuffer 输出 indirect buffer
-     * @param outCommandCount   输出命令数量
-     */
-    void generateIndirectCommands(rhi::BufferHandle outIndirectBuffer,
-                                  uint32_t* outCommandCount);
+            /**
+             * @brief 增量上传变更到 GPU
+             *
+             * 只上传自上次调用以来发生变化的图元，减少 CPU-GPU 传输量。
+             */
+            void uploadChanges();
 
-    /**
-     * @brief 获取图元元数据 SSBO 句柄
-     */
-    rhi::BufferHandle getEntityBuffer() const { return m_entityBuffer; }
+            /**
+             * @brief 执行 GPU 视锥剔除
+             *
+             * 绑定 compute pipeline，dispatch compute shader 对 SSBO 中的图元
+             * 进行 2D AABB-视图矩形测试，结果写入可见性缓冲。
+             *
+             * 剔除语义与 CPU 侧四叉树 queryVisible 保持一致：
+             * 世界空间包围盒与视图矩形做 AABB 相交测试。
+             *
+             * @param viewMinX 视图矩形最小 X（世界空间）
+             * @param viewMinY 视图矩形最小 Y（世界空间）
+             * @param viewMaxX 视图矩形最大 X（世界空间）
+             * @param viewMaxY 视图矩形最大 Y（世界空间）
+             */
+            void executeCulling(float viewMinX, float viewMinY, float viewMaxX, float viewMaxY);
 
-    /**
-     * @brief 获取可见性结果缓冲句柄
-     */
-    rhi::BufferHandle getVisibilityBuffer() const { return m_visibilityBuffer; }
+            /**
+             * @brief 生成间接绘制命令
+             *
+             * 根据 GPU 剔除结果，为可见图元生成 indirect draw 命令，
+             * 写入指定的 indirect buffer。
+             *
+             * @param outIndirectBuffer 输出 indirect buffer
+             * @param outCommandCount   输出命令数量
+             */
+            void generateIndirectCommands(rhi::BufferHandle outIndirectBuffer, uint32_t* outCommandCount);
 
-    /**
-     * @brief 获取 indirect draw 缓冲句柄
-     */
-    rhi::BufferHandle getIndirectBuffer() const { return m_indirectBuffer; }
+            /**
+             * @brief 获取图元元数据 SSBO 句柄
+             */
+            rhi::BufferHandle getEntityBuffer() const
+            {
+                return m_entityBuffer;
+            }
 
-     /**
-       * @brief 获取当前图元数量
-       */
-     uint32_t getEntityCount() const { return m_entityCount; }
+            /**
+             * @brief 获取可见性结果缓冲句柄
+             */
+            rhi::BufferHandle getVisibilityBuffer() const
+            {
+                return m_visibilityBuffer;
+            }
 
-     /**
-       * @brief 获取最大图元容量
-       */
-     uint32_t getMaxEntities() const { return m_maxEntities; }
+            /**
+             * @brief 获取 indirect draw 缓冲句柄
+             */
+            rhi::BufferHandle getIndirectBuffer() const
+            {
+                return m_indirectBuffer;
+            }
 
-     /**
-      * @brief 获取 compute pipeline 句柄
-      */
-     rhi::PipelineHandle getCullingPipeline() const { return m_cullingPipeline; }
+            /**
+             * @brief 获取当前图元数量
+             */
+            uint32_t getEntityCount() const
+            {
+                return m_entityCount;
+            }
 
-/**
-      * @brief 读取当前帧的可见性结果（阻塞式）
-      *
-      * 从 GPU 可见性缓冲全量回读，收集可见图元的 RenderWorld dense 索引。
-      * 注意：这是同步回读，会阻塞 CPU（mapBuffer 隐式等待 GPU 完成当前 dispatch）。
-      * 由于 clearEntities() 每帧全量重建 PEM，M8 的"跨帧双缓冲异步回读"设计
-      * 无法在不重构同步策略的前提下生效，故统一收敛为同步回读，保证正确性优先。
-      *
-      * @param outIndices 输出可见图元（RenderWorld dense 索引）数组
-      * @param maxCount 输出缓冲区容量
-      * @return 实际可见图元数量
-      */
-    uint32_t readBackGpuVisibility(uint32_t* outIndices, uint32_t maxCount);
+            /**
+             * @brief 获取最大图元容量
+             */
+            uint32_t getMaxEntities() const
+            {
+                return m_maxEntities;
+            }
 
-private:
-    rhi::IDevice* m_device = nullptr;
-    bool m_initialized = false;
+            /**
+             * @brief 获取 compute pipeline 句柄
+             */
+            rhi::PipelineHandle getCullingPipeline() const
+            {
+                return m_cullingPipeline;
+            }
 
-    uint32_t m_maxEntities = 0;       ///< SSBO 容量
-    uint32_t m_entityCount = 0;       ///< 当前有效图元数
+            /**
+             * @brief 读取当前帧的可见性结果（阻塞式）
+             *
+             * 从 GPU 可见性缓冲全量回读，收集可见图元的 RenderWorld dense 索引。
+             * 注意：这是同步回读，会阻塞 CPU（mapBuffer 隐式等待 GPU 完成当前 dispatch）。
+             * 由于 clearEntities() 每帧全量重建 PEM，M8 的"跨帧双缓冲异步回读"设计
+             * 无法在不重构同步策略的前提下生效，故统一收敛为同步回读，保证正确性优先。
+             *
+             * @param outIndices 输出可见图元（RenderWorld dense 索引）数组
+             * @param maxCount 输出缓冲区容量
+             * @return 实际可见图元数量
+             */
+            uint32_t readBackGpuVisibility(uint32_t* outIndices, uint32_t maxCount);
 
-    /// CPU 侧图元数组（与 GPU SSBO 一一对应）
-    std::vector<PersistentEntity> m_entities;
-    /// 映射：PEM 索引 -> RenderWorld dense 数组索引（用于将 GPU 剔除结果转回 RenderWorld 索引）
-    std::vector<uint32_t> m_pemToRenderWorldIndex;
-    /// 脏标记数组（true 表示对应图元需要上传）
-    std::vector<bool> m_dirtyFlags;
+        private:
+            rhi::IDevice* m_device = nullptr;
+            bool m_initialized = false;
 
-    /// GPU 资源
-    rhi::BufferHandle m_entityBuffer = rhi::NullHandle;      ///< 图元元数据 SSBO
-    rhi::BufferHandle m_visibilityBuffer = rhi::NullHandle;  ///< 可见性结果缓冲
-    rhi::BufferHandle m_indirectBuffer = rhi::NullHandle;    ///< indirect draw 缓冲
-    rhi::BufferHandle m_countBuffer = rhi::NullHandle;       ///< 原子计数缓冲（用于写入 indirect 数量）
+            uint32_t m_maxEntities = 0;  ///< SSBO 容量
+            uint32_t m_entityCount = 0;  ///< 当前有效图元数
 
-/// 图元元数据 SSBO 全量回读用临时缓冲（复用，避免每帧重新分配）
-    std::vector<uint32_t> m_readbackBuffer;
-    /// 当前帧可见的 PEM 索引（由 readBackGpuVisibility 收集，供 generateIndirectCommands 复用）
-    std::vector<uint32_t> m_visiblePemIndices;
+            /// CPU 侧图元数组（与 GPU SSBO 一一对应）
+            std::vector<PersistentEntity> m_entities;
+            /// 映射：PEM 索引 -> RenderWorld dense 数组索引（用于将 GPU 剔除结果转回 RenderWorld 索引）
+            std::vector<uint32_t> m_pemToRenderWorldIndex;
+            /// 脏标记数组（true 表示对应图元需要上传）
+            std::vector<bool> m_dirtyFlags;
 
-    /// Compute Pipeline
-    rhi::PipelineHandle m_cullingPipeline = rhi::NullHandle;
+            /// GPU 资源
+            rhi::BufferHandle m_entityBuffer = rhi::NullHandle;      ///< 图元元数据 SSBO
+            rhi::BufferHandle m_visibilityBuffer = rhi::NullHandle;  ///< 可见性结果缓冲
+            rhi::BufferHandle m_indirectBuffer = rhi::NullHandle;    ///< indirect draw 缓冲
+            rhi::BufferHandle m_countBuffer = rhi::NullHandle;       ///< 原子计数缓冲（用于写入 indirect 数量）
 
-    /// 统计
-    uint32_t m_lastVisibleCount = 0;
+            /// 图元元数据 SSBO 全量回读用临时缓冲（复用，避免每帧重新分配）
+            std::vector<uint32_t> m_readbackBuffer;
+            /// 当前帧可见的 PEM 索引（由 readBackGpuVisibility 收集，供 generateIndirectCommands 复用）
+            std::vector<uint32_t> m_visiblePemIndices;
 
-    /**
-     * @brief 创建或确保 compute pipeline 已就绪
-     * @return true 管线就绪，false 创建失败
-     */
-    bool ensureCullingPipeline();
-};
+            /// Compute Pipeline
+            rhi::PipelineHandle m_cullingPipeline = rhi::NullHandle;
 
-} // namespace core
-} // namespace render
+            /// 统计
+            uint32_t m_lastVisibleCount = 0;
+
+            /**
+             * @brief 创建或确保 compute pipeline 已就绪
+             * @return true 管线就绪，false 创建失败
+             */
+            bool ensureCullingPipeline();
+        };
+
+    }  // namespace core
+}  // namespace render

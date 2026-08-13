@@ -12,7 +12,9 @@ namespace render
         uint32_t PipelineStateManager::hashString(const char* str)
         {
             if (!str)
+            {
                 return 0;
+            }
             // FNV-1a 32-bit
             uint32_t h = 2166136261u;
             while (*str)
@@ -92,14 +94,20 @@ namespace render
         void PipelineStateManager::bindPipeline(rhi::PipelineHandle pipeline)
         {
             if (!m_device)
+            {
                 return;
+            }
 
             if (pipeline == rhi::NullHandle)
+            {
                 return;
+            }
 
             // 冗余过滤：目标管线与当前已绑定管线相同则跳过
             if (pipeline == m_currentPipeline)
+            {
                 return;
+            }
 
             m_device->bindPipeline(pipeline);
             m_currentPipeline = pipeline;
@@ -117,12 +125,14 @@ namespace render
             for (const auto& entry : m_entries)
             {
                 if (entry.handle != rhi::NullHandle)
+                {
                     m_device->destroyPipeline(entry.handle);
+                }
             }
 
             m_cache.clear();
             m_entries.clear();
             m_currentPipeline = rhi::NullHandle;
         }
-    } // namespace core
-} // namespace render
+    }  // namespace core
+}  // namespace render

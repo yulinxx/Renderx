@@ -23,7 +23,9 @@ namespace render::core
             desc.debugName = "TextAtlas";
             m_atlasTexture = device->createTexture(desc);
             if (m_atlasTexture == rhi::NullHandle)
+            {
                 return false;
+            }
 
             device->uploadTexture(m_atlasTexture, 0, m_atlasData.data(), m_atlasWidth * 4);
         }
@@ -36,7 +38,9 @@ namespace render::core
             desc.debugName = "TextAtlasVB";
             m_vertexBuffer = device->createBuffer(desc);
             if (m_vertexBuffer == rhi::NullHandle)
+            {
                 return false;
+            }
         }
 
         {
@@ -54,7 +58,9 @@ namespace render::core
             desc.depthFunc = rhi::CompareFunc::Always;
             m_textPipeline = device->createPipeline(desc);
             if (m_textPipeline == rhi::NullHandle)
+            {
                 return false;
+            }
         }
 
         return true;
@@ -94,7 +100,9 @@ namespace render::core
     {
         stbtt_fontinfo fi;
         if (!stbtt_InitFont(&fi, static_cast<const unsigned char*>(fontData), 0))
+        {
             return;
+        }
 
         memcpy(m_stbFontInfo, &fi, sizeof(fi));
         m_fontPixelHeight = pixelHeight;
@@ -105,14 +113,17 @@ namespace render::core
         m_atlasLineHeight = 0;
     }
 
-    void TextAtlas::renderText(const TextItemList* texts, const float viewMatrix[9],
-        uint32_t viewportW, uint32_t viewportH,
-        rhi::IDevice* device)
+    void TextAtlas::renderText(
+        const TextItemList* texts, const float viewMatrix[9], uint32_t viewportW, uint32_t viewportH, rhi::IDevice* device)
     {
         if (!texts || !texts->items || texts->count == 0 || !m_fontLoaded)
+        {
             return;
+        }
         if (viewportW == 0 || viewportH == 0)
+        {
             return;
+        }
 
         std::vector<TextVertex> allQuads;
         allQuads.reserve(texts->count * 64);
@@ -121,12 +132,16 @@ namespace render::core
         {
             const TextItem& item = texts->items[i];
             if (!item.text || item.text[0] == '\0')
+            {
                 continue;
+            }
             buildTextQuads(item, allQuads, viewMatrix, viewportW, viewportH);
         }
 
         if (allQuads.empty())
+        {
             return;
+        }
 
         uint32_t vertBytes = static_cast<uint32_t>(allQuads.size() * sizeof(TextVertex));
         // 扩容
@@ -136,7 +151,9 @@ namespace render::core
         vbDesc.memory = rhi::MemoryType::GPU_CPU_Coherent;
         vbDesc.debugName = "TextAtlasVB_Resize";
         if (m_vertexBuffer != rhi::NullHandle)
+        {
             device->destroyBuffer(m_vertexBuffer);
+        }
         m_vertexBuffer = device->createBuffer(vbDesc);
 
         device->uploadBuffer(m_vertexBuffer, 0, vertBytes, allQuads.data());
@@ -156,7 +173,9 @@ namespace render::core
         for (auto& cg : m_glyphCache)
         {
             if (cg.codepoint == codepoint && cg.fontSize == fontSize)
+            {
                 return cg.info;
+            }
         }
 
         GlyphInfo info{};
@@ -170,7 +189,9 @@ namespace render::core
     bool TextAtlas::rasterizeGlyph(uint32_t codepoint, float fontSize, GlyphInfo* outInfo)
     {
         if (!m_fontLoaded)
+        {
             return false;
+        }
 
         stbtt_fontinfo fi;
         memcpy(&fi, m_stbFontInfo, sizeof(fi));
@@ -188,10 +209,14 @@ namespace render::core
 
         if (bmpW <= 0 || bmpH <= 0)
         {
-            outInfo->u0 = 0; outInfo->v0 = 0;
-            outInfo->u1 = 0; outInfo->v1 = 0;
-            outInfo->x0 = 0; outInfo->y0 = 0;
-            outInfo->x1 = 0; outInfo->y1 = 0;
+            outInfo->u0 = 0;
+            outInfo->v0 = 0;
+            outInfo->u1 = 0;
+            outInfo->v1 = 0;
+            outInfo->x0 = 0;
+            outInfo->y0 = 0;
+            outInfo->x1 = 0;
+            outInfo->y1 = 0;
             outInfo->xAdvance = advance * scale;
             outInfo->valid = true;
             return true;
@@ -205,7 +230,9 @@ namespace render::core
         }
 
         if (m_atlasCursorY + bmpH > m_atlasHeight)
+        {
             return false;
+        }
 
         std::vector<uint8_t> bitmap(bmpW * bmpH);
         stbtt_MakeCodepointBitmap(&fi, bitmap.data(), bmpW, bmpH, bmpW, scale, scale, static_cast<int>(codepoint));
@@ -219,7 +246,7 @@ namespace render::core
             {
                 uint32_t srcIdx = row * bmpW + col;
                 uint32_t dstIdx = ((dstY + row) * m_atlasWidth + (dstX + col)) * 4;
-                uint8_t  val = bitmap[srcIdx];
+                uint8_t val = bitmap[srcIdx];
                 m_atlasData[dstIdx + 0] = val;
                 m_atlasData[dstIdx + 1] = val;
                 m_atlasData[dstIdx + 2] = val;
@@ -249,9 +276,11 @@ namespace render::core
         return true;
     }
 
-    void TextAtlas::buildTextQuads(const TextItem& item, std::vector<TextVertex>& outQuads,
+    void TextAtlas::buildTextQuads(const TextItem& item,
+        std::vector<TextVertex>& outQuads,
         const float viewMatrix[9],
-        uint32_t viewportW, uint32_t viewportH)
+        uint32_t viewportW,
+        uint32_t viewportH)
     {
         // 用 viewMatrix 将文本基点从世界坐标变换到 NDC
         float wx = item.x;
@@ -265,7 +294,9 @@ namespace render::core
 
         float fontSize = static_cast<float>(item.fontSize);
         if (fontSize <= 0.0f)
+        {
             fontSize = m_fontPixelHeight;
+        }
 
         // 第一遍：计算文本总宽度和高度，用于对齐
         float totalWidth = 0.0f;
@@ -275,27 +306,46 @@ namespace render::core
         {
             uint32_t cp = static_cast<uint32_t>(static_cast<unsigned char>(*p));
             GlyphInfo gi = getGlyph(cp, fontSize);
-            if (!gi.valid) continue;
+            if (!gi.valid)
+            {
+                continue;
+            }
             totalWidth += gi.xAdvance;
-            if (gi.y0 < descent) descent = gi.y0;
-            if (gi.y1 > ascent) ascent = gi.y1;
+            if (gi.y0 < descent)
+            {
+                descent = gi.y0;
+            }
+            if (gi.y1 > ascent)
+            {
+                ascent = gi.y1;
+            }
         }
         float totalHeight = ascent - descent;
 
         // 根据对齐方式计算偏移
         float alignOffsetX = 0.0f;
         float alignOffsetY = 0.0f;
-        if (item.hAlign == 1)      // Center
+        if (item.hAlign == 1)  // Center
+        {
             alignOffsetX = -totalWidth * 0.5f;
-        else if (item.hAlign == 2) // Right
+        }
+        else if (item.hAlign == 2)  // Right
+        {
             alignOffsetX = -totalWidth;
+        }
 
-        if (item.vAlign == 1)       // Top
+        if (item.vAlign == 1)  // Top
+        {
             alignOffsetY = -ascent;
+        }
         else if (item.vAlign == 2)  // Middle
+        {
             alignOffsetY = -totalHeight * 0.5f - descent;
+        }
         else if (item.vAlign == 3)  // Bottom
+        {
             alignOffsetY = -descent;
+        }
 
         // 旋转参数
         float rotRad = item.rotationDeg * 3.14159265358979323846f / 180.0f;
@@ -309,7 +359,9 @@ namespace render::core
             uint32_t cp = static_cast<uint32_t>(static_cast<unsigned char>(*p));
             GlyphInfo gi = getGlyph(cp, fontSize);
             if (!gi.valid)
+            {
                 continue;
+            }
 
             // 字符的像素偏移（含对齐偏移）
             float px = cursorX + gi.x0 + alignOffsetX;
@@ -332,26 +384,43 @@ namespace render::core
                 {
                     float rx = ox[k] * cosR - oy[k] * sinR;
                     float ry = ox[k] * sinR + oy[k] * cosR;
-                    ox[k] = rx; oy[k] = ry;
+                    ox[k] = rx;
+                    oy[k] = ry;
                 }
-                rx0 = ox[0]; ry0 = oy[0];
-                rx1 = ox[1]; ry1 = oy[1];
-                rx2 = ox[2]; ry2 = oy[2];
-                rx3 = ox[3]; ry3 = oy[3];
+                rx0 = ox[0];
+                ry0 = oy[0];
+                rx1 = ox[1];
+                ry1 = oy[1];
+                rx2 = ox[2];
+                ry2 = oy[2];
+                rx3 = ox[3];
+                ry3 = oy[3];
             }
             else
             {
-                rx0 = qx;       ry0 = qy;
-                rx1 = qx + qw;  ry1 = qy;
-                rx2 = qx + qw;  ry2 = qy + qh;
-                rx3 = qx;       ry3 = qy + qh;
+                rx0 = qx;
+                ry0 = qy;
+                rx1 = qx + qw;
+                ry1 = qy;
+                rx2 = qx + qw;
+                ry2 = qy + qh;
+                rx3 = qx;
+                ry3 = qy + qh;
             }
 
             // 最终顶点位置 = 基点NDC + 旋转后的字符NDC偏移
-            TextVertex v0 = { ndcX + rx0, ndcY + ry0, 0.0f, gi.u0, gi.v0, item.color[0], item.color[1], item.color[2], item.color[3] };
-            TextVertex v1 = { ndcX + rx1, ndcY + ry1, 0.0f, gi.u1, gi.v0, item.color[0], item.color[1], item.color[2], item.color[3] };
-            TextVertex v2 = { ndcX + rx2, ndcY + ry2, 0.0f, gi.u1, gi.v1, item.color[0], item.color[1], item.color[2], item.color[3] };
-            TextVertex v3 = { ndcX + rx3, ndcY + ry3, 0.0f, gi.u0, gi.v1, item.color[0], item.color[1], item.color[2], item.color[3] };
+            TextVertex v0 = {
+                ndcX + rx0, ndcY + ry0, 0.0f, gi.u0, gi.v0, item.color[0], item.color[1], item.color[2], item.color[3]
+            };
+            TextVertex v1 = {
+                ndcX + rx1, ndcY + ry1, 0.0f, gi.u1, gi.v0, item.color[0], item.color[1], item.color[2], item.color[3]
+            };
+            TextVertex v2 = {
+                ndcX + rx2, ndcY + ry2, 0.0f, gi.u1, gi.v1, item.color[0], item.color[1], item.color[2], item.color[3]
+            };
+            TextVertex v3 = {
+                ndcX + rx3, ndcY + ry3, 0.0f, gi.u0, gi.v1, item.color[0], item.color[1], item.color[2], item.color[3]
+            };
 
             outQuads.push_back(v0);
             outQuads.push_back(v1);
@@ -363,4 +432,4 @@ namespace render::core
             cursorX += gi.xAdvance;
         }
     }
-}
+}  // namespace render::core

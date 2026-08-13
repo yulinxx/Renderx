@@ -22,7 +22,10 @@ namespace render::core
             desc.mipLevels = 1;
             desc.debugName = "ScreenTextAtlas";
             m_atlasTexture = device->createTexture(desc);
-            if (m_atlasTexture == rhi::NullHandle) return false;
+            if (m_atlasTexture == rhi::NullHandle)
+            {
+                return false;
+            }
             device->uploadTexture(m_atlasTexture, 0, m_atlasData.data(), m_atlasWidth * 4);
         }
 
@@ -34,7 +37,10 @@ namespace render::core
             desc.memory = rhi::MemoryType::GPU_CPU_Coherent;
             desc.debugName = "ScreenTextVB";
             m_vertexBuffer = device->createBuffer(desc);
-            if (m_vertexBuffer == rhi::NullHandle) return false;
+            if (m_vertexBuffer == rhi::NullHandle)
+            {
+                return false;
+            }
         }
 
         // 屏幕空间文本管线（P2T2C4 顶点格式）
@@ -69,15 +75,18 @@ namespace render::core
         {
             if (m_atlasTexture != rhi::NullHandle)
             {
-                m_device->destroyTexture(m_atlasTexture); m_atlasTexture = rhi::NullHandle;
+                m_device->destroyTexture(m_atlasTexture);
+                m_atlasTexture = rhi::NullHandle;
             }
             if (m_vertexBuffer != rhi::NullHandle)
             {
-                m_device->destroyBuffer(m_vertexBuffer); m_vertexBuffer = rhi::NullHandle;
+                m_device->destroyBuffer(m_vertexBuffer);
+                m_vertexBuffer = rhi::NullHandle;
             }
             if (m_pipeline != rhi::NullHandle)
             {
-                m_device->destroyPipeline(m_pipeline); m_pipeline = rhi::NullHandle;
+                m_device->destroyPipeline(m_pipeline);
+                m_pipeline = rhi::NullHandle;
             }
         }
         m_atlasData.clear();
@@ -94,11 +103,12 @@ namespace render::core
     void ScreenTextRenderer::loadFont(const void* fontData, size_t dataSize, float pixelHeight)
     {
         // 保存字体数据副本，stbtt_fontinfo 内部持有原始数据指针
-        m_fontData.assign(static_cast<const uint8_t*>(fontData),
-            static_cast<const uint8_t*>(fontData) + dataSize);
+        m_fontData.assign(static_cast<const uint8_t*>(fontData), static_cast<const uint8_t*>(fontData) + dataSize);
         stbtt_fontinfo fi;
         if (!stbtt_InitFont(&fi, m_fontData.data(), 0))
+        {
             return;
+        }
         memcpy(m_stbFontInfo, &fi, sizeof(fi));
         m_fontPixelHeight = pixelHeight;
         m_fontLoaded = true;
@@ -119,7 +129,10 @@ namespace render::core
 
     void ScreenTextRenderer::submitText(const ScreenTextItem& item)
     {
-        if (!m_fontLoaded || !item.text || item.text[0] == '\0') return;
+        if (!m_fontLoaded || !item.text || item.text[0] == '\0')
+        {
+            return;
+        }
 
         float fontSize = item.fontSize > 0.0f ? item.fontSize : m_fontPixelHeight;
         float cursorX = item.x;
@@ -129,7 +142,10 @@ namespace render::core
         {
             uint32_t cp = static_cast<uint32_t>(static_cast<unsigned char>(*p));
             GlyphInfo gi = getGlyph(cp, fontSize);
-            if (!gi.valid) continue;
+            if (!gi.valid)
+            {
+                continue;
+            }
 
             float qx = cursorX + gi.x0;
             float qy = cursorY + gi.y0;
@@ -137,10 +153,12 @@ namespace render::core
             float qh = gi.y1 - gi.y0;
 
             // 两个三角形组成四边形
-            TextVertex v0 = { qx,      qy,      gi.u0, gi.v1, item.color[0], item.color[1], item.color[2], item.color[3] };
-            TextVertex v1 = { qx + qw, qy,      gi.u1, gi.v1, item.color[0], item.color[1], item.color[2], item.color[3] };
-            TextVertex v2 = { qx + qw, qy + qh, gi.u1, gi.v0, item.color[0], item.color[1], item.color[2], item.color[3] };
-            TextVertex v3 = { qx,      qy + qh, gi.u0, gi.v0, item.color[0], item.color[1], item.color[2], item.color[3] };
+            TextVertex v0 = { qx, qy, gi.u0, gi.v1, item.color[0], item.color[1], item.color[2], item.color[3] };
+            TextVertex v1 = { qx + qw, qy, gi.u1, gi.v1, item.color[0], item.color[1], item.color[2], item.color[3] };
+            TextVertex v2 = {
+                qx + qw, qy + qh, gi.u1, gi.v0, item.color[0], item.color[1], item.color[2], item.color[3]
+            };
+            TextVertex v3 = { qx, qy + qh, gi.u0, gi.v0, item.color[0], item.color[1], item.color[2], item.color[3] };
 
             m_frameVerts.push_back(v0);
             m_frameVerts.push_back(v1);
@@ -155,12 +173,17 @@ namespace render::core
 
     void ScreenTextRenderer::render(rhi::IDevice* device, uint32_t viewportWidth, uint32_t viewportHeight)
     {
-        if (m_frameVerts.empty()) return;
+        if (m_frameVerts.empty())
+        {
+            return;
+        }
 
         // 确保 VB 容量够
         uint32_t vertBytes = static_cast<uint32_t>(m_frameVerts.size() * sizeof(TextVertex));
         if (m_vertexBuffer != rhi::NullHandle)
+        {
             device->destroyBuffer(m_vertexBuffer);
+        }
         rhi::BufferDesc vbDesc{};
         vbDesc.size = vertBytes;
         vbDesc.usage = rhi::BufferUsage::Vertex;
@@ -195,7 +218,9 @@ namespace render::core
         for (auto& cg : m_glyphCache)
         {
             if (cg.codepoint == codepoint && cg.fontSize == fontSize)
+            {
                 return cg.info;
+            }
         }
         GlyphInfo info{};
         if (rasterizeGlyph(codepoint, fontSize, &info))
@@ -207,7 +232,10 @@ namespace render::core
 
     bool ScreenTextRenderer::rasterizeGlyph(uint32_t codepoint, float fontSize, GlyphInfo* outInfo)
     {
-        if (!m_fontLoaded) return false;
+        if (!m_fontLoaded)
+        {
+            return false;
+        }
         stbtt_fontinfo fi;
         memcpy(&fi, m_stbFontInfo, sizeof(fi));
 
@@ -223,10 +251,14 @@ namespace render::core
         // 空白字符（无像素）
         if (bmpW <= 0 || bmpH <= 0)
         {
-            outInfo->u0 = 0; outInfo->v0 = 0;
-            outInfo->u1 = 0; outInfo->v1 = 0;
-            outInfo->x0 = 0; outInfo->y0 = 0;
-            outInfo->x1 = 0; outInfo->y1 = 0;
+            outInfo->u0 = 0;
+            outInfo->v0 = 0;
+            outInfo->u1 = 0;
+            outInfo->v1 = 0;
+            outInfo->x0 = 0;
+            outInfo->y0 = 0;
+            outInfo->x1 = 0;
+            outInfo->y1 = 0;
             outInfo->xAdvance = advance * scale;
             outInfo->valid = true;
             return true;
@@ -242,7 +274,9 @@ namespace render::core
 
         // 图集溢出
         if (m_atlasCursorY + bmpH > m_atlasHeight)
+        {
             return false;
+        }
 
         // 栅格化并写入图集
         std::vector<uint8_t> bitmap(bmpW * bmpH);
@@ -282,4 +316,4 @@ namespace render::core
         m_atlasDirty = true;
         return true;
     }
-} // namespace render::core
+}  // namespace render::core

@@ -23,7 +23,9 @@ namespace render::core
         for (size_t i = 0; i < m_bitmaps.size(); ++i)
         {
             if (m_bitmaps[i].entityId == entityId)
+            {
                 return i;
+            }
         }
         return std::numeric_limits<size_t>::max();
     }
@@ -34,7 +36,7 @@ namespace render::core
 
         {
             rhi::BufferDesc desc{};
-            desc.size = 6 * sizeof(BitmapVertex); // 两个三角形
+            desc.size = 6 * sizeof(BitmapVertex);  // 两个三角形
             desc.usage = rhi::BufferUsage::Vertex;
             desc.memory = rhi::MemoryType::GPU_CPU_Coherent;
             desc.debugName = "BitmapVB";
@@ -99,8 +101,7 @@ namespace render::core
         m_device = nullptr;
     }
 
-    void BitmapRenderer::set(uint64_t entityId, const uint8_t* rgba,
-        int32_t w, int32_t h, const float corners[8])
+    void BitmapRenderer::set(uint64_t entityId, const uint8_t* rgba, int32_t w, int32_t h, const float corners[8])
     {
         // entityId 允许为 0：作为"单图槽位"供旧 renderSetBitmap 兼容 API 使用，
         // 场景实体 ID 从 1 起，因此 0 永不与真实图元冲突。
@@ -160,7 +161,9 @@ namespace render::core
         // entityId 为 0 表示"单图槽位"（兼容旧 API），同样允许移除
         size_t idx = findIndex(entityId);
         if (idx == std::numeric_limits<size_t>::max())
+        {
             return;
+        }
 
         BitmapEntry& entry = m_bitmaps[idx];
         if (m_device && entry.texture != rhi::NullHandle)
@@ -187,18 +190,16 @@ namespace render::core
         m_bitmaps.clear();
     }
 
-    void BitmapRenderer::render(rhi::IDevice* device,
-        const float viewMatrix[9], const double cameraCenter[2])
+    void BitmapRenderer::render(rhi::IDevice* device, const float viewMatrix[9], const double cameraCenter[2])
     {
         if (!device || m_bitmaps.empty() || m_pipeline == rhi::NullHandle)
+        {
             return;
+        }
 
         device->bindPipeline(m_pipeline);
         device->setUniformMatrix3("uViewMatrix", viewMatrix);
-        const float camCenter[2] = {
-            static_cast<float>(cameraCenter[0]),
-            static_cast<float>(cameraCenter[1])
-        };
+        const float camCenter[2] = { static_cast<float>(cameraCenter[0]), static_cast<float>(cameraCenter[1]) };
         device->setUniformVec2("uCameraCenter", camCenter);
         device->bindVertexBuffer(0, m_vertexBuffer, 0);
 
@@ -206,7 +207,9 @@ namespace render::core
         for (const BitmapEntry& entry : m_bitmaps)
         {
             if (entry.texture == rhi::NullHandle || entry.width <= 0 || entry.height <= 0)
+            {
                 continue;
+            }
 
             // 四角布局：TL, TR, BL, BR；UV 用于纹理采样
             struct Corner
@@ -214,11 +217,12 @@ namespace render::core
                 float x, y;
                 float u, v;
             };
+
             Corner corners[4] = {
-                { entry.corners[0], entry.corners[1], 0.0f, 1.0f }, // TL: v=1（上）
-                { entry.corners[2], entry.corners[3], 1.0f, 1.0f }, // TR
-                { entry.corners[4], entry.corners[5], 0.0f, 0.0f }, // BL: v=0（下）
-                { entry.corners[6], entry.corners[7], 1.0f, 0.0f }, // BR
+                { entry.corners[0], entry.corners[1], 0.0f, 1.0f },  // TL: v=1（上）
+                { entry.corners[2], entry.corners[3], 1.0f, 1.0f },  // TR
+                { entry.corners[4], entry.corners[5], 0.0f, 0.0f },  // BL: v=0（下）
+                { entry.corners[6], entry.corners[7], 1.0f, 0.0f },  // BR
             };
 
             // 两个三角形：TL-TR-BR, TL-BR-BL
@@ -239,4 +243,4 @@ namespace render::core
             device->draw(6, 1, 0, 0);
         }
     }
-}
+}  // namespace render::core
