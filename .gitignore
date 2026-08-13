@@ -1,1 +1,155 @@
+# ============================================================
+# C++ / Qt / CMake 子模块统一忽略规则（跨平台 / 多 IDE）
+# ============================================================
+
+# ---- 构建输出目录 ----
 build/
+build-*/
+build_*/
+out/
+bin/
+lib/
+cmake-build-*/
+
+# ---- CMake 中间文件 ----
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+CMakeUserPresets.json
+
+# ---- Ninja 中间文件 ----
+*.ninja
+*.ninja_deps
+*.ninja_log
+
+# ---- 编译产物（跨平台）----
+# Windows
+*.obj
+*.lib
+*.exp
+*.pdb
+*.ilk
+*.idb
+*.exe
+*.dll
+# Linux / Unix
+*.o
+*.so
+*.so.*
+*.a
+*.la
+*.lai
+*.slo
+*.lo
+*.out
+# macOS
+*.dylib
+*.app
+*.dSYM/
+
+# ---- 预编译头 / Fortran ----
+*.gch
+*.pch
+*.mod
+*.smod
+
+# ---- 调试信息 ----
+*.dwo
+*.dump
+core
+core.*
+
+# ---- IDE: Visual Studio ----
+.vs/
+*.suo
+*.sln
+*.sdf
+*.opensdf
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+
+# ---- IDE: VSCode ----
+.vscode/
+
+# ---- IDE: Xcode ----
+*.xcodeproj
+*.xcworkspace
+*.xcuserdata
+*.xcuserstate
+DerivedData/
+xcuserdata/
+
+# ---- IDE: CLion / JetBrains ----
+.idea/
+*.iml
+
+# ---- IDE: QtCreator ----
+*.pro.user
+*.pro.user.*
+*.qbs.user
+*.qbs.user.*
+*.autosave
+*.qmlproject.user
+*.qmlproject.user.*
+CMakeLists.txt.user*
+*creator.user*
+/.qmake.cache
+/.qmake.stash
+
+# ---- Qt 生成文件 ----
+moc_*.cpp
+moc_*.h
+qrc_*.cpp
+ui_*.h
+*.qm
+*.qmlc
+*.jsc
+*.prl
+*.qmlls.ini
+*_qmlcache.qrc
+*_plugin_import.cpp
+object_script.*.Release
+object_script.*.Debug
+target_wrapper.*
+
+# ---- Protobuf 生成文件 ----
+Generated/
+*.pb.cc
+*.pb.h
+
+# ---- vcpkg ----
+vcpkg_installed/
+
+# ---- OS 系统临时文件 ----
+# Windows
+Thumbs.db
+desktop.ini
+$RECYCLE.BIN/
+*.lnk
+# macOS
+.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+.fseventsd
+# Linux
+*~
+.directory
+.Trash-*
+
+# ---- 临时 / 日志 / 备份文件 ----
+*.tmp
+*.temp
+*.swp
+*.swo
+*.bak
+*.orig
+*.log
+*.old
+
+# ---- 测试输出 / 缓存 ----
+Testing/
+.cache/
