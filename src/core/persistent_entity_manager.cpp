@@ -476,8 +476,7 @@ namespace render
                 }
             }
 
-            SY_DEBUGF(
-                "[PersistentEntityManager] readBackGpuVisibility: visible=%u / %u entities", written, m_entityCount);
+            // SY_DEBUGF("[PersistentEntityManager] readBackGpuVisibility: visible=%u / %u entities", written, m_entityCount);
 
             return written;
         }

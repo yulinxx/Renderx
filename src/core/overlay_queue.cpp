@@ -428,7 +428,9 @@ namespace render
             }
             case OverlayForm::Marker:
             {
-                // 点标记：选择手柄/标记点等所有 Marker 形态图元共用此分支
+                // 点标记：选择手柄/标记点等所有 Marker 形态图元共用此分支。
+                // 填充(三角形)与边框(线段)拓扑不同，必须分别记录两个绘制区间，
+                // 否则 LineList 拓扑会把填充三角形顶点误当作线段绘制，产生杂线。
                 const auto* desc = static_cast<const OverlayMarkerSetDesc*>(primitive->payload);
                 if (!desc || !desc->positions || desc->count == 0)
                 {
@@ -438,23 +440,45 @@ namespace render
                 float inner = std::max(half - 1.0f, half * 0.72f);
                 uint8_t fillAlpha = (primitive->style.fillColor >> 24) & 0xFF;
                 bool hasFill = (fillAlpha != 0);
-                uint32_t vertsPerItem = hasFill ? 14 : 8;
-                count = desc->count * vertsPerItem;
-                m_unifiedVerts.reserve(start + count);
-                for (uint32_t i = 0; i < desc->count; ++i)
+
+                // 填充四边形（2 个三角形，6 顶点/项）
+                uint32_t fillStart = static_cast<uint32_t>(m_unifiedVerts.size());
+                if (hasFill)
                 {
-                    float cx = desc->positions[i * 2 + 0];
-                    float cy = desc->positions[i * 2 + 1];
-                    if (hasFill)
+                    for (uint32_t i = 0; i < desc->count; ++i)
                     {
+                        float cx = desc->positions[i * 2 + 0];
+                        float cy = desc->positions[i * 2 + 1];
                         m_unifiedVerts.resize(m_unifiedVerts.size() + 6);
                         buildMarkerQuad(
                             &m_unifiedVerts[m_unifiedVerts.size() - 6], cx, cy, inner, primitive->style.fillColor);
                     }
+                }
+                uint32_t fillCount = static_cast<uint32_t>(m_unifiedVerts.size()) - fillStart;
+
+                // 边框（4 条线段，8 顶点/项）
+                uint32_t borderStart = static_cast<uint32_t>(m_unifiedVerts.size());
+                for (uint32_t i = 0; i < desc->count; ++i)
+                {
+                    float cx = desc->positions[i * 2 + 0];
+                    float cy = desc->positions[i * 2 + 1];
                     m_unifiedVerts.resize(m_unifiedVerts.size() + 8);
                     buildMarkerBorder(
                         &m_unifiedVerts[m_unifiedVerts.size() - 8], cx, cy, half, primitive->style.borderColor);
                 }
+                uint32_t borderCount = static_cast<uint32_t>(m_unifiedVerts.size()) - borderStart;
+
+                // 分别提交填充与边框两个区间
+                if (fillCount > 0)
+                {
+                    m_unifiedRanges.push_back({ fillStart, fillCount, 1, static_cast<uint32_t>(primitive->group) });
+                }
+                if (borderCount > 0)
+                {
+                    m_unifiedRanges.push_back({ borderStart, borderCount, 0, static_cast<uint32_t>(primitive->group) });
+                }
+                m_dirty = true;
+                count = 0;  // 已手动提交两个区间，跳过末尾的统一提交
                 break;
             }
             case OverlayForm::SnapCircle:

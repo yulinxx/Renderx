@@ -70,7 +70,7 @@ namespace render
         {
             m_passes.clear();
             m_lastExecutedCount = 0;
-            SY_DEBUGF("RenderGraph::clear: all passes removed");
+            //SY_DEBUGF("RenderGraph::clear: all passes removed");
         }
 
         void RenderGraph::execute(rhi::IDevice* device)
@@ -83,38 +83,19 @@ namespace render
 
             if (m_passes.empty())
             {
-                SY_WARNF("RenderGraph::execute: no passes to execute");
                 return;
             }
 
             uint32_t executedCount = 0;
             const uint32_t passCount = static_cast<uint32_t>(m_passes.size());
 
-            // 每60帧输出一次 Pass 执行摘要（避免日志过多）
-            static uint32_t s_frameIndex = 0;
-            bool logSummary = (s_frameIndex % 60 == 0);
-            ++s_frameIndex;
-
-            if (logSummary)
-            {
-                SY_DEBUGF("RenderGraph::execute: begin (%u passes)", passCount);
-            }
-
             for (uint32_t i = 0; i < passCount; ++i)
             {
                 const PassEntry& entry = m_passes[i];
                 if (!entry.desc.enabled)
                 {
-                    if (logSummary)
-                    {
-                        SY_DEBUGF("RenderGraph::execute: [%u] '%s' skipped (disabled)",
-                            i,
-                            entry.desc.name ? entry.desc.name : "");
-                    }
                     continue;
                 }
-
-                const char* passName = entry.desc.name ? entry.desc.name : "(unnamed)";
 
                 // Phase 4: 先调用 onSetup（如有），设置清屏、深度、混合等状态
                 if (entry.desc.onSetup)
@@ -127,25 +108,11 @@ namespace render
                 {
                     entry.desc.onExecute(device);
                 }
-                else if (!entry.desc.onSetup)
-                {
-                    SY_DEBUGF("RenderGraph::execute: [%u] '%s' has no onSetup and no onExecute callback", i, passName);
-                }
 
                 ++executedCount;
-
-                if (logSummary)
-                {
-                    SY_DEBUGF("RenderGraph::execute: [%u] '%s' done", i, passName);
-                }
             }
 
             m_lastExecutedCount = executedCount;
-
-            if (logSummary)
-            {
-                SY_DEBUGF("RenderGraph::execute: end (executed %u/%u passes)", executedCount, passCount);
-            }
         }
 
         uint32_t RenderGraph::getPassCount() const
