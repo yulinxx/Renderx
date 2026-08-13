@@ -84,10 +84,13 @@ extern "C" {
         {
             if (!dev->sceneEnv.initialize(dev->rhiDevice))
                 return false;
+
+            if (!dev->bitmapRenderer.initialize(dev->rhiDevice))
+                return false;
         }
         else
         {
-            SY_DEBUGF("renderCreateDevice: Null backend - skipping SceneEnv initialization");
+            SY_DEBUGF("renderCreateDevice: Null backend - skipping SceneEnv/Bitmap initialization");
         }
 
         return true;
@@ -245,6 +248,7 @@ extern "C" {
         if (!dev) return;
 
         // 按逆序关闭渲染模块
+        dev->bitmapRenderer.shutdown();
         dev->sceneEnv.shutdown();
         dev->textAtlas.shutdown();
         dev->screenTextRenderer.shutdown();

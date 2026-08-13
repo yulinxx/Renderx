@@ -216,12 +216,21 @@ static void tessellatePolyline(const GeometryPolyline* polyline, std::vector<ren
         return;
 
     float cr = polyline->color[0], cg = polyline->color[1], cb = polyline->color[2];
-    outVertices.reserve(polyline->pointCount);
+    outVertices.reserve(polyline->pointCount + (polyline->closed ? 1 : 0));
     for (uint32_t i = 0; i < polyline->pointCount; ++i)
     {
         outVertices.push_back({
             static_cast<float>(polyline->points[i].x),
             static_cast<float>(polyline->points[i].y),
+            0.0f,
+            cr, cg, cb
+            });
+    }
+    if (polyline->closed)
+    {
+        outVertices.push_back({
+            static_cast<float>(polyline->points[0].x),
+            static_cast<float>(polyline->points[0].y),
             0.0f,
             cr, cg, cb
             });
@@ -391,8 +400,7 @@ static void renderSubmitGeometryImpl(RenderDevice* dev, const GeometryPrimitive*
             tessellatePolyline(primitive->desc.polyline, vertices);
             if (!vertices.empty())
             {
-                render::PrimitiveType type = primitive->desc.polyline->closed ?
-                    render::PrimitiveType::LineLoop : render::PrimitiveType::LineStrip;
+                render::PrimitiveType type = render::PrimitiveType::LineStrip;
                 EntityId eid = resolveEntityId(dev, primitive->entityId);
                 dev->world2D.addEntity(eid, vertices.data(),
                     static_cast<uint32_t>(vertices.size()), type, 0);
@@ -659,7 +667,26 @@ extern "C" {
                 dev->renderGraph.addPass(pass);
             }
 
-            // ---- Pass 2: World2DCollect ----
+            // ---- Pass 2: Bitmap ----
+            // 渲染位图（纹理四边形），位于网格/台面之上、矢量几何与选择框之下
+            {
+                core::PassDesc pass;
+                pass.name = "Bitmap";
+                pass.enabled = true;
+                pass.onExecute = [dev](rhi::IDevice* d) {
+                    if (!dev->bitmapRenderer.hasBitmap()) return;
+                    dev->bitmapRenderer.render(d, dev->view2D.viewMatrix, dev->cameraCenter);
+                    };
+                pass.inputs.push_back({ core::PassResourceType::Texture,
+                    core::PassResourceAccess::Read, "Bitmap_Tex", 0 });
+                pass.inputs.push_back({ core::PassResourceType::VertexBuffer,
+                    core::PassResourceAccess::Read, "Bitmap_VB", 0 });
+                pass.outputs.push_back({ core::PassResourceType::ColorTarget,
+                    core::PassResourceAccess::Write, "Backbuffer", 0 });
+                dev->renderGraph.addPass(pass);
+            }
+
+            // ---- Pass 3: World2DCollect ----
             // 将 world2D 图元渲染命令收集到 CommandEncoder
             {
                 core::PassDesc pass;
@@ -676,7 +703,7 @@ extern "C" {
                 dev->renderGraph.addPass(pass);
             }
 
-            // ---- Pass 3: OverlayCollect ----
+            // ---- Pass 4: OverlayCollect ----
             // 将 overlay 渲染命令收集到 CommandEncoder
             {
                 core::PassDesc pass;
@@ -690,7 +717,7 @@ extern "C" {
                 dev->renderGraph.addPass(pass);
             }
 
-            // ---- Pass 4: CommandExecute ----
+            // ---- Pass 5: CommandExecute ----
             // 统一执行所有已收集的绘制命令（World2D + Overlay）
             {
                 core::PassDesc pass;
@@ -721,7 +748,7 @@ extern "C" {
                 dev->renderGraph.addPass(pass);
             }
 
-            // ---- Pass 5: Text ----
+            // ---- Pass 6: Text ----
             // 渲染文本（在 overlay 之上）
             if (!dev->pendingTextItems.empty())
             {
@@ -860,6 +887,7 @@ extern "C" {
         }
         dev->world2D.clearAllEntities();
         dev->pendingTextItems.clear();
+        dev->bitmapRenderer.clear();
         dev->entityIdCounter = 1;
     }
 

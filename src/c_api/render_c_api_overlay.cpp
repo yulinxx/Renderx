@@ -71,15 +71,53 @@ extern "C" {
         dev->setSceneEnvDirect(desc);
     }
 
-    // ==================== 位图（预留） ====================
+    // ==================== 位图 ====================
 
-    RENDER_API void renderSetBitmap(RenderDevice* /*dev*/, const uint8_t* /*rgba*/, int32_t /*w*/, int32_t /*h*/,
-        float /*tlX*/, float /*tlY*/, float /*trX*/, float /*trY*/,
-        float /*blX*/, float /*blY*/, float /*brX*/, float /*brY*/)
+    // 单图便捷入口：固定 entityId=0，供旧调用方使用（等价 renderUpsertBitmap(dev,0,...)）
+    RENDER_API void renderSetBitmap(RenderDevice* dev, const uint8_t* rgba, int32_t w, int32_t h,
+        float tlX, float tlY, float trX, float trY,
+        float blX, float blY, float brX, float brY)
     {
+        if (!dev) return;
+        const float corners[8] = {
+            tlX, tlY,   // TL
+            trX, trY,   // TR
+            blX, blY,   // BL
+            brX, brY    // BR
+        };
+        dev->bitmapRenderer.set(0, rgba, w, h, corners);
     }
 
-    RENDER_API void renderClearBitmap(RenderDevice* /*dev*/)
+    RENDER_API void renderClearBitmap(RenderDevice* dev)
     {
+        if (!dev) return;
+        dev->bitmapRenderer.remove(0);
+    }
+
+    RENDER_API void renderUpsertBitmap(RenderDevice* dev, uint64_t entityId,
+        const uint8_t* rgba, int32_t w, int32_t h,
+        float tlX, float tlY, float trX, float trY,
+        float blX, float blY, float brX, float brY)
+    {
+        if (!dev || entityId == 0) return;
+        const float corners[8] = {
+            tlX, tlY,   // TL
+            trX, trY,   // TR
+            blX, blY,   // BL
+            brX, brY    // BR
+        };
+        dev->bitmapRenderer.set(entityId, rgba, w, h, corners);
+    }
+
+    RENDER_API void renderRemoveBitmap(RenderDevice* dev, uint64_t entityId)
+    {
+        if (!dev || entityId == 0) return;
+        dev->bitmapRenderer.remove(entityId);
+    }
+
+    RENDER_API void renderClearBitmaps(RenderDevice* dev)
+    {
+        if (!dev) return;
+        dev->bitmapRenderer.clear();
     }
 } // extern "C"

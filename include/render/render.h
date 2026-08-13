@@ -413,32 +413,72 @@ namespace render
          */
         RENDER_API void renderSetSceneEnvDirect(RenderDevice* dev, const SceneEnvGeometryDesc* desc);
 
-        /**
-         * @brief 设置位图图像（用于显示图片覆盖层）
-         *
-         * @param dev 渲染设备
-         * @param rgba RGBA像素数据
-         * @param w 图像宽度
-         * @param h 图像高度
-         * @param tlX 左上角X坐标（世界坐标）
-         * @param tlY 左上角Y坐标（世界坐标）
-         * @param trX 右上角X坐标（世界坐标）
-         * @param trY 右上角Y坐标（世界坐标）
-         * @param blX 左下角X坐标（世界坐标）
-         * @param blY 左下角Y坐标（世界坐标）
-         * @param brX 右下角X坐标（世界坐标）
-         * @param brY 右下角Y坐标（世界坐标）
-         */
-        RENDER_API void renderSetBitmap(RenderDevice* dev, const uint8_t* rgba, int32_t w, int32_t h,
-            float tlX, float tlY, float trX, float trY,
-            float blX, float blY, float brX, float brY);
+/**
+ * @brief 设置位图图像（用于显示图片覆盖层）
+ * 
+ * @param dev 渲染设备
+ * @param rgba RGBA像素数据
+ * @param w 图像宽度
+ * @param h 图像高度
+ * @param tlX 左上角X坐标（世界坐标）
+ * @param tlY 左上角Y坐标（世界坐标）
+ * @param trX 右上角X坐标（世界坐标）
+ * @param trY 右上角Y坐标（世界坐标）
+ * @param blX 左下角X坐标（世界坐标）
+ * @param blY 左下角Y坐标（世界坐标）
+ * @param brX 右下角X坐标（世界坐标）
+ * @param brY 右下角Y坐标（世界坐标）
+ */
+RENDER_API void renderSetBitmap(RenderDevice* dev, const uint8_t* rgba, int32_t w, int32_t h,
+                                float tlX, float tlY, float trX, float trY,
+                                float blX, float blY, float brX, float brY);
 
-        /**
-         * @brief 清除位图图像
-         *
-         * @param dev 渲染设备
-         */
-        RENDER_API void renderClearBitmap(RenderDevice* dev);
+/**
+ * @brief 清除位图图像
+ *
+ * @param dev 渲染设备
+ */
+RENDER_API void renderClearBitmap(RenderDevice* dev);
+
+/**
+ * @brief 按 entityId 添加/更新位图（多图槽位版本）
+ *
+ * 与 renderSetBitmap（固定 entityId=0 的单图便捷入口）不同，本接口按 entityId
+ * 独立管理多张位图，供多图覆盖场景使用。entityId=0 被保留给 renderSetBitmap。
+ *
+ * @param dev 渲染设备
+ * @param entityId 位图唯一标识（不能为 0）
+ * @param rgba RGBA 像素数据
+ * @param w 图像宽度
+ * @param h 图像高度
+ * @param tlX 左上角 X 坐标（世界坐标）
+ * @param tlY 左上角 Y 坐标（世界坐标）
+ * @param trX 右上角 X 坐标（世界坐标）
+ * @param trY 右上角 Y 坐标（世界坐标）
+ * @param blX 左下角 X 坐标（世界坐标）
+ * @param blY 左下角 Y 坐标（世界坐标）
+ * @param brX 右下角 X 坐标（世界坐标）
+ * @param brY 右下角 Y 坐标（世界坐标）
+ */
+RENDER_API void renderUpsertBitmap(RenderDevice* dev, uint64_t entityId,
+    const uint8_t* rgba, int32_t w, int32_t h,
+    float tlX, float tlY, float trX, float trY,
+    float blX, float blY, float brX, float brY);
+
+/**
+ * @brief 按 entityId 移除位图
+ *
+ * @param dev 渲染设备
+ * @param entityId 要移除的位图标识（不能为 0）
+ */
+RENDER_API void renderRemoveBitmap(RenderDevice* dev, uint64_t entityId);
+
+/**
+ * @brief 清除所有位图（包括 renderSetBitmap 的单图槽位）
+ *
+ * @param dev 渲染设备
+ */
+RENDER_API void renderClearBitmaps(RenderDevice* dev);
 
         /**
          * @brief 执行一帧渲染

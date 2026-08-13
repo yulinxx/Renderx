@@ -89,6 +89,7 @@ set(RENDER_SOURCES
     src/core/render_world_3d.cpp        # 3D渲染世界
     src/core/text_atlas.cpp             # 文本图集管理器
     src/core/scene_env.cpp              # 场景环境渲染器
+    src/core/bitmap_renderer.cpp        # 位图渲染器（单张 RGBA 纹理四边形）
     src/core/stb_truetype_impl.cpp      # stb_truetype字体库实现
     src/core/screen_text_renderer.cpp   # 屏幕文本渲染器
     src/shader/shaders.cpp              # Shader加载管理

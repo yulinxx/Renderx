@@ -26,6 +26,7 @@
 #include "core/text_atlas.h"
 #include "core/screen_text_renderer.h"
 #include "core/scene_env.h"
+#include "core/bitmap_renderer.h"
 #include "rhi/rhi_device.h"
 #include "rhi/rhi_gl.h"
 #include "rhi/rhi_null.h"
@@ -85,6 +86,8 @@ namespace render
         core::ScreenTextRenderer screenTextRenderer;
         /// 场景环境渲染器（网格背景等）
         core::SceneEnv       sceneEnv;
+        /// 位图渲染器（单张 RGBA 位图纹理四边形）
+        core::BitmapRenderer bitmapRenderer;
         /// 统一命令编码器（Phase 3 新增，统一 overlay / world 绘制命令）
         core::CommandEncoder commandEncoder;
         /// 显式 Pass 调度器（Phase 4 新增，线性顺序执行器）
