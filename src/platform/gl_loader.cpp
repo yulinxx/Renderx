@@ -137,6 +137,8 @@ extern "C" RENDER_API bool gl_loader_init(void* getProcAddress)
     g_funcs.DepthFunc = (PFNGLDEPTHFUNCPROC)getProc("glDepthFunc");
     g_funcs.PolygonMode = (PFNGLPOLYGONMODEPROC)getProc("glPolygonMode");
     g_funcs.GetIntegerv = (PFNGLGETINTEGERVPROC)getProc("glGetIntegerv");
+    g_funcs.GetFloatv = (PFNGLGETFLOATVPROC)getProc("glGetFloatv");
+    g_funcs.Hint = (PFNGLHINTPROC)getProc("glHint");
 
     g_funcs.GenFramebuffers = (PFNGLGENFRAMEBUFFERSPROC)getProc("glGenFramebuffers");
     g_funcs.DeleteFramebuffers = (PFNGLDELETEFRAMEBUFFERSPROC)getProc("glDeleteFramebuffers");

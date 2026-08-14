@@ -316,12 +316,12 @@ vec3 pos = uViewMatrix * vec3(aPosition.xy, 1.0);
 
 **灾难性抵消**（Catastrophic Cancellation）导致相邻顶点坍缩到同一 NDC 位置，形成零长度线段，OpenGL 无法渲染。
 
-### 解决方案：相机相对渲染
+### 解决方案：双层相机相对渲染
 
-采用 **每帧相机相对变换** 策略：
+采用 **细分阶段 + 着色器阶段** 双层精度优化策略：
 
-1. **顶点数据保持世界坐标**：不修改顶点缓冲区中的数据
-2. **着色器每帧减去相机中心**：在顶点着色器中执行 `relPos = aPosition.xy - uCameraCenter`
+1. **细分阶段 double 精度减法**：在 `tessellatePolyline`/`tessellateCircle`/`tessellateArc`/`tessellateEllipse` 中，以 `double` 精度减去相机中心后再转 `float`，使传入 GPU 的顶点坐标保持在相机附近的小数值范围
+2. **着色器每帧减去相机中心**：在顶点着色器中执行 `relPos = aPosition.xy - uCameraCenter`（此时 `aPosition` 已是相机附近的小值 float，减法误差极小）
 3. **World2D 使用纯缩放矩阵**：移除视图矩阵中的平移分量，避免灾难性抵消
 4. **相机中心作为 uniform 传入**：每帧更新，确保平移/缩放时精度正确
 
@@ -369,12 +369,12 @@ void main()
 
 #### 精度对比
 
-| 场景 | 原始方案（float32） | 相机相对方案（float32） |
-|------|---------------------|------------------------|
-| worldX=200000, camX=199999, scale=1000 | 灾难性抵消，误差 ~24 | 减法误差 ~0.024，放大后 ~24 |
-| worldX=200000, camX=199999.5, scale=1000 | 完全坍缩，误差 ~1000 | 减法误差 ~0.024，放大后 ~24 |
+| 场景 | 原始方案（float32） | 着色器减法（float32） | 细分阶段减法（double→float） |
+|------|---------------------|------------------------|------------------------------|
+| worldX=200000, camX=199999, scale=1000 | 灾难性抵消，误差 ~24 | 减法误差 ~0.024，放大后 ~24 | double 减法无误差，float 误差 ~0 |
+| worldX=200000, camX=199999.5, scale=1000 | 完全坍缩，误差 ~1000 | 减法误差 ~0.024，放大后 ~24 | double 减法无误差，float 误差 ~0 |
 
-> **注意**：相机相对方案使用 float32 减法，在大坐标极高倍放大时仍有精度限制，但相比原始方案有数量级提升。如需更高精度，需在细分阶段使用 double 精度做减法，但需每帧重新细分。
+> **实现说明**：细分阶段（`tessellatePolyline` 等）已实现 double 精度减去相机中心后再转 float，从根源消除精度丢失。着色器中的 `uCameraCenter` 减法作为第二层保障，此时 `aPosition` 已是相机附近的小值 float，减法误差可忽略。两层配合下，即使坐标量级达 10^6 也能保持像素级精度。
 
 ### 新增/修改文件列表
 
@@ -382,11 +382,81 @@ void main()
 |------|----------|
 | `src/c_api/render_c_api_internal.h` | 添加 `double cameraCenter[2]` 到 RenderDevice |
 | `include/render/render.h` | 声明 `renderSetCameraCenter()` API |
-| `src/c_api/render_c_api_frame.cpp` | 实现 `renderSetCameraCenter()` |
+| `src/c_api/render_c_api_frame.cpp` | 实现 `renderSetCameraCenter()`；`tessellatePolyline`/`tessellateCircle`/`tessellateArc`/`tessellateEllipse` 增加 `cameraCenter` 参数，double 精度减法后再转 float |
 | `src/shader/scene_2d.vert` | 添加 `uCameraCenter` uniform，相机相对变换 |
 | `src/core/command_encoder.h/.cpp` | `execute()` 增加相机中心参数，World2D 使用纯缩放矩阵 |
-| `src/core/scene_env.cpp` | 设置 `uCameraCenter = (0,0)` |
-| `UI/.../RenderWidget.cpp` | `setViewMatrix()` 和 `initializeGL()` 中调用 `renderSetCameraCenter()` |
+| `src/core/scene_env.cpp` | 设置 `uCameraCenter = (0,0)`；修复 `asTriangles` 自动推断逻辑（`triangleFlags=null` 时默认 `false`，不再按 `vertexCount%3==0` 误判） |
+| `src/rhi/rhi_gl.cpp` | 移除全局 `GL_LINE_SMOOTH`（与 MSAA 冲突导致线条消失）；`setLineWidth()` 增加范围钳制（查询 `GL_LINE_WIDTH_RANGE`） |
+| `src/rhi/rhi_gl.h` | 添加 `m_minLineWidth`/`m_maxLineWidth` 成员 |
+| `src/platform/gl_loader.h` | 添加 `GetFloatv`/`Hint` 函数指针；添加 `GL_LINE_WIDTH_RANGE`/`GL_ALIASED_LINE_WIDTH_RANGE`/`GL_NICEST`/`GL_LINE_SMOOTH_HINT` 常量 |
+| `src/platform/gl_loader.cpp` | 初始化 `GetFloatv`/`Hint` 函数指针 |
+| `UI/.../RenderWidget.cpp` | `setViewMatrix()` 和 `initializeGL()` 中调用 `renderSetCameraCenter()`；macOS 显式请求 GL 4.1 CoreProfile（原先请求 4.6 被静默降级）；`setSceneCommands()` 使用 `RenderCommand::primitiveType` 替代硬编码 `LineList` |
+| `UI/Common/Include/Render/RenderTypes.h` | 添加 `RenderPrimitiveType` 枚举和 `RenderCommand::primitiveType` 字段（默认 `LineStrip`） |
+
+## 跨平台渲染兼容性
+
+### 问题描述
+
+同一套渲染代码在 Windows 和 macOS 上表现不一致：
+
+- **macOS 网格线渲染异常**：网格线缺失或被错误渲染为填充三角形
+- **六边形缩放后交替缺线**：6 条边的多边形缩放后只显示 3 条边（间隔一条缺一条）
+- **缩放后线条消失**：部分线段在特定缩放级别不可见
+- **线宽跨平台不一致**：Windows 上线宽正常，macOS 上全部退化为 1px
+
+### 根因分析
+
+| 问题 | 根因 | 影响 |
+|------|------|------|
+| 六边形交替缺线 | `setSceneCommands` 硬编码 `PrimitiveType::LineList`，6 顶点只画 3 条边 | Windows + macOS |
+| 缩放后线条消失 | `GL_LINE_SMOOTH` 与 4x MSAA 叠加，覆盖率丢弃低阈值片段 | Windows + macOS |
+| 网格线误渲染 | `asTriangles` 自动推断 `vertexCount%3==0`，6 顶点网格线被误判为三角形 | Windows + macOS |
+| Mac 线宽退化 | macOS CoreProfile 下 `GL_LINE_WIDTH_RANGE=[1,1]`，`glLineWidth` 无钳制 | 仅 macOS |
+| Mac GL 版本异常 | 请求 GL 4.6 被静默降级为 4.1，上下文配置可能异常 | 仅 macOS |
+
+### 解决方案
+
+#### 1. 图元拓扑类型修复
+
+给 `Render::RenderCommand` 添加 `RenderPrimitiveType` 枚举字段（默认 `LineStrip`），`setSceneCommands` 根据该字段映射到 `render::PrimitiveType`，不再硬编码 `LineList`。
+
+```
+RenderPrimitiveType 枚举:
+  Points → PointList
+  Lines → LineList       (独立线段，每 2 顶点一条)
+  LineStrip → LineStrip   (连续线段，默认值)
+  LineLoop → LineLoop     (闭合线段)
+  Triangles → TriangleList
+  TriangleFan → TriangleFan
+```
+
+#### 2. GL_LINE_SMOOTH 移除
+
+移除全局 `glEnable(GL_LINE_SMOOTH)`。原因：
+- `GL_LINE_SMOOTH` 基于覆盖率的抗锯齿与 4x MSAA 叠加时，会在特定缩放级别丢弃低于覆盖阈值的线段片段
+- MSAA 已提供足够的多重采样抗锯齿，无需额外的 `GL_LINE_SMOOTH`
+- macOS CoreProfile 下 `GL_LINE_SMOOTH` 仅对 width=1.0 的线有效，实际效果有限
+
+#### 3. 线宽范围钳制
+
+`GLDevice::initialize()` 时查询 `GL_LINE_WIDTH_RANGE`，`setLineWidth()` 钳制到 GPU 支持范围：
+- macOS CoreProfile：`[1.0, 1.0]`（OpenGL 规范限制，所有线宽退化为 1px）
+- Windows CompatibilityProfile：可能支持更宽线宽（取决于驱动）
+
+> **macOS 线宽限制说明**：macOS OpenGL CoreProfile 将 `glLineWidth` 钳制为 1.0 是平台规范限制。若需在 Mac 上实现粗线，需使用 geometry shader 或 triangle strip 模拟。
+
+#### 4. asTriangles 安全默认
+
+`SceneEnv::setGeometryEx` 中 `triangleFlags=null` 时，`asTriangles` 默认为 `false`（线段渲染），不再按 `vertexCount%3==0` 自动推断。
+
+#### 5. macOS OpenGL 版本
+
+`RenderWidget` 显式请求 GL 4.1 CoreProfile（macOS 最高支持版本），与 `main.cpp` 全局设置保持一致。Windows 仍使用 4.6 CompatibilityProfile。
+
+| 平台 | GL 版本 | Profile | 用途 |
+|------|---------|---------|------|
+| macOS | 4.1 | CoreProfile | macOS 最高支持，避免静默降级 |
+| Windows | 4.6 | CompatibilityProfile | 兼容 3D 端固定管线 |
 
 ## 架构优化
 
@@ -430,12 +500,16 @@ void main()
 
 **解决方案：** 创建 `RenderWorld3D` 作为 3D 场景数据管理组件，为后续完全迁移到统一管线奠定基础。
 
+**后续进展（已完成）：** `UI3D` 的 `RenderWidget3D` 已彻底移除固定管线（`glBegin/glEnd/glMatrixMode/glLight*` 等），全部改写为现代 OpenGL：`QOpenGLShaderProgram`（GLSL 330 core） + `QOpenGLVertexArrayObject`/`QOpenGLBuffer` 绘制网格/坐标轴/网格体（Phong 光照着色器）与选中线框。上下文统一为 CoreProfile：Windows/Linux 4.6，macOS 4.1（系统最高支持），无 `glBegin/glEnd` 等固定管线调用。
+
 **改动文件：**
 
 | 文件 | 修改内容 |
 |------|----------|
 | `Renderx/src/core/render_world_3d.h` | 新建：3D 渲染世界声明 |
 | `Renderx/src/core/render_world_3d.cpp` | 新建：3D 渲染世界实现 |
+| `UI3D/Src/Render/RenderWidget3D.cpp` | 3D 视图渲染器：固定管线 → 现代 GL（shader/VBO/VAO） |
+| `UI3D/Include/UI3D/Render3D/RenderWidget3D.h` | 添加现代 GL 成员与辅助方法声明 |
 
 **RenderWorld3D 接口：**
 

@@ -51,7 +51,22 @@ namespace render::rhi
         }
 
         g->Enable(GL_MULTISAMPLE);
-        g->Enable(GL_LINE_SMOOTH);
+        // 修复：不再全局启用 GL_LINE_SMOOTH。
+        // 原因：GL_LINE_SMOOTH 与 4x MSAA 叠加时，基于覆盖率的抗锯齿算法
+        // 会在某些缩放级别下丢弃低于覆盖阈值的线段片段，导致缩放后线条消失。
+        // MSAA 已提供足够的多重采样抗锯齿，无需额外的 GL_LINE_SMOOTH。
+        // 如需启用，应配合 glHint(GL_LINE_SMOOTH_HINT, GL_NICEST) 并仅在非 MSAA 环境下使用。
+
+        // 查询 GPU 支持的线宽范围
+        // macOS CoreProfile 下 GL_LINE_WIDTH_RANGE 通常为 [1, 1]（仅支持 1px 线宽）
+        // Windows CompatibilityProfile 下可能支持更宽的线宽
+        if (g->GetFloatv)
+        {
+            float range[2] = { 1.0f, 1.0f };
+            g->GetFloatv(GL_LINE_WIDTH_RANGE, range);
+            m_minLineWidth = range[0] > 0.0f ? range[0] : 1.0f;
+            m_maxLineWidth = range[1] >= m_minLineWidth ? range[1] : m_minLineWidth;
+        }
 
         m_initialized = true;
         return true;
@@ -892,7 +907,7 @@ namespace render::rhi
         if (m_currentPipeline != NullHandle)
         {
             const auto& pipeEntry = m_pipelines[size_t(m_currentPipeline - 1)];
-            configureVertexAttribs(g, pipeEntry.topology, pipeEntry.vertexFormat);
+            configureVertexAttribs(g, pipeEntry.topology, pipeEntry.vertexFormat, offset);
         }
     }
 
@@ -1163,7 +1178,15 @@ namespace render::rhi
     void GLDevice::setLineWidth(float width)
     {
         auto* g = gl();
-        g->LineWidth(width);
+        // 钳制到 GPU 支持的线宽范围
+        // macOS CoreProfile 下 m_maxLineWidth=1.0，所有线宽退化为 1px（OpenGL 规范允许）
+        // Windows 下可能支持更宽，但仍需钳制到驱动报告的范围
+        float clampedWidth = width;
+        if (clampedWidth < m_minLineWidth)
+            clampedWidth = m_minLineWidth;
+        if (clampedWidth > m_maxLineWidth)
+            clampedWidth = m_maxLineWidth;
+        g->LineWidth(clampedWidth);
     }
 
     void GLDevice::setUniformMatrix3(const char* name, const float* data)
@@ -1753,7 +1776,8 @@ namespace render::rhi
         return 0;
     }
 
-    void GLDevice::configureVertexAttribs(GLFuncs* g, PrimitiveTopology /*topo*/, VertexFormat fmt)
+    void GLDevice::configureVertexAttribs(
+        GLFuncs* g, PrimitiveTopology /*topo*/, VertexFormat fmt, uint64_t baseOffset)
     {
         if (!g->BindVertexArray)
         {
@@ -1776,8 +1800,8 @@ namespace render::rhi
             else
             {
                 g->BindBuffer(GL_ARRAY_BUFFER, m_buffers[size_t(m_currentVBOs[0] - 1)].glName);
-                g->VertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 24, (void*)0);
-                g->VertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 24, (void*)12);
+                g->VertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 24, (void*)(uintptr_t)(baseOffset + 0));
+                g->VertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 24, (void*)(uintptr_t)(baseOffset + 12));
                 g->EnableVertexAttribArray(0);
                 g->EnableVertexAttribArray(1);
                 g->BindBuffer(GL_ARRAY_BUFFER, 0);
@@ -1798,8 +1822,8 @@ namespace render::rhi
             else
             {
                 g->BindBuffer(GL_ARRAY_BUFFER, m_buffers[size_t(m_currentVBOs[0] - 1)].glName);
-                g->VertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 28, (void*)0);
-                g->VertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 28, (void*)12);
+                g->VertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 28, (void*)(uintptr_t)(baseOffset + 0));
+                g->VertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 28, (void*)(uintptr_t)(baseOffset + 12));
                 g->EnableVertexAttribArray(0);
                 g->EnableVertexAttribArray(1);
                 g->BindBuffer(GL_ARRAY_BUFFER, 0);
@@ -1820,8 +1844,8 @@ namespace render::rhi
             else
             {
                 g->BindBuffer(GL_ARRAY_BUFFER, m_buffers[size_t(m_currentVBOs[0] - 1)].glName);
-                g->VertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 24, (void*)0);
-                g->VertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 24, (void*)12);
+                g->VertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 24, (void*)(uintptr_t)(baseOffset + 0));
+                g->VertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 24, (void*)(uintptr_t)(baseOffset + 12));
                 g->EnableVertexAttribArray(0);
                 g->EnableVertexAttribArray(1);
                 g->BindBuffer(GL_ARRAY_BUFFER, 0);
@@ -1842,8 +1866,8 @@ namespace render::rhi
             else
             {
                 g->BindBuffer(GL_ARRAY_BUFFER, m_buffers[size_t(m_currentVBOs[0] - 1)].glName);
-                g->VertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 20, (void*)0);
-                g->VertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 20, (void*)12);
+                g->VertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 20, (void*)(uintptr_t)(baseOffset + 0));
+                g->VertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 20, (void*)(uintptr_t)(baseOffset + 12));
                 g->EnableVertexAttribArray(0);
                 g->EnableVertexAttribArray(1);
                 g->BindBuffer(GL_ARRAY_BUFFER, 0);
@@ -1867,9 +1891,9 @@ namespace render::rhi
             else
             {
                 g->BindBuffer(GL_ARRAY_BUFFER, m_buffers[size_t(m_currentVBOs[0] - 1)].glName);
-                g->VertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 36, (void*)0);
-                g->VertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 36, (void*)12);
-                g->VertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, 36, (void*)20);
+                g->VertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 36, (void*)(uintptr_t)(baseOffset + 0));
+                g->VertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 36, (void*)(uintptr_t)(baseOffset + 12));
+                g->VertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, 36, (void*)(uintptr_t)(baseOffset + 20));
                 g->EnableVertexAttribArray(0);
                 g->EnableVertexAttribArray(1);
                 g->EnableVertexAttribArray(2);
@@ -1881,7 +1905,7 @@ namespace render::rhi
         {
             if (g->BindVertexBuffer)
             {
-                g->BindVertexBuffer(0, m_buffers[size_t(m_currentVBOs[0] - 1)].glName, 0, 32);
+                g->BindVertexBuffer(0, m_buffers[size_t(m_currentVBOs[0] - 1)].glName, (GLintptr)baseOffset, 32);
                 g->VertexAttribFormat(0, 2, GL_FLOAT, GL_FALSE, 0);
                 g->VertexAttribFormat(1, 2, GL_FLOAT, GL_FALSE, 8);
                 g->VertexAttribFormat(2, 4, GL_FLOAT, GL_FALSE, 16);
@@ -1892,9 +1916,9 @@ namespace render::rhi
             else
             {
                 g->BindBuffer(GL_ARRAY_BUFFER, m_buffers[size_t(m_currentVBOs[0] - 1)].glName);
-                g->VertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 32, (void*)0);
-                g->VertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 32, (void*)8);
-                g->VertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, 32, (void*)16);
+                g->VertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 32, (void*)(uintptr_t)(baseOffset + 0));
+                g->VertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 32, (void*)(uintptr_t)(baseOffset + 8));
+                g->VertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, 32, (void*)(uintptr_t)(baseOffset + 16));
                 g->EnableVertexAttribArray(0);
                 g->EnableVertexAttribArray(1);
                 g->EnableVertexAttribArray(2);

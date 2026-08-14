@@ -126,8 +126,11 @@ namespace render::core
 
             layer.lineWidth = lineWidths[i];
             layer.zDepth = zDepths ? zDepths[i] : 0.0f;
-            layer.asTriangles =
-                triangleFlags ? triangleFlags[i] : ((layer.vertexCount % 3 == 0) && (layer.vertexCount > 0));
+            // 修复：当 triangleFlags 为 null 时，不再自动推断为三角形。
+            // 原逻辑 (vertexCount % 3 == 0) 会将顶点数恰好为 3 的倍数的线段层
+            // （如 6 顶点的网格线）误判为三角形，导致网格层渲染异常。
+            // 安全默认：线段层（asTriangles=false），仅当调用方显式传入 triangleFlags 时才使用。
+            layer.asTriangles = triangleFlags ? triangleFlags[i] : false;
             layer.usePixelCoords = pixelFlags ? pixelFlags[i] : false;
         }
 

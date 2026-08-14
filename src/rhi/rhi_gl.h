@@ -139,7 +139,7 @@ namespace render::rhi
         // 计算顶点格式的跨度（字节数）
         uint32_t vertexFormatStride(VertexFormat fmt) const;
 
-        void configureVertexAttribs(GLFuncs* g, PrimitiveTopology topo, VertexFormat fmt);
+        void configureVertexAttribs(GLFuncs* g, PrimitiveTopology topo, VertexFormat fmt, uint64_t baseOffset);
 
         BufferHandle allocBufferHandle();
         TextureHandle allocTextureHandle();
@@ -151,6 +151,11 @@ namespace render::rhi
         uint32_t m_height = 0;
         bool m_initialized = false;
         float m_clearColor[4] = { 0.f, 0.f, 0.f, 1.f };
+
+        /// GPU 支持的线宽范围（通过 GL_LINE_WIDTH_RANGE 查询）
+        /// macOS CoreProfile 下通常为 [1, 1]，Windows 可能支持更宽
+        float m_minLineWidth = 1.0f;
+        float m_maxLineWidth = 1.0f;
 
         std::vector<GLBufferEntry> m_buffers;
         std::vector<uint32_t> m_bufferFreeList;

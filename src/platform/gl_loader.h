@@ -74,6 +74,18 @@ typedef long long GLint64;
 #ifndef GL_LINE_SMOOTH
     #define GL_LINE_SMOOTH 0x0B20
 #endif
+#ifndef GL_LINE_SMOOTH_HINT
+    #define GL_LINE_SMOOTH_HINT 0x0C52
+#endif
+#ifndef GL_NICEST
+    #define GL_NICEST 0x1102
+#endif
+#ifndef GL_LINE_WIDTH_RANGE
+    #define GL_LINE_WIDTH_RANGE 0x0B22
+#endif
+#ifndef GL_ALIASED_LINE_WIDTH_RANGE
+    #define GL_ALIASED_LINE_WIDTH_RANGE 0x846E
+#endif
 #ifndef GL_MULTISAMPLE
     #define GL_MULTISAMPLE 0x809D
 #endif
@@ -415,6 +427,8 @@ typedef void(RENDER_GLAPI* PFNGLDEPTHMASKPROC)(GLboolean flag);
 typedef void(RENDER_GLAPI* PFNGLDEPTHFUNCPROC)(GLenum func);
 typedef void(RENDER_GLAPI* PFNGLPOLYGONMODEPROC)(GLenum face, GLenum mode);
 typedef void(RENDER_GLAPI* PFNGLGETINTEGERVPROC)(GLenum pname, GLint* data);
+typedef void(RENDER_GLAPI* PFNGLGETFLOATVPROC)(GLenum pname, GLfloat* data);
+typedef void(RENDER_GLAPI* PFNGLHINTPROC)(GLenum target, GLenum mode);
 
 typedef void(RENDER_GLAPI* PFNGLGENFRAMEBUFFERSPROC)(GLsizei n, GLuint* framebuffers);
 typedef void(RENDER_GLAPI* PFNGLDELETEFRAMEBUFFERSPROC)(GLsizei n, const GLuint* framebuffers);
@@ -557,6 +571,8 @@ struct GLFuncs
     PFNGLDEPTHFUNCPROC DepthFunc;
     PFNGLPOLYGONMODEPROC PolygonMode;
     PFNGLGETINTEGERVPROC GetIntegerv;
+    PFNGLGETFLOATVPROC GetFloatv;
+    PFNGLHINTPROC Hint;
 
     PFNGLGENFRAMEBUFFERSPROC GenFramebuffers;
     PFNGLDELETEFRAMEBUFFERSPROC DeleteFramebuffers;

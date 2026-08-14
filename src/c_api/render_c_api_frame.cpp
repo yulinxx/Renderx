@@ -214,11 +214,15 @@ static uint32_t readBackGpuVisibility(RenderDevice* dev, uint32_t* outIndices, u
  * @brief 将多段线几何数据细分为顶点
  *
  * 使用 double 精度减去相机中心后再转 float，消除大坐标的精度损失。
+ * 修复：原先注释声称做了 camera-relative 减法，但实际代码直接 double→float 截断，
+ * 导致大坐标（万级以上）在高缩放时顶点坍缩到同一像素，线条消失。
  *
  * @param polyline 多段线几何数据
  * @param outVertices 输出顶点数组
+ * @param cameraCenter 相机中心（世界坐标 double[2]），用于精度优化
  */
-static void tessellatePolyline(const GeometryPolyline* polyline, std::vector<render::VertexP3C3>& outVertices)
+static void tessellatePolyline(const GeometryPolyline* polyline, std::vector<render::VertexP3C3>& outVertices,
+    const double cameraCenter[2])
 {
     if (!polyline || !polyline->points || polyline->pointCount < 2)
     {
@@ -226,11 +230,21 @@ static void tessellatePolyline(const GeometryPolyline* polyline, std::vector<ren
     }
 
     float cr = polyline->color[0], cg = polyline->color[1], cb = polyline->color[2];
+    const double camX = cameraCenter[0];
+    const double camY = cameraCenter[1];
     outVertices.reserve(polyline->pointCount);
     for (uint32_t i = 0; i < polyline->pointCount; ++i)
     {
-        outVertices.push_back(
-            { static_cast<float>(polyline->points[i].x), static_cast<float>(polyline->points[i].y), 0.0f, cr, cg, cb });
+        // 精度保持：先 double 精度减去相机中心，转 float 后再加回相机中心，
+        // 得到绝对世界坐标（shader 内部会再减 uCameraCenter 做相机相对渲染）。
+        // 注意：不能输出相对坐标，否则与 shader 的 uCameraCenter 相减叠加，
+        // 导致实体显示位置双重偏移（选中轮廓正常、取消选择后实体偏移）。
+        outVertices.push_back({ static_cast<float>(polyline->points[i].x - camX) + static_cast<float>(camX),
+            static_cast<float>(polyline->points[i].y - camY) + static_cast<float>(camY),
+            0.0f,
+            cr,
+            cg,
+            cb });
     }
     // 闭合折线由调用方以 LineLoop 提交，首尾自动闭合，此处不再追加首点副本，
     // 与增量路径（EntityToVertices::IncrementalVertexSink）保持顶点数/拓扑一致，
@@ -244,8 +258,10 @@ static void tessellatePolyline(const GeometryPolyline* polyline, std::vector<ren
  *
  * @param circle 圆形几何数据
  * @param outVertices 输出顶点数组
+ * @param cameraCenter 相机中心（世界坐标 double[2]），用于精度优化
  */
-static void tessellateCircle(const GeometryCircle* circle, std::vector<render::VertexP3C3>& outVertices)
+static void tessellateCircle(const GeometryCircle* circle, std::vector<render::VertexP3C3>& outVertices,
+    const double cameraCenter[2])
 {
     if (!circle || circle->radius <= 0)
     {
@@ -255,8 +271,11 @@ static void tessellateCircle(const GeometryCircle* circle, std::vector<render::V
     float cr = circle->color[0], cg = circle->color[1], cb = circle->color[2];
     const int segments = render::tess::kCircleSegments;
     outVertices.reserve(segments);
-    const double centerX = circle->center.x;
-    const double centerY = circle->center.y;
+    const double camX = cameraCenter[0];
+    const double camY = cameraCenter[1];
+    // 绝对世界坐标（double 预减保持精度后加回），与 shader 的 uCameraCenter 相减配套
+    const double centerX = static_cast<double>(static_cast<float>(circle->center.x - camX)) + camX;
+    const double centerY = static_cast<double>(static_cast<float>(circle->center.y - camY)) + camY;
     const double radius = circle->radius;
 
     for (int i = 0; i < segments; ++i)
@@ -278,8 +297,10 @@ static void tessellateCircle(const GeometryCircle* circle, std::vector<render::V
  *
  * @param arc 圆弧几何数据
  * @param outVertices 输出顶点数组
+ * @param cameraCenter 相机中心（世界坐标 double[2]），用于精度优化
  */
-static void tessellateArc(const GeometryArc* arc, std::vector<render::VertexP3C3>& outVertices)
+static void tessellateArc(const GeometryArc* arc, std::vector<render::VertexP3C3>& outVertices,
+    const double cameraCenter[2])
 {
     if (!arc || arc->radius <= 0)
     {
@@ -298,8 +319,11 @@ static void tessellateArc(const GeometryArc* arc, std::vector<render::VertexP3C3
     int segments = render::tess::arcSegments(angleRange);
 
     outVertices.reserve(segments);
-    const double centerX = arc->center.x;
-    const double centerY = arc->center.y;
+    const double camX = cameraCenter[0];
+    const double camY = cameraCenter[1];
+    // 绝对世界坐标（double 预减保持精度后加回），与 shader 的 uCameraCenter 相减配套
+    const double centerX = static_cast<double>(static_cast<float>(arc->center.x - camX)) + camX;
+    const double centerY = static_cast<double>(static_cast<float>(arc->center.y - camY)) + camY;
     const double radius = arc->radius;
 
     for (int i = 0; i <= segments; ++i)
@@ -322,8 +346,10 @@ static void tessellateArc(const GeometryArc* arc, std::vector<render::VertexP3C3
  *
  * @param ellipse 椭圆几何数据
  * @param outVertices 输出顶点数组
+ * @param cameraCenter 相机中心（世界坐标 double[2]），用于精度优化
  */
-static void tessellateEllipse(const GeometryEllipse* ellipse, std::vector<render::VertexP3C3>& outVertices)
+static void tessellateEllipse(const GeometryEllipse* ellipse, std::vector<render::VertexP3C3>& outVertices,
+    const double cameraCenter[2])
 {
     if (!ellipse || ellipse->radiusX <= 0 || ellipse->radiusY <= 0)
     {
@@ -351,8 +377,11 @@ static void tessellateEllipse(const GeometryEllipse* ellipse, std::vector<render
     // 统一离散化段数：完整椭圆 64，椭圆弧按角度比例缩放
     int actualSegments = render::tess::ellipseSegments(angleRange);
 
-    const double centerX = ellipse->center.x;
-    const double centerY = ellipse->center.y;
+    const double camX = cameraCenter[0];
+    const double camY = cameraCenter[1];
+    // 绝对世界坐标（double 预减保持精度后加回），与 shader 的 uCameraCenter 相减配套
+    const double centerX = static_cast<double>(static_cast<float>(ellipse->center.x - camX)) + camX;
+    const double centerY = static_cast<double>(static_cast<float>(ellipse->center.y - camY)) + camY;
     const double rx = ellipse->radiusX;
     float cr = ellipse->color[0], cg = ellipse->color[1], cb = ellipse->color[2];
     const double ry = ellipse->radiusY;
@@ -413,7 +442,7 @@ static void renderSubmitGeometryImpl(RenderDevice* dev, const GeometryPrimitive*
             return;
         }
         std::vector<render::VertexP3C3> vertices;
-        tessellatePolyline(primitive->desc.polyline, vertices);
+        tessellatePolyline(primitive->desc.polyline, vertices, dev->cameraCenter);
         if (!vertices.empty())
         {
             render::PrimitiveType type = primitive->desc.polyline->closed ? render::PrimitiveType::LineLoop
@@ -430,7 +459,7 @@ static void renderSubmitGeometryImpl(RenderDevice* dev, const GeometryPrimitive*
             return;
         }
         std::vector<render::VertexP3C3> vertices;
-        tessellateCircle(primitive->desc.circle, vertices);
+        tessellateCircle(primitive->desc.circle, vertices, dev->cameraCenter);
         if (!vertices.empty())
         {
             EntityId eid = resolveEntityId(dev, primitive->entityId);
@@ -446,7 +475,7 @@ static void renderSubmitGeometryImpl(RenderDevice* dev, const GeometryPrimitive*
             return;
         }
         std::vector<render::VertexP3C3> vertices;
-        tessellateArc(primitive->desc.arc, vertices);
+        tessellateArc(primitive->desc.arc, vertices, dev->cameraCenter);
         if (!vertices.empty())
         {
             EntityId eid = resolveEntityId(dev, primitive->entityId);
@@ -462,7 +491,7 @@ static void renderSubmitGeometryImpl(RenderDevice* dev, const GeometryPrimitive*
             return;
         }
         std::vector<render::VertexP3C3> vertices;
-        tessellateEllipse(primitive->desc.ellipse, vertices);
+        tessellateEllipse(primitive->desc.ellipse, vertices, dev->cameraCenter);
         if (!vertices.empty())
         {
             render::PrimitiveType type = primitive->desc.ellipse->fullEllipse ? render::PrimitiveType::LineLoop
@@ -921,8 +950,21 @@ extern "C"
         dev->stats.gpuMemoryBytes = rhi->getGPUMemoryUsage();
 
         ++dev->frameCounter;
-        // RenderStats 摘要日志已移除：每帧输出导致缩放卡顿
-        // 调试时可通过 renderGetStats() 主动查询
+        // TEMP DIAGNOSTIC: 每秒记录一次图元 bbox / 相机中心 / 视矩阵（选取消选偏移问题定位）
+        if (dev->frameCounter % 60 == 0)
+        {
+            const auto* entries = dev->world2D.getEntityEntries();
+            uint32_t ec = dev->world2D.getEntityCount();
+            SY_INFOF("[DBG] frame=%u entities=%u cam=(%.1f,%.1f) vm=(%.6f,%.6f,%.6f,%.6f)", dev->frameCounter / 60,
+                ec, dev->cameraCenter[0], dev->cameraCenter[1], dev->view2D.viewMatrix[0], dev->view2D.viewMatrix[4],
+                dev->view2D.viewMatrix[6], dev->view2D.viewMatrix[7]);
+            for (uint32_t i = 0; i < ec && i < 8; ++i)
+            {
+                SY_INFOF("[DBG]   ent[%u] id=%llu off=%u cnt=%u bbox=[%.1f,%.1f]-[%.1f,%.1f]", i,
+                    static_cast<unsigned long long>(entries[i].entityId), entries[i].vertexOffset, entries[i].vertexCount,
+                    entries[i].bbox[0], entries[i].bbox[1], entries[i].bbox[2], entries[i].bbox[3]);
+            }
+        }
         if (dev->frameCounter >= 60)
         {
             dev->frameCounter = 0;
