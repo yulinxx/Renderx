@@ -97,21 +97,21 @@ namespace render
 
             if (m_entities.size() < 3)
             {
-                SY_DEBUGF("RenderWorld::addEntity[%llu]: type=%u, verts=%u, bbox=[%.2f,%.2f]-[%.2f,%.2f], "
-                          "firstVert=(%.2f,%.2f,%.2f)(%.2f,%.2f,%.2f)",
-                    id,
-                    static_cast<uint32_t>(type),
-                    vertexCount,
-                    entry.bbox[0],
-                    entry.bbox[1],
-                    entry.bbox[2],
-                    entry.bbox[3],
-                    vertices[0].px,
-                    vertices[0].py,
-                    vertices[0].pz,
-                    vertexCount > 1 ? vertices[1].px : 0.f,
-                    vertexCount > 1 ? vertices[1].py : 0.f,
-                    vertexCount > 1 ? vertices[1].pz : 0.f);
+                // SY_DEBUGF("RenderWorld::addEntity[%llu]: type=%u, verts=%u, bbox=[%.2f,%.2f]-[%.2f,%.2f], "
+                //           "firstVert=(%.2f,%.2f,%.2f)(%.2f,%.2f,%.2f)",
+                //     id,
+                //     static_cast<uint32_t>(type),
+                //     vertexCount,
+                //     entry.bbox[0],
+                //     entry.bbox[1],
+                //     entry.bbox[2],
+                //     entry.bbox[3],
+                //     vertices[0].px,
+                //     vertices[0].py,
+                //     vertices[0].pz,
+                //     vertexCount > 1 ? vertices[1].px : 0.f,
+                //     vertexCount > 1 ? vertices[1].py : 0.f,
+                //     vertexCount > 1 ? vertices[1].pz : 0.f);
             }
 
             entry.vertexOffset = allocateVertexSpace(vertexCount);

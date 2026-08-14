@@ -316,7 +316,7 @@ namespace render
 
                 m_device->uploadBuffer(m_entityBuffer, 0, m_entityCount * sizeof(EntityGpuData), gpuData.data());
 
-                SY_DEBUGF("[PersistentEntityManager] full upload: %u entities", m_entityCount);
+                // SY_DEBUGF("[PersistentEntityManager] full upload: %u entities", m_entityCount);
             }
             else
             {

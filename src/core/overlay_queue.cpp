@@ -398,12 +398,12 @@ namespace render
                 m_unifiedVerts.push_back(makeVert(desc->minX, desc->maxY, z, r, g, b, a));
                 m_unifiedVerts.push_back(makeVert(desc->minX, desc->maxY, z, r, g, b, a));
                 m_unifiedVerts.push_back(makeVert(desc->minX, desc->minY, z, r, g, b, a));
-                SY_DEBUGF("[OverlayQueue] submit Rect (%.2f,%.2f)-(%.2f,%.2f) color=#%08x",
-                    desc->minX,
-                    desc->minY,
-                    desc->maxX,
-                    desc->maxY,
-                    primitive->style.borderColor);
+                // SY_DEBUGF("[OverlayQueue] submit Rect (%.2f,%.2f)-(%.2f,%.2f) color=#%08x",
+                //     desc->minX,
+                //     desc->minY,
+                //     desc->maxX,
+                //     desc->maxY,
+                //     primitive->style.borderColor);
                 break;
             }
             case OverlayForm::FilledRect:
@@ -569,7 +569,7 @@ namespace render
             }
 
             uint32_t totalUnifiedVerts = static_cast<uint32_t>(m_unifiedVerts.size());
-            SY_DEBUGF("[OverlayQueue] render: unified=%u ranges=%zu", totalUnifiedVerts, m_unifiedRanges.size());
+            // SY_DEBUGF("[OverlayQueue] render: unified=%u ranges=%zu", totalUnifiedVerts, m_unifiedRanges.size());
 
             uint32_t totalOldVerts = static_cast<uint32_t>(m_selectionBoxVerts.size()) +
                 static_cast<uint32_t>(m_controlVerts.size()) + static_cast<uint32_t>(m_previewVerts.size()) +
