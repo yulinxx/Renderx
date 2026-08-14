@@ -112,10 +112,15 @@ namespace render
          * @param id 要修改的图元ID
          * @param vertices 新的顶点数据
          * @param vertexCount 顶点数量
+         * @param type 图元类型（更新拓扑，避免图元闭合性变化后保留旧拓扑）
          * @param materialIdx 材质索引
          */
-        RENDER_API void renderModifyEntity(
-            RenderDevice* dev, EntityId id, const VertexP3C3* vertices, uint32_t vertexCount, uint16_t materialIdx);
+        RENDER_API void renderModifyEntity(RenderDevice* dev,
+            EntityId id,
+            const VertexP3C3* vertices,
+            uint32_t vertexCount,
+            PrimitiveType type,
+            uint16_t materialIdx);
 
         /**
          * @brief 从场景中删除2D图元

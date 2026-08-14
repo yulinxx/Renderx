@@ -245,9 +245,10 @@ namespace render
             world2D.addEntity(id, vertices, vertexCount, type, static_cast<uint16_t>(materialIdx));
         }
 
-        void modifyEntity(EntityId id, const VertexP3C3* vertices, uint32_t vertexCount, uint32_t materialIdx)
+        void modifyEntity(
+            EntityId id, const VertexP3C3* vertices, uint32_t vertexCount, PrimitiveType type, uint32_t materialIdx)
         {
-            world2D.modifyEntity(id, vertices, vertexCount, materialIdx);
+            world2D.modifyEntity(id, vertices, vertexCount, type, static_cast<uint16_t>(materialIdx));
         }
 
         void removeEntity(EntityId id)

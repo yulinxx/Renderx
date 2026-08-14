@@ -226,17 +226,15 @@ static void tessellatePolyline(const GeometryPolyline* polyline, std::vector<ren
     }
 
     float cr = polyline->color[0], cg = polyline->color[1], cb = polyline->color[2];
-    outVertices.reserve(polyline->pointCount + (polyline->closed ? 1 : 0));
+    outVertices.reserve(polyline->pointCount);
     for (uint32_t i = 0; i < polyline->pointCount; ++i)
     {
         outVertices.push_back(
             { static_cast<float>(polyline->points[i].x), static_cast<float>(polyline->points[i].y), 0.0f, cr, cg, cb });
     }
-    if (polyline->closed)
-    {
-        outVertices.push_back(
-            { static_cast<float>(polyline->points[0].x), static_cast<float>(polyline->points[0].y), 0.0f, cr, cg, cb });
-    }
+    // 闭合折线由调用方以 LineLoop 提交，首尾自动闭合，此处不再追加首点副本，
+    // 与增量路径（EntityToVertices::IncrementalVertexSink）保持顶点数/拓扑一致，
+    // 避免 modifyEntity 保留旧拓扑时出现“缺边/一段显示一段不显示”。
 }
 
 /**
@@ -418,7 +416,8 @@ static void renderSubmitGeometryImpl(RenderDevice* dev, const GeometryPrimitive*
         tessellatePolyline(primitive->desc.polyline, vertices);
         if (!vertices.empty())
         {
-            render::PrimitiveType type = render::PrimitiveType::LineStrip;
+            render::PrimitiveType type = primitive->desc.polyline->closed ? render::PrimitiveType::LineLoop
+                                                                          : render::PrimitiveType::LineStrip;
             EntityId eid = resolveEntityId(dev, primitive->entityId);
             dev->world2D.addEntity(eid, vertices.data(), static_cast<uint32_t>(vertices.size()), type, 0);
         }

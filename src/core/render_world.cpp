@@ -134,7 +134,7 @@ namespace render
         }
 
         void RenderWorld::modifyEntity(
-            EntityId id, const VertexP3C3* vertices, uint32_t vertexCount, uint16_t materialIdx)
+            EntityId id, const VertexP3C3* vertices, uint32_t vertexCount, PrimitiveType type, uint16_t materialIdx)
         {
             auto it = m_entityKeyMap.find(id);
             if (it == m_entityKeyMap.end())
@@ -158,6 +158,7 @@ namespace render
             }
 
             entry->vertexCount = vertexCount;
+            entry->primitiveType = static_cast<uint16_t>(type);
             entry->materialIndex = materialIdx;
             entry->dirty = true;
             computeBBox(vertices, vertexCount, &entry->bbox[0], &entry->bbox[1], &entry->bbox[2], &entry->bbox[3]);

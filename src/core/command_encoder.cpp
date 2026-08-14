@@ -363,11 +363,11 @@ namespace render
                         }
                         else
                         {
-                            // Overlay 顶点为屏幕对齐坐标，shader 不做 camCenter 减法，
-                            // 必须传完整 viewMatrix（包含 translation）才能正确平移。
-                            device->setUniformMatrix3("uViewMatrix", viewMatrix);
-                            const float zero2[2] = { 0.0f, 0.0f };
-                            device->setUniformVec2("uCameraCenter", zero2);
+                            // Overlay 顶点同样为绝对世界坐标，与 World2D 使用完全一致的变换：
+                            // scale-only 矩阵 + camera center，overlay.vert 内部执行
+                            // relPos = aPosition.xy - uCameraCenter。
+                            device->setUniformMatrix3("uViewMatrix", worldScaleMatrix);
+                            device->setUniformVec2("uCameraCenter", safeCameraCenter);
                         }
                     }
 
@@ -429,6 +429,22 @@ namespace render
                 const auto& groups = m_drawBatcher->build();
                 if (!groups.empty())
                 {
+                    // 必须先绑定管线，再用当前管线的顶点格式步长绑定 overlay 顶点缓冲。
+                    // 否则 bindVertexBuffer 会沿用上一个（世界 P3C3 stride=24）管线的步长，
+                    // 导致 overlay（P3C4 stride=28）顶点被按 24 字节错位读取。
+                    if (groups[0].pipeline != boundPipeline)
+                    {
+                        if (m_psm)
+                        {
+                            m_psm->bindPipeline(groups[0].pipeline);
+                        }
+                        else
+                        {
+                            device->bindPipeline(groups[0].pipeline);
+                        }
+                        boundPipeline = groups[0].pipeline;
+                    }
+
                     // 确保 overlay 顶点缓冲已绑定
                     device->bindVertexBuffer(0, overlayVB, 0);
                     rhi::BufferHandle mdiBuf = m_drawBatcher->getIndirectBuffer();

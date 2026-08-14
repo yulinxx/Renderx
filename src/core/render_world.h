@@ -230,9 +230,14 @@ namespace render
              * @param id 图元唯一标识符
              * @param vertices 新的顶点数据
              * @param vertexCount 顶点数量
+             * @param type 图元类型（拓扑）
              * @param materialIdx 材质索引
              */
-            void modifyEntity(EntityId id, const VertexP3C3* vertices, uint32_t vertexCount, uint16_t materialIdx);
+            void modifyEntity(EntityId id,
+                const VertexP3C3* vertices,
+                uint32_t vertexCount,
+                PrimitiveType type,
+                uint16_t materialIdx);
 
             /**
              * @brief 从场景中移除图元

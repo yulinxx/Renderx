@@ -30,14 +30,18 @@ extern "C"
         return 1;
     }
 
-    RENDER_API void renderModifyEntity(
-        RenderDevice* dev, EntityId id, const VertexP3C3* vertices, uint32_t vertexCount, uint16_t materialIdx)
+    RENDER_API void renderModifyEntity(RenderDevice* dev,
+        EntityId id,
+        const VertexP3C3* vertices,
+        uint32_t vertexCount,
+        PrimitiveType type,
+        uint16_t materialIdx)
     {
         if (!dev)
         {
             return;
         }
-        dev->modifyEntity(id, vertices, vertexCount, materialIdx);
+        dev->modifyEntity(id, vertices, vertexCount, type, materialIdx);
     }
 
     RENDER_API void renderRemoveEntity(RenderDevice* dev, EntityId id)
@@ -91,7 +95,11 @@ extern "C"
                     upd.materialIndex);
                 break;
             case UpdateOp::Modify:
-                dev->modifyEntity(upd.entityId, verts, upd.vertexCount, upd.materialIndex);
+                dev->modifyEntity(upd.entityId,
+                    verts,
+                    upd.vertexCount,
+                    static_cast<PrimitiveType>(upd.primitiveType),
+                    upd.materialIndex);
                 break;
             case UpdateOp::Remove:
                 dev->removeEntity(upd.entityId);
