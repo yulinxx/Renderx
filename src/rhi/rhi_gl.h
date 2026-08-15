@@ -107,6 +107,9 @@ namespace render::rhi
             uint32_t firstIndex,
             int32_t vertexOffset,
             uint32_t firstInstance) override;
+
+        /// 诊断：读回帧缓冲指定区域，统计与背景色差异超过容差的像素数
+        uint32_t readRegionNonBgPixels(uint32_t x, uint32_t y, uint32_t w, uint32_t h, const float bg[4], int tol);
         void drawIndirect(BufferHandle indirectBuffer, uint64_t offset, uint32_t drawCount, uint32_t stride) override;
         void drawIndexedIndirect(
             BufferHandle indirectBuffer, uint64_t offset, uint32_t drawCount, uint32_t stride) override;

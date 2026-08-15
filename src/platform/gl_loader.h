@@ -422,6 +422,8 @@ typedef void(RENDER_GLAPI* PFNGLVIEWPORTPROC)(GLint x, GLint y, GLsizei width, G
 typedef void(RENDER_GLAPI* PFNGLSCISSORPROC)(GLint x, GLint y, GLsizei width, GLsizei height);
 typedef void(RENDER_GLAPI* PFNGLCLEARCOLORPROC)(GLfloat red, GLfloat green, GLfloat blue, GLfloat alpha);
 typedef void(RENDER_GLAPI* PFNGLCLEARPROC)(GLbitfield mask);
+typedef void(RENDER_GLAPI* PFNGLREADPIXELSPROC)(
+    GLint x, GLint y, GLsizei width, GLsizei height, GLenum format, GLenum type, void* pixels);
 typedef void(RENDER_GLAPI* PFNGLCOLORMASKPROC)(GLboolean red, GLboolean green, GLboolean blue, GLboolean alpha);
 typedef void(RENDER_GLAPI* PFNGLDEPTHMASKPROC)(GLboolean flag);
 typedef void(RENDER_GLAPI* PFNGLDEPTHFUNCPROC)(GLenum func);
@@ -573,6 +575,7 @@ struct GLFuncs
     PFNGLGETINTEGERVPROC GetIntegerv;
     PFNGLGETFLOATVPROC GetFloatv;
     PFNGLHINTPROC Hint;
+    PFNGLREADPIXELSPROC ReadPixels;
 
     PFNGLGENFRAMEBUFFERSPROC GenFramebuffers;
     PFNGLDELETEFRAMEBUFFERSPROC DeleteFramebuffers;

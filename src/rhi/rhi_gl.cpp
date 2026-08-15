@@ -1,6 +1,7 @@
 #include "rhi_gl.h"
 #include "platform/gl_loader.h"
 #include "../shader/shaders.h"
+#include "Log/SyLogger.h"
 
 #include <cstdio>
 #include <cstring>
@@ -529,6 +530,21 @@ namespace render::rhi
         entry.dstBlend = desc.dstBlend;
         entry.depthFunc = desc.depthFunc;
 
+        // ---- 诊断：打印管线 program 与关键 uniform location ----
+        {
+            GLint locVM = g->GetUniformLocation(prog, "uViewMatrix");
+            GLint locCC = g->GetUniformLocation(prog, "uCameraCenter");
+            SY_WARNF("[Pipeline] handle=%llu program=%u vs=%s fs=%s fmt=%d topo=%u uViewMatrixLoc=%d uCameraCenterLoc=%d",
+                static_cast<unsigned long long>(handle),
+                prog,
+                desc.vertexShader ? desc.vertexShader : "null",
+                desc.fragmentShader ? desc.fragmentShader : "null",
+                static_cast<int>(desc.vertexFormat),
+                static_cast<uint32_t>(desc.topology),
+                locVM,
+                locCC);
+        }
+
         static const std::vector<std::string> commonUniforms = { "uViewMatrix",
             "uProjMatrix",
             "uModelMatrix",
@@ -892,6 +908,20 @@ namespace render::rhi
             stride = static_cast<GLsizei>(vertexFormatStride(fmt));
         }
 
+        // ---- 诊断：前 10 次顶点缓冲绑定（验证 stride 与 buffer 匹配）----
+        {
+            static uint32_t s_diagVB = 0;
+            if (s_diagVB < 10)
+            {
+                ++s_diagVB;
+                SY_WARNF("[BindVB] slot=%u handle=%llu offset=%llu stride=%d",
+                    slot,
+                    static_cast<unsigned long long>(handle),
+                    offset,
+                    stride);
+            }
+        }
+
         if (g->VertexArrayVertexBuffer)
         {
             g->VertexArrayVertexBuffer(m_vao, slot, entry.glName, (GLintptr)offset, stride);
@@ -1064,6 +1094,78 @@ namespace render::rhi
         }
 
         g->BindBuffer(GL_DRAW_INDIRECT_BUFFER, entry.glName);
+
+        // ---- 诊断：GPU 状态 + 首条命令 + 顶点内容 ----
+        {
+            static uint32_t s_diagDraws = 0;
+            if (s_diagDraws < 6 && drawCount > 0)
+            {
+                ++s_diagDraws;
+                uint32_t vCnt = 0, firstV = 0;
+                uint32_t lCnt = 0, lFirst = 0;
+                void* p = g->MapBufferRange(GL_DRAW_INDIRECT_BUFFER, (GLintptr)offset, 16, GL_MAP_READ_BIT);
+                if (p)
+                {
+                    const uint32_t* d = static_cast<const uint32_t*>(p);
+                    vCnt = d[0];
+                    firstV = d[2];
+                    g->UnmapBuffer(GL_DRAW_INDIRECT_BUFFER);
+                }
+                if (drawCount > 1)
+                {
+                    void* pl = g->MapBufferRange(
+                        GL_DRAW_INDIRECT_BUFFER, (GLintptr)(offset + (drawCount - 1) * stride), 16, GL_MAP_READ_BIT);
+                    if (pl)
+                    {
+                        const uint32_t* d = static_cast<const uint32_t*>(pl);
+                        lCnt = d[0];
+                        lFirst = d[2];
+                        g->UnmapBuffer(GL_DRAW_INDIRECT_BUFFER);
+                    }
+                }
+
+                GLint polyMode[2] = { -1, -1 };
+                GLfloat lineW = -1.0f;
+                g->GetIntegerv(GL_POLYGON_MODE, polyMode);
+                g->GetFloatv(GL_LINE_WIDTH, &lineW);
+
+                // 读回顶点缓冲中 firstVertex 处的前 2 个顶点（验证实际绘制顶点）
+                float v0[6] = { 0, 0, 0, 0, 0, 0 };
+                float v1[6] = { 0, 0, 0, 0, 0, 0 };
+                if (m_currentVBOs[0] != NullHandle)
+                {
+                    auto& vb = m_buffers[size_t(m_currentVBOs[0] - 1)];
+                    if (vb.glName)
+                    {
+                        g->BindBuffer(GL_ARRAY_BUFFER, vb.glName);
+                        void* pa = g->MapBufferRange(GL_ARRAY_BUFFER, (GLintptr)(firstV * 24), 48, GL_MAP_READ_BIT);
+                        if (pa)
+                        {
+                            std::memcpy(v0, pa, sizeof(v0));
+                            std::memcpy(v1, static_cast<const char*>(pa) + 24, sizeof(v1));
+                            g->UnmapBuffer(GL_ARRAY_BUFFER);
+                        }
+                        g->BindBuffer(GL_ARRAY_BUFFER, 0);
+                    }
+                }
+                SY_WARNF("[GPUState] topo=0x%X polyMode=[0x%X,0x%X] lineW=%.2f firstCmd=(count=%u,first=%u) "
+                         "lastCmd=(count=%u,first=%u) v0=(%.1f,%.1f,%.1f) v1=(%.1f,%.1f,%.1f)",
+                    topo,
+                    static_cast<unsigned>(polyMode[0]),
+                    static_cast<unsigned>(polyMode[1]),
+                    lineW,
+                    vCnt,
+                    firstV,
+                    lCnt,
+                    lFirst,
+                    v0[0],
+                    v0[1],
+                    v0[2],
+                    v1[0],
+                    v1[1],
+                    v1[2]);
+            }
+        }
 
         // macOS OpenGL.framework 仅导出 OpenGL 4.1 core 符号，不导出 ARB 扩展
         // glMultiDrawArraysIndirect，解析指针为 null。跨平台兜底：当 Multi
@@ -1648,6 +1750,36 @@ namespace render::rhi
             return 0;
         }
         return prog;
+    }
+
+    uint32_t GLDevice::readRegionNonBgPixels(
+        uint32_t x, uint32_t y, uint32_t w, uint32_t h, const float bg[4], int tol)
+    {
+        auto* g = gl();
+        if (!g->ReadPixels || w == 0 || h == 0 || w > 8192 || h > 8192)
+        {
+            return 0;
+        }
+
+        std::vector<unsigned char> pixels(static_cast<size_t>(w) * h * 4);
+        g->ReadPixels((GLint)x, (GLint)y, (GLsizei)w, (GLsizei)h, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+
+        const int br = static_cast<int>(bg[0] * 255.0f);
+        const int bgc = static_cast<int>(bg[1] * 255.0f);
+        const int bb = static_cast<int>(bg[2] * 255.0f);
+
+        uint32_t nonBg = 0;
+        for (size_t i = 0; i < pixels.size(); i += 4)
+        {
+            const int dr = static_cast<int>(pixels[i]) - br;
+            const int dg = static_cast<int>(pixels[i + 1]) - bgc;
+            const int db = static_cast<int>(pixels[i + 2]) - bb;
+            if (dr * dr + dg * dg + db * db > tol)
+            {
+                ++nonBg;
+            }
+        }
+        return nonBg;
     }
 
     uint32_t GLDevice::topologyToGL(PrimitiveTopology topo) const

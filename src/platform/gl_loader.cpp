@@ -132,6 +132,7 @@ extern "C" RENDER_API bool gl_loader_init(void* getProcAddress)
     g_funcs.Scissor = (PFNGLSCISSORPROC)getProc("glScissor");
     g_funcs.ClearColor = (PFNGLCLEARCOLORPROC)getProc("glClearColor");
     g_funcs.Clear = (PFNGLCLEARPROC)getProc("glClear");
+    g_funcs.ReadPixels = (PFNGLREADPIXELSPROC)getProc("glReadPixels");
     g_funcs.ColorMask = (PFNGLCOLORMASKPROC)getProc("glColorMask");
     g_funcs.DepthMask = (PFNGLDEPTHMASKPROC)getProc("glDepthMask");
     g_funcs.DepthFunc = (PFNGLDEPTHFUNCPROC)getProc("glDepthFunc");

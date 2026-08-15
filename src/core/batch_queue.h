@@ -145,6 +145,9 @@ namespace render
             /// 上一帧的 RenderWorld 代数（用于检测顶点池重建）
             uint32_t m_lastGeneration = 0;
 
+            /// 是否已发生过至少一次全量顶点上传（诊断用）
+            bool m_everFullUpload = false;
+
             /// 顶点上传区间缓存（在 submit 时收集，供 render 时使用）
             std::vector<RenderWorld::VertexUploadRange> m_vertexUploadRanges;
             /// 是否需要全量上传顶点缓冲（首次渲染或扩容后）

@@ -467,6 +467,15 @@ namespace render
                 return 0;
             }
 
+            // 顶点池整体 resize 时优先返回全量区间：全量上传覆盖所有 dirty 区间，
+            // 避免 dirty 区间数量超过 maxRanges 时全量区间被挤掉，导致部分顶点永远不上传。
+            if (m_vertexPoolResized)
+            {
+                outRanges[0].vertexOffset = 0;
+                outRanges[0].vertexCount = static_cast<uint32_t>(m_vertexPool.size());
+                return 1;
+            }
+
             uint32_t count = 0;
             for (uint32_t denseIdx : m_dirtyList)
             {
@@ -487,14 +496,6 @@ namespace render
                     outRanges[count].vertexCount = entry.vertexCount;
                     ++count;
                 }
-            }
-
-            // 如果顶点池整体 resize，需要上传全部
-            if (m_vertexPoolResized && count < maxRanges)
-            {
-                outRanges[count].vertexOffset = 0;
-                outRanges[count].vertexCount = static_cast<uint32_t>(m_vertexPool.size());
-                ++count;
             }
 
             return count;
