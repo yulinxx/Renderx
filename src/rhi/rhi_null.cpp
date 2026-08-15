@@ -216,35 +216,30 @@ namespace render::rhi
 
     // ==================== Drawing ====================
 
-    void NullDevice::draw(uint32_t vertexCount, uint32_t instanceCount, uint32_t, uint32_t)
+    void NullDevice::draw(uint32_t, uint32_t, uint32_t, uint32_t)
     {
         m_drawCallCount++;
-        SY_DEBUGF("[NullDevice] draw: vertices=%u, instances=%u", vertexCount, instanceCount);
     }
 
-    void NullDevice::drawIndexed(uint32_t indexCount, uint32_t instanceCount, uint32_t, int32_t, uint32_t)
+    void NullDevice::drawIndexed(uint32_t, uint32_t, uint32_t, int32_t, uint32_t)
     {
         m_drawCallCount++;
-        SY_DEBUGF("[NullDevice] drawIndexed: indices=%u, instances=%u", indexCount, instanceCount);
     }
 
     void NullDevice::drawIndirect(BufferHandle, uint64_t, uint32_t drawCount, uint32_t)
     {
         m_drawCallCount += drawCount;
-        SY_DEBUGF("[NullDevice] drawIndirect: drawCount=%u", drawCount);
     }
 
     void NullDevice::drawIndexedIndirect(BufferHandle, uint64_t, uint32_t drawCount, uint32_t)
     {
         m_drawCallCount += drawCount;
-        SY_DEBUGF("[NullDevice] drawIndexedIndirect: drawCount=%u", drawCount);
     }
 
     // ==================== Compute ====================
 
-    void NullDevice::dispatchCompute(uint32_t groupsX, uint32_t groupsY, uint32_t groupsZ)
+    void NullDevice::dispatchCompute(uint32_t, uint32_t, uint32_t)
     {
-        SY_DEBUGF("[NullDevice] dispatchCompute: %ux%ux%u", groupsX, groupsY, groupsZ);
     }
 
     void NullDevice::memoryBarrier(uint32_t)

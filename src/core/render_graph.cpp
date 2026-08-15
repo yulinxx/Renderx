@@ -138,11 +138,6 @@ namespace render
             }
 
             m_passes[index].desc.enabled = enabled;
-
-            SY_DEBUGF("RenderGraph::setPassEnabled: [%u] '%s' -> %s",
-                index,
-                m_passes[index].desc.name ? m_passes[index].desc.name : "",
-                enabled ? "enabled" : "disabled");
         }
 
         bool RenderGraph::isPassEnabled(uint32_t index) const
@@ -170,13 +165,6 @@ namespace render
                     {
                         if (out.handle != 0 && out.handle == in.handle)
                         {
-                            SY_DEBUGF("RenderGraph::checkResourceConflicts: [%u:%s] -> [%u:%s] resource %u (name='%s')",
-                                i,
-                                prev.desc.name ? prev.desc.name : "",
-                                i + 1,
-                                next.desc.name ? next.desc.name : "",
-                                out.handle,
-                                out.name);
                         }
                     }
                     for (const auto& out2 : next.desc.outputs)

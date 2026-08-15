@@ -231,8 +231,6 @@ namespace render
             m_entities[index].vertexCount = 0;
             m_entities[index].flags = 0;
             m_dirtyFlags[index] = true;
-
-            SY_DEBUGF("[PersistentEntityManager] removeEntity index=%u", index);
         }
 
         void PersistentEntityManager::clearEntities()
@@ -349,8 +347,6 @@ namespace render
 
                     m_device->uploadBuffer(m_entityBuffer, i * sizeof(EntityGpuData), sizeof(EntityGpuData), &gd);
                 }
-
-                SY_DEBUGF("[PersistentEntityManager] incremental upload: %u / %u entities", dirtyCount, m_entityCount);
             }
 
             // 重置所有脏标记
@@ -381,9 +377,9 @@ namespace render
 
             if (m_cullingPipeline == rhi::NullHandle)
             {
-                // 计算着色器不可用（如 macOS 仅支持 GL 4.1，无 compute shader）：
-                // GPU 剔除降级为 CPU 四叉树剔除，初始化继续，不视为失败。
-                SY_WARN("[PersistentEntityManager] GPU culling unavailable, falling back to CPU culling");
+                // macOS 仅支持 OpenGL 4.1（无 compute shader，需 4.3+），
+                // GPU 剔除降级为 CPU 四叉树剔除，功能不受影响，不视为警告。
+                SY_DEBUG("[PersistentEntityManager] GPU culling unavailable, falling back to CPU culling");
                 return true;
             }
             else
@@ -530,8 +526,6 @@ namespace render
             {
                 *outCommandCount = count;
             }
-
-            SY_DEBUGF("[PersistentEntityManager] indirect commands: %u", count);
         }
     }  // namespace core
 }  // namespace render

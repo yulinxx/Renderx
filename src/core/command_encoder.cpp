@@ -280,6 +280,14 @@ namespace render
                 return;
             }
 
+            // SceneEnv::render() 和 BitmapRenderer 等路径直接调用 device->bindPipeline()
+            // 绑定管线，绕过 PSM，导致 PSM 缓存的 m_currentPipeline 与 GPU 实际状态不一致。
+            // 重置 PSM 状态，确保首次 bindPipeline 时真正执行 GPU 绑定，避免拓扑类型错误。
+            if (m_psm)
+            {
+                m_psm->resetCurrentPipeline();
+            }
+
             // 按 sortKey 排序，使相同 space/topology/material 的命令连续
             std::sort(m_commands.begin(), m_commands.end(), [](const DrawCommand& a, const DrawCommand& b) {
                 return a.sortKey < b.sortKey;

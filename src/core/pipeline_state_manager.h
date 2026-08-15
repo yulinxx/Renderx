@@ -155,6 +155,20 @@ namespace render
             }
 
             /**
+             * @brief 重置当前管线状态（用于外部直接绑定管线后同步PSM状态）
+             *
+             * SceneEnv::render() 等路径直接调用 device->bindPipeline() 绑定管线，
+             * 绕过 PSM，导致 PSM 缓存的 m_currentPipeline 与 GPU 实际状态不一致。
+             * 在 CommandEncoder::execute() 开始时调用此方法，强制 PSM 在首次
+             * bindPipeline 时重新执行 GPU 绑定，避免拓扑类型错误（如 LineLoop
+             * 被错误地沿用为 LineList，导致六边形只显示交替的三条边）。
+             */
+            void resetCurrentPipeline()
+            {
+                m_currentPipeline = rhi::NullHandle;
+            }
+
+            /**
              * @brief 获取缓存统计
              *
              * @return 当前缓存的管线数量

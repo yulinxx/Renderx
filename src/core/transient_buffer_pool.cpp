@@ -73,9 +73,6 @@ namespace render
                 }
 
                 m_frames[i].used = 0;
-                SY_DEBUGF("[TransientBufferPool] Frame %u buffer created and mapped (size=%llu)",
-                    i,
-                    static_cast<unsigned long long>(bufferSize));
             }
 
             m_initialized = true;
@@ -228,8 +225,6 @@ namespace render
                 m_consecutiveFallbackFrames = 0;
             }
             m_currentFrameFallbackCount = 0;
-
-            SY_DEBUGF("[TransientBufferPool] Begin frame %u, fallbacks cleaned", m_currentFrame);
         }
 
         TransientBufferPool::Allocation TransientBufferPool::allocate(uint64_t size, uint64_t alignment)

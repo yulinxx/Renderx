@@ -124,8 +124,6 @@ static void computeViewBounds(const float viewMatrix[9], float* outMinX, float* 
 
     float minX = FLT_MAX, minY = FLT_MAX;
     float maxX = -FLT_MAX, maxY = -FLT_MAX;
-    float cornerWorldX[4], cornerWorldY[4];
-    int validCorners = 0;
 
     for (int i = 0; i < 4; ++i)
     {
@@ -136,46 +134,16 @@ static void computeViewBounds(const float viewMatrix[9], float* outMinX, float* 
         float wx = ndcX * invScaleX + invTx;
         float wy = ndcY * invScaleY + invTy;
 
-        cornerWorldX[i] = wx;
-        cornerWorldY[i] = wy;
         minX = (std::min)(minX, wx);
         minY = (std::min)(minY, wy);
         maxX = (std::max)(maxX, wx);
         maxY = (std::max)(maxY, wy);
-        validCorners++;
     }
 
     *outMinX = minX;
     *outMinY = minY;
     *outMaxX = maxX;
     *outMaxY = maxY;
-
-    // 调试日志
-    static int cullDebugCounter = 0;
-    if (cullDebugCounter < 1)
-    {
-        SY_DEBUGF("computeViewBounds: scaleX=%.6f scaleY=%.6f tx=%.2f ty=%.2f, bounds=[%.2f,%.2f]-[%.2f,%.2f], "
-                  "validCorners=%d",
-            scaleX,
-            scaleY,
-            tx,
-            ty,
-            minX,
-            minY,
-            maxX,
-            maxY,
-            validCorners);
-        for (int i = 0; i < validCorners && i < 4; ++i)
-        {
-            SY_DEBUGF("  corner %d (%.1f,%.1f) -> world (%.2f,%.2f)",
-                i,
-                kCorners[i][0],
-                kCorners[i][1],
-                cornerWorldX[i],
-                cornerWorldY[i]);
-        }
-        cullDebugCounter++;
-    }
 }
 
 /**
@@ -950,21 +918,6 @@ extern "C"
         dev->stats.gpuMemoryBytes = rhi->getGPUMemoryUsage();
 
         ++dev->frameCounter;
-        // TEMP DIAGNOSTIC: 每秒记录一次图元 bbox / 相机中心 / 视矩阵（选取消选偏移问题定位）
-        if (dev->frameCounter % 60 == 0)
-        {
-            const auto* entries = dev->world2D.getEntityEntries();
-            uint32_t ec = dev->world2D.getEntityCount();
-            SY_INFOF("[DBG] frame=%u entities=%u cam=(%.1f,%.1f) vm=(%.6f,%.6f,%.6f,%.6f)", dev->frameCounter / 60,
-                ec, dev->cameraCenter[0], dev->cameraCenter[1], dev->view2D.viewMatrix[0], dev->view2D.viewMatrix[4],
-                dev->view2D.viewMatrix[6], dev->view2D.viewMatrix[7]);
-            for (uint32_t i = 0; i < ec && i < 8; ++i)
-            {
-                SY_INFOF("[DBG]   ent[%u] id=%llu off=%u cnt=%u bbox=[%.1f,%.1f]-[%.1f,%.1f]", i,
-                    static_cast<unsigned long long>(entries[i].entityId), entries[i].vertexOffset, entries[i].vertexCount,
-                    entries[i].bbox[0], entries[i].bbox[1], entries[i].bbox[2], entries[i].bbox[3]);
-            }
-        }
         if (dev->frameCounter >= 60)
         {
             dev->frameCounter = 0;
