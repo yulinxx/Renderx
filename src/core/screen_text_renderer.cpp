@@ -153,12 +153,12 @@ namespace render::core
             float qh = gi.y1 - gi.y0;
 
             // 两个三角形组成四边形
-            TextVertex v0 = { qx, qy, gi.u0, gi.v1, item.color[0], item.color[1], item.color[2], item.color[3] };
-            TextVertex v1 = { qx + qw, qy, gi.u1, gi.v1, item.color[0], item.color[1], item.color[2], item.color[3] };
+            TextVertex v0 = { qx, qy, gi.u0, gi.v0, item.color[0], item.color[1], item.color[2], item.color[3] };
+            TextVertex v1 = { qx + qw, qy, gi.u1, gi.v0, item.color[0], item.color[1], item.color[2], item.color[3] };
             TextVertex v2 = {
-                qx + qw, qy + qh, gi.u1, gi.v0, item.color[0], item.color[1], item.color[2], item.color[3]
+                qx + qw, qy + qh, gi.u1, gi.v1, item.color[0], item.color[1], item.color[2], item.color[3]
             };
-            TextVertex v3 = { qx, qy + qh, gi.u0, gi.v0, item.color[0], item.color[1], item.color[2], item.color[3] };
+            TextVertex v3 = { qx, qy + qh, gi.u0, gi.v1, item.color[0], item.color[1], item.color[2], item.color[3] };
 
             m_frameVerts.push_back(v0);
             m_frameVerts.push_back(v1);
