@@ -20,6 +20,11 @@
         #define VK_USE_PLATFORM_WIN32_KHR
     #endif
     #include <windows.h>
+#elif defined(__linux__)
+    #ifndef VK_USE_PLATFORM_XCB_KHR
+        #define VK_USE_PLATFORM_XCB_KHR
+    #endif
+    #include <xcb/xcb.h>
 #endif
 #include <vulkan/vulkan.h>
 
@@ -287,8 +292,7 @@ namespace render::rhi
         m_width = width;
         m_height = height;
 
-#ifdef _WIN32
-        // --- Create Vulkan instance ---
+// --- Create Vulkan instance ---
         VkApplicationInfo appInfo{};
         appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
         appInfo.pApplicationName = "SanYiRender";
@@ -301,10 +305,14 @@ namespace render::rhi
         createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
         createInfo.pApplicationInfo = &appInfo;
 
-        // Enable required extensions for Win32 surface
+        // Enable required extensions for the platform surface
         std::vector<const char*> extensions = {
             VK_KHR_SURFACE_EXTENSION_NAME,
+#ifdef _WIN32
             VK_KHR_WIN32_SURFACE_EXTENSION_NAME,
+#elif defined(__linux__)
+            VK_KHR_XCB_SURFACE_EXTENSION_NAME,
+#endif
         };
 
         if (m_debugLayer)
@@ -328,7 +336,8 @@ namespace render::rhi
             return false;
         }
 
-        // --- Create Win32 surface ---
+        // --- Create platform surface ---
+#ifdef _WIN32
         VkWin32SurfaceCreateInfoKHR surfaceCreateInfo{};
         surfaceCreateInfo.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
         surfaceCreateInfo.hinstance = GetModuleHandleW(nullptr);
@@ -343,6 +352,37 @@ namespace render::rhi
             SY_ERRORF("VulkanDevice::initialize: failed to create Win32 surface");
             return false;
         }
+#elif defined(__linux__)
+        xcb_connection_t* xcbConn = xcb_connect(nullptr, nullptr);
+        if (!xcbConn || xcb_connection_has_error(xcbConn))
+        {
+            if (xcbConn)
+            {
+                xcb_disconnect(xcbConn);
+            }
+            SY_ERRORF("VulkanDevice::initialize: failed to connect to X server (xcb)");
+            return false;
+        }
+        m_xcbConnection = xcbConn;
+
+        VkXcbSurfaceCreateInfoKHR surfaceCreateInfo{};
+        surfaceCreateInfo.sType = VK_STRUCTURE_TYPE_XCB_SURFACE_CREATE_INFO_KHR;
+        surfaceCreateInfo.connection = xcbConn;
+        surfaceCreateInfo.window = static_cast<xcb_window_t>(reinterpret_cast<uintptr_t>(nativeWindow));
+
+        PFN_vkCreateXcbSurfaceKHR vkCreateXcbSurfaceKHR =
+            (PFN_vkCreateXcbSurfaceKHR)vkGetInstanceProcAddr(m_instance, "vkCreateXcbSurfaceKHR");
+
+        if (!vkCreateXcbSurfaceKHR ||
+            vkCreateXcbSurfaceKHR(m_instance, &surfaceCreateInfo, nullptr, &m_surface) != VK_SUCCESS)
+        {
+            SY_ERRORF("VulkanDevice::initialize: failed to create XCB surface");
+            return false;
+        }
+#else
+        SY_ERRORF("VulkanDevice::initialize: unsupported platform for Vulkan surface");
+        return false;
+#endif
 
         // --- Pick physical device ---
         uint32_t deviceCount = 0;
@@ -502,10 +542,6 @@ namespace render::rhi
             m_graphicsQueueFamily,
             m_presentQueueFamily);
         return true;
-#else
-        SY_ERRORF("VulkanDevice::initialize: Win32 platform not available");
-        return false;
-#endif
     }
 
     void VulkanDevice::shutdown()
@@ -603,6 +639,14 @@ namespace render::rhi
             // Would destroy debug messenger if enabled
         }
         vkDestroyInstance(m_instance, nullptr);
+
+#ifdef __linux__
+        if (m_xcbConnection)
+        {
+            xcb_disconnect(static_cast<xcb_connection_t*>(m_xcbConnection));
+            m_xcbConnection = nullptr;
+        }
+#endif
 
         m_initialized = false;
         SY_DEBUGF("VulkanDevice::shutdown: complete");

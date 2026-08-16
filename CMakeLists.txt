@@ -112,6 +112,18 @@ if(RENDERX_ENABLE_VULKAN)
     endif()
 endif()
 
+# Vulkan XCB surface support on Linux (requires libxcb development headers)
+if(UNIX AND NOT APPLE)
+    find_path(XCB_INCLUDE_DIR NAMES xcb/xcb.h)
+    if(XCB_INCLUDE_DIR)
+        list(APPEND RENDER_INCLUDE_DIRS ${XCB_INCLUDE_DIR})
+        find_library(XCB_LIBRARY NAMES xcb)
+        if(XCB_LIBRARY)
+            list(APPEND RENDER_LINK_LIBS ${XCB_LIBRARY})
+        endif()
+    endif()
+endif()
+
 # Phase 3: Metal backend (macOS/iOS only, optional like Vulkan)
 # Metal.hpp 是独立的 Metal C++ 绑定组件，可能未随 Xcode SDK 提供；
 # 未找到时跳过该后端。

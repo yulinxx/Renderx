@@ -26,6 +26,10 @@
         #define NOMINMAX
     #endif
     #include <windows.h>
+#elif defined(__linux__)
+    #ifndef VK_USE_PLATFORM_XCB_KHR
+        #define VK_USE_PLATFORM_XCB_KHR
+    #endif
 #endif
 #include <vulkan/vulkan.h>
 
@@ -113,6 +117,7 @@ namespace render::rhi
         // Vulkan object handles
         VkInstance m_instance = VK_NULL_HANDLE;
         VkSurfaceKHR m_surface = VK_NULL_HANDLE;
+        void* m_xcbConnection = nullptr;  // xcb_connection_t* (Linux only)
         VkPhysicalDevice m_physicalDevice = VK_NULL_HANDLE;
         VkPhysicalDeviceProperties m_deviceProperties{};
         VkDevice m_device = VK_NULL_HANDLE;
