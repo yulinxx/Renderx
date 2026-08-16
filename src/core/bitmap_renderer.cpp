@@ -198,7 +198,13 @@ namespace render::core
         }
 
         device->bindPipeline(m_pipeline);
-        device->setUniformMatrix3("uViewMatrix", viewMatrix);
+        // 与 CommandEncoder 的 World2D/Overlay 路径保持一致：camera-relative 渲染下
+        // uViewMatrix 必须为 scale-only（去掉平移分量），平移统一由
+        // shader 内的 relPos = aPosition - uCameraCenter 承担。
+        // 若直接传完整 viewMatrix（含平移），再叠加 uCameraCenter 减法，
+        // 会使平移量被加两倍，导致位图相对选择框整体偏移、缩放/平移时乱动。
+        const float worldScaleMatrix[9] = { viewMatrix[0], 0.0f, 0.0f, 0.0f, viewMatrix[4], 0.0f, 0.0f, 0.0f, 1.0f };
+        device->setUniformMatrix3("uViewMatrix", worldScaleMatrix);
         const float camCenter[2] = { static_cast<float>(cameraCenter[0]), static_cast<float>(cameraCenter[1]) };
         device->setUniformVec2("uCameraCenter", camCenter);
         device->bindVertexBuffer(0, m_vertexBuffer, 0);
