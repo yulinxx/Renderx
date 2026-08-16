@@ -225,10 +225,10 @@ namespace render::core
             };
 
             Corner corners[4] = {
-                { entry.corners[0], entry.corners[1], 0.0f, 1.0f },  // TL: v=1（上）
-                { entry.corners[2], entry.corners[3], 1.0f, 1.0f },  // TR
-                { entry.corners[4], entry.corners[5], 0.0f, 0.0f },  // BL: v=0（下）
-                { entry.corners[6], entry.corners[7], 1.0f, 0.0f },  // BR
+                { entry.corners[0], entry.corners[1], 0.0f, 0.0f },  // TL: v=0（图片顶部，位于世界上方）
+                { entry.corners[2], entry.corners[3], 1.0f, 0.0f },  // TR
+                { entry.corners[4], entry.corners[5], 0.0f, 1.0f },  // BL: v=1（图片底部，位于世界下方）
+                { entry.corners[6], entry.corners[7], 1.0f, 1.0f },  // BR
             };
 
             // 两个三角形：TL-TR-BR, TL-BR-BL
