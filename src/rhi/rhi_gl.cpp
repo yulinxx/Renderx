@@ -336,7 +336,7 @@ namespace render::rhi
                 {
                     char* log = new char[logLen];
                     g->GetProgramInfoLog(prog, logLen, nullptr, log);
-                    std::fprintf(stderr, "[RHI_GL] Compute pipeline link error:\n%s\n", log);
+                    SY_ERRORF("[RHI_GL] Compute pipeline link error:\n%s", log);
                     delete[] log;
                 }
                 g->DeleteProgram(prog);
@@ -362,7 +362,7 @@ namespace render::rhi
                 }
             }
 
-            std::fprintf(stderr, "[RHI_GL] compute pipeline created: program=%u\n", prog);
+            SY_DEBUGF("[RHI_GL] compute pipeline created: program=%u", prog);
             return handle;
         }
 
@@ -534,11 +534,20 @@ namespace render::rhi
         {
             GLint locVM = g->GetUniformLocation(prog, "uViewMatrix");
             GLint locCC = g->GetUniformLocation(prog, "uCameraCenter");
-            SY_WARNF("[Pipeline] handle=%llu program=%u vs=%s fs=%s fmt=%d topo=%u uViewMatrixLoc=%d uCameraCenterLoc=%d",
+
+            auto shortName = [](const char* s) -> const char* {
+                if (!s) return "null";
+                if (std::strlen(s) <= 32) return s;
+                static thread_local char buf[48];
+                std::snprintf(buf, sizeof(buf), "%.32s...", s);
+                return buf;
+            };
+
+            SY_DEBUGF("[Pipeline] handle=%llu program=%u vs=%s fs=%s fmt=%d topo=%u uViewMatrixLoc=%d uCameraCenterLoc=%d",
                 static_cast<unsigned long long>(handle),
                 prog,
-                desc.vertexShader ? desc.vertexShader : "null",
-                desc.fragmentShader ? desc.fragmentShader : "null",
+                shortName(desc.vertexShader),
+                shortName(desc.fragmentShader),
                 static_cast<int>(desc.vertexFormat),
                 static_cast<uint32_t>(desc.topology),
                 locVM,
@@ -908,20 +917,6 @@ namespace render::rhi
             stride = static_cast<GLsizei>(vertexFormatStride(fmt));
         }
 
-        // ---- 诊断：前 10 次顶点缓冲绑定（验证 stride 与 buffer 匹配）----
-        {
-            static uint32_t s_diagVB = 0;
-            if (s_diagVB < 10)
-            {
-                ++s_diagVB;
-                SY_WARNF("[BindVB] slot=%u handle=%llu offset=%llu stride=%d",
-                    slot,
-                    static_cast<unsigned long long>(handle),
-                    offset,
-                    stride);
-            }
-        }
-
         if (g->VertexArrayVertexBuffer)
         {
             g->VertexArrayVertexBuffer(m_vao, slot, entry.glName, (GLintptr)offset, stride);
@@ -1095,78 +1090,6 @@ namespace render::rhi
 
         g->BindBuffer(GL_DRAW_INDIRECT_BUFFER, entry.glName);
 
-        // ---- 诊断：GPU 状态 + 首条命令 + 顶点内容 ----
-        {
-            static uint32_t s_diagDraws = 0;
-            if (s_diagDraws < 6 && drawCount > 0)
-            {
-                ++s_diagDraws;
-                uint32_t vCnt = 0, firstV = 0;
-                uint32_t lCnt = 0, lFirst = 0;
-                void* p = g->MapBufferRange(GL_DRAW_INDIRECT_BUFFER, (GLintptr)offset, 16, GL_MAP_READ_BIT);
-                if (p)
-                {
-                    const uint32_t* d = static_cast<const uint32_t*>(p);
-                    vCnt = d[0];
-                    firstV = d[2];
-                    g->UnmapBuffer(GL_DRAW_INDIRECT_BUFFER);
-                }
-                if (drawCount > 1)
-                {
-                    void* pl = g->MapBufferRange(
-                        GL_DRAW_INDIRECT_BUFFER, (GLintptr)(offset + (drawCount - 1) * stride), 16, GL_MAP_READ_BIT);
-                    if (pl)
-                    {
-                        const uint32_t* d = static_cast<const uint32_t*>(pl);
-                        lCnt = d[0];
-                        lFirst = d[2];
-                        g->UnmapBuffer(GL_DRAW_INDIRECT_BUFFER);
-                    }
-                }
-
-                GLint polyMode[2] = { -1, -1 };
-                GLfloat lineW = -1.0f;
-                g->GetIntegerv(GL_POLYGON_MODE, polyMode);
-                g->GetFloatv(GL_LINE_WIDTH, &lineW);
-
-                // 读回顶点缓冲中 firstVertex 处的前 2 个顶点（验证实际绘制顶点）
-                float v0[6] = { 0, 0, 0, 0, 0, 0 };
-                float v1[6] = { 0, 0, 0, 0, 0, 0 };
-                if (m_currentVBOs[0] != NullHandle)
-                {
-                    auto& vb = m_buffers[size_t(m_currentVBOs[0] - 1)];
-                    if (vb.glName)
-                    {
-                        g->BindBuffer(GL_ARRAY_BUFFER, vb.glName);
-                        void* pa = g->MapBufferRange(GL_ARRAY_BUFFER, (GLintptr)(firstV * 24), 48, GL_MAP_READ_BIT);
-                        if (pa)
-                        {
-                            std::memcpy(v0, pa, sizeof(v0));
-                            std::memcpy(v1, static_cast<const char*>(pa) + 24, sizeof(v1));
-                            g->UnmapBuffer(GL_ARRAY_BUFFER);
-                        }
-                        g->BindBuffer(GL_ARRAY_BUFFER, 0);
-                    }
-                }
-                SY_WARNF("[GPUState] topo=0x%X polyMode=[0x%X,0x%X] lineW=%.2f firstCmd=(count=%u,first=%u) "
-                         "lastCmd=(count=%u,first=%u) v0=(%.1f,%.1f,%.1f) v1=(%.1f,%.1f,%.1f)",
-                    topo,
-                    static_cast<unsigned>(polyMode[0]),
-                    static_cast<unsigned>(polyMode[1]),
-                    lineW,
-                    vCnt,
-                    firstV,
-                    lCnt,
-                    lFirst,
-                    v0[0],
-                    v0[1],
-                    v0[2],
-                    v1[0],
-                    v1[1],
-                    v1[2]);
-            }
-        }
-
         // macOS OpenGL.framework 仅导出 OpenGL 4.1 core 符号，不导出 ARB 扩展
         // glMultiDrawArraysIndirect，解析指针为 null。跨平台兜底：当 Multi
         // 接口不可用时退化为循环单 DrawArraysIndirect，保证在不支持扩展的平台
@@ -1232,7 +1155,7 @@ namespace render::rhi
     {
         if (!m_initialized)
         {
-            std::fprintf(stderr, "[RHI_GL] dispatchCompute called before initialization\n");
+            SY_ERROR("[RHI_GL] dispatchCompute called before initialization");
             return;
         }
         auto* g = gl();
@@ -1242,7 +1165,7 @@ namespace render::rhi
         }
         else
         {
-            std::fprintf(stderr, "[RHI_GL] DispatchCompute not available (requires OpenGL 4.3+)\n");
+            SY_WARN("[RHI_GL] DispatchCompute not available (requires OpenGL 4.3+)");
         }
     }
 
@@ -1250,7 +1173,7 @@ namespace render::rhi
     {
         if (!m_initialized)
         {
-            std::fprintf(stderr, "[RHI_GL] memoryBarrier called before initialization\n");
+            SY_ERROR("[RHI_GL] memoryBarrier called before initialization");
             return;
         }
         auto* g = gl();
@@ -1260,7 +1183,7 @@ namespace render::rhi
         }
         else
         {
-            std::fprintf(stderr, "[RHI_GL] MemoryBarrier not available (requires OpenGL 4.2+)\n");
+            SY_WARN("[RHI_GL] MemoryBarrier not available (requires OpenGL 4.2+)");
         }
     }
 
@@ -1606,7 +1529,7 @@ namespace render::rhi
             {
                 char* log = new char[logLen];
                 g->GetShaderInfoLog(shader, logLen, nullptr, log);
-                std::fprintf(stderr, "[RHI_GL] Shader compile error:\n%s\n", log);
+                SY_ERRORF("[RHI_GL] Shader compile error:\n%s", log);
                 delete[] log;
             }
             g->DeleteShader(shader);
@@ -1626,7 +1549,7 @@ namespace render::rhi
         auto* g = gl();
         if (!g->ShaderBinary || !g->SpecializeShader)
         {
-            std::fprintf(stderr, "[RHI_GL] SPIR-V not supported by current OpenGL context\n");
+            SY_ERROR("[RHI_GL] SPIR-V not supported by current OpenGL context");
             return 0;
         }
 
@@ -1634,7 +1557,7 @@ namespace render::rhi
         uint32_t shader = g->CreateShader(glType);
         if (!shader)
         {
-            std::fprintf(stderr, "[RHI_GL] Failed to create shader object for SPIR-V\n");
+            SY_ERROR("[RHI_GL] Failed to create shader object for SPIR-V");
             return 0;
         }
 
@@ -1653,7 +1576,7 @@ namespace render::rhi
             {
                 char* log = new char[logLen];
                 g->GetShaderInfoLog(shader, logLen, nullptr, log);
-                std::fprintf(stderr, "[RHI_GL] SPIR-V specialization error:\n%s\n", log);
+                SY_ERRORF("[RHI_GL] SPIR-V specialization error:\n%s", log);
                 delete[] log;
             }
             g->DeleteShader(shader);
@@ -1680,7 +1603,7 @@ namespace render::rhi
         }
         if (!csModule)
         {
-            std::fprintf(stderr, "[RHI_GL] No compute shader module found\n");
+            SY_ERROR("[RHI_GL] No compute shader module found");
             return 0;
         }
 
@@ -1716,7 +1639,7 @@ namespace render::rhi
             {
                 char* log = new char[logLen];
                 g->GetProgramInfoLog(prog, logLen, nullptr, log);
-                std::fprintf(stderr, "[RHI_GL] Compute program link error:\n%s\n", log);
+                SY_ERRORF("[RHI_GL] Compute program link error:\n%s", log);
                 delete[] log;
             }
             g->DeleteProgram(prog);
@@ -1743,7 +1666,7 @@ namespace render::rhi
             {
                 char* log = new char[logLen];
                 g->GetProgramInfoLog(prog, logLen, nullptr, log);
-                std::fprintf(stderr, "[RHI_GL] Program link error:\n%s\n", log);
+                SY_ERRORF("[RHI_GL] Program link error:\n%s", log);
                 delete[] log;
             }
             g->DeleteProgram(prog);

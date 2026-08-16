@@ -325,26 +325,6 @@ namespace render
                 fullUploadPath = true;
                 uploadedVerts = totalVertices;
                 m_everFullUpload = true;
-                {
-                    const render::VertexP3C3* vdata = world.getVertexData();
-                    if (vdata && totalVertices > 0)
-                    {
-                        const render::VertexP3C3& vf = vdata[0];
-                        const render::VertexP3C3& vl = vdata[totalVertices - 1];
-                        SY_WARNF("[VBFull] uploaded=%u verts first=(%.2f,%.2f,%.2f) last=(%.2f,%.2f,%.2f)",
-                            totalVertices,
-                            vf.px,
-                            vf.py,
-                            vf.pz,
-                            vl.px,
-                            vl.py,
-                            vl.pz);
-                    }
-                    else
-                    {
-                        SY_WARNF("[VBFull] uploaded=%u but vertex data empty!", totalVertices);
-                    }
-                }
                 device->uploadBuffer(m_vertexBuffer, 0, totalVertices * sizeof(VertexP3C3), world.getVertexData());
                 m_needFullVertexUpload = false;
             }
@@ -377,52 +357,6 @@ namespace render
                     }
                 }
                 m_dirty = false;
-            }
-
-            // ---- 顶点上传与绘制命令覆盖诊断（每 10 帧一次）----
-            {
-                static uint32_t s_bqDiagFrames = 0;
-                if (++s_bqDiagFrames >= 10 && !m_indirectCmds.empty())
-                {
-                    s_bqDiagFrames = 0;
-                    const auto* entries = world.getEntityEntries();
-                    const uint32_t entCount = world.getEntityCount();
-                    uint32_t zeroVert = 0;
-                    uint32_t badBbox = 0;
-                    for (uint32_t ei = 0; ei < entCount; ++ei)
-                    {
-                        if (entries[ei].vertexCount == 0)
-                        {
-                            ++zeroVert;
-                            continue;
-                        }
-                        const float* b = entries[ei].bbox;
-                        if (!std::isfinite(b[0]) || !std::isfinite(b[1]) || !std::isfinite(b[2]) ||
-                            !std::isfinite(b[3]) || b[0] > b[2] || b[1] > b[3])
-                        {
-                            ++badBbox;
-                        }
-                    }
-                    const DrawIndirectCmd& first = m_indirectCmds.front();
-                    const DrawIndirectCmd& last = m_indirectCmds.back();
-                    SY_WARNF("[BQDiag] ent=%u zeroVert=%u badBbox=%u totalVerts=%u uploaded=%u fullUpload=%d "
-                             "everFull=%d uploadRanges=%zu vbCap=%u indirect=%zu batches=%zu cmd(first=%u,cnt=%u)..(first=%u,cnt=%u)",
-                        entCount,
-                        zeroVert,
-                        badBbox,
-                        totalVertices,
-                        uploadedVerts,
-                        fullUploadPath ? 1 : 0,
-                        m_everFullUpload ? 1 : 0,
-                        m_vertexUploadRanges.size(),
-                        m_vertexBufferCapacity,
-                        m_indirectCmds.size(),
-                        m_batches.size(),
-                        first.firstVertex,
-                        first.vertexCount,
-                        last.firstVertex,
-                        last.vertexCount);
-                }
             }
 
             // Phase 3: 通过 CommandEncoder 提交绘制命令，不再直接调用 RHI
