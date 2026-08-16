@@ -426,6 +426,27 @@ namespace render
                 m_unifiedVerts.push_back(makeVert(desc->minX, desc->maxY, z, r, g, b, a));
                 break;
             }
+            case OverlayForm::FilledQuad:
+            {
+                const auto* desc = static_cast<const OverlayQuadDesc*>(primitive->payload);
+                if (!desc)
+                {
+                    break;
+                }
+                float r, g, b, a;
+                unpackRGBA(primitive->style.fillColor, r, g, b, a);
+                count = 6;
+                isTriangle = 1;
+                m_unifiedVerts.reserve(start + count);
+                // 凸四边形 → 2 三角形：(0,1,2) 与 (0,2,3)
+                m_unifiedVerts.push_back(makeVert(desc->x0, desc->y0, z, r, g, b, a));
+                m_unifiedVerts.push_back(makeVert(desc->x1, desc->y1, z, r, g, b, a));
+                m_unifiedVerts.push_back(makeVert(desc->x2, desc->y2, z, r, g, b, a));
+                m_unifiedVerts.push_back(makeVert(desc->x0, desc->y0, z, r, g, b, a));
+                m_unifiedVerts.push_back(makeVert(desc->x2, desc->y2, z, r, g, b, a));
+                m_unifiedVerts.push_back(makeVert(desc->x3, desc->y3, z, r, g, b, a));
+                break;
+            }
             case OverlayForm::Marker:
             {
                 // 点标记：选择手柄/标记点等所有 Marker 形态图元共用此分支。

@@ -418,6 +418,7 @@ namespace render
         LineList,    ///< 线段列表（GL_LINES，逐段独立）
         Rect,        ///< 空心矩形边框（4 边 8 顶点线段）
         FilledRect,  ///< 填充矩形（2 三角形）
+        FilledQuad,  ///< 填充凸四边形（任意旋转/仿射，2 三角形）
         Marker,      ///< 点标记（填充方块 + 边框，用于手柄/标记点）
         SnapCircle,  ///< 捕捉指示器（圆形线框）
         Count,
@@ -475,6 +476,16 @@ namespace render
     {
         float minX, minY;  ///< 左上角坐标
         float maxX, maxY;  ///< 右下角坐标
+    };
+
+    /// 凸四边形描述（对应 FilledQuad）：4 个顶点，逆时针顺序。
+    /// 适用于任意旋转/仿射的填充四边形（如随文字整体变换的选择高亮）。
+    struct OverlayQuadDesc
+    {
+        float x0, y0;  ///< 顶点0（左下）
+        float x1, y1;  ///< 顶点1（右下）
+        float x2, y2;  ///< 顶点2（右上）
+        float x3, y3;  ///< 顶点3（左上）
     };
 
     /// 点集描述（对应 OverlayForm::Marker / SnapCircle）
