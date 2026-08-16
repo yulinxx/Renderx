@@ -132,6 +132,7 @@ namespace render
             uint64_t m_fallbackCount = 0;
             uint32_t m_currentFrameFallbackCount = 0;  ///< 当前帧的 fallback 次数（用于监控退化）
             uint32_t m_consecutiveFallbackFrames = 0;  ///< 连续触发 fallback 的帧数
+            bool m_fallbackWarningReported = false;  ///< 当前退化周期是否已输出告警（避免每帧刷屏）
 
             Allocation allocateFromFallback(uint64_t size, uint64_t alignment);
         };

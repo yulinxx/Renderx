@@ -212,8 +212,9 @@ namespace render
             if (m_currentFrameFallbackCount > 0)
             {
                 ++m_consecutiveFallbackFrames;
-                if (m_consecutiveFallbackFrames >= 3)
+                if (m_consecutiveFallbackFrames >= 3 && !m_fallbackWarningReported)
                 {
+                    m_fallbackWarningReported = true;
                     SY_WARNF("[TransientBufferPool] Fallback degenerated for %u consecutive frames (last frame: %u "
                              "fallbacks). Consider increasing buffer size.",
                         m_consecutiveFallbackFrames,
@@ -223,6 +224,7 @@ namespace render
             else
             {
                 m_consecutiveFallbackFrames = 0;
+                m_fallbackWarningReported = false;
             }
             m_currentFrameFallbackCount = 0;
         }
