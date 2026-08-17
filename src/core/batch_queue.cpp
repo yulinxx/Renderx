@@ -317,13 +317,9 @@ namespace render
             }
 
             // 顶点上传策略：首次渲染、扩容后或显式标记时全量上传，否则只上传 dirty 区间
-            bool fullUploadPath = false;
-            uint32_t uploadedVerts = 0;
             if (m_needFullVertexUpload || totalVertices > m_vertexBufferCapacity)
             {
                 // 全量上传：首次渲染、扩容后或顶点池重建
-                fullUploadPath = true;
-                uploadedVerts = totalVertices;
                 m_everFullUpload = true;
                 device->uploadBuffer(m_vertexBuffer, 0, totalVertices * sizeof(VertexP3C3), world.getVertexData());
                 m_needFullVertexUpload = false;
@@ -335,7 +331,6 @@ namespace render
                 {
                     uint64_t offset = static_cast<uint64_t>(range.vertexOffset) * sizeof(VertexP3C3);
                     uint64_t size = static_cast<uint64_t>(range.vertexCount) * sizeof(VertexP3C3);
-                    uploadedVerts += range.vertexCount;
                     device->uploadBuffer(m_vertexBuffer, offset, size, world.getVertexData() + range.vertexOffset);
                 }
             }

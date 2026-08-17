@@ -228,7 +228,7 @@ TEST_F(TransientBufferPoolTest, BeginFrame_RotatesAndResets)
     constexpr uint64_t kBufferSize = 1024 * 1024;
     ASSERT_TRUE(m_pool.initialize(m_device, kBufferSize, 3));
 
-    auto alloc1 = m_pool.allocate(1024);
+    m_pool.allocate(1024);
     EXPECT_EQ(m_pool.usedSize(), 1024u);
 
     m_pool.beginFrame();
