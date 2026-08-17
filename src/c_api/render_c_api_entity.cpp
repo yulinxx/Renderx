@@ -64,7 +64,7 @@ extern "C"
 
     RENDER_API void renderApplyUpdates(RenderDevice* dev, const void* packet, uint32_t packetSize)
     {
-        if (!dev || !packet)
+        if (!dev || !packet || packetSize < 8)
         {
             return;
         }
@@ -72,15 +72,23 @@ extern "C"
         const uint8_t* ptr = static_cast<const uint8_t*>(packet);
         const uint8_t* end = ptr + packetSize;
 
+        // [D7-P1 修复] 读取更新计数前先校验包大小，防止截断包越界读。
         uint32_t updateCount;
         std::memcpy(&updateCount, ptr, 4);
-        ptr += 8;
+        ptr += 8;  // 跳过 4 字节计数 + 4 字节保留字段
 
-        for (uint32_t i = 0; i < updateCount && ptr < end; ++i)
+        for (uint32_t i = 0; i < updateCount && ptr + sizeof(EntityUpdate) <= end; ++i)
         {
             EntityUpdate upd;
             std::memcpy(&upd, ptr, sizeof(EntityUpdate));
             ptr += sizeof(EntityUpdate);
+
+            // [D7-P1 修复] 校验顶点数据未越界：ptr + vertexCount * sizeof(Vertex) 不超过 end
+            if (upd.vertexCount == 0 || ptr + static_cast<size_t>(upd.vertexCount) * sizeof(VertexP3C3) > end)
+            {
+                // 畸形包：vertexCount 超出剩余数据，终止解析
+                break;
+            }
 
             const VertexP3C3* verts = reinterpret_cast<const VertexP3C3*>(ptr);
             ptr += upd.vertexCount * sizeof(VertexP3C3);

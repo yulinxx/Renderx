@@ -60,6 +60,7 @@ namespace render::core
         rhi::IDevice* m_device = nullptr;
         rhi::TextureHandle m_atlasTexture = rhi::NullHandle;
         rhi::BufferHandle m_vertexBuffer = rhi::NullHandle;
+        uint32_t m_vertexBufferCapacity = 0;  // VB 当前分配容量（字节），用于增量上传判断
         rhi::PipelineHandle m_pipeline = rhi::NullHandle;
 
         std::vector<uint8_t> m_atlasData;

@@ -178,18 +178,23 @@ namespace render::core
             return;
         }
 
-        // 确保 VB 容量够
+        // 屏幕文字 VB 增量上传：仅在容量不足时重建，避免每帧 destroy+create。
         uint32_t vertBytes = static_cast<uint32_t>(m_frameVerts.size() * sizeof(TextVertex));
-        if (m_vertexBuffer != rhi::NullHandle)
+        if (m_vertexBuffer == rhi::NullHandle || vertBytes > m_vertexBufferCapacity)
         {
-            device->destroyBuffer(m_vertexBuffer);
+            // 容量不足或首次创建：分配 2x 扩容以减少重建频率
+            if (m_vertexBuffer != rhi::NullHandle)
+            {
+                device->destroyBuffer(m_vertexBuffer);
+            }
+            rhi::BufferDesc vbDesc{};
+            vbDesc.size = vertBytes * 2;  // 2x 扩容
+            vbDesc.usage = rhi::BufferUsage::Vertex;
+            vbDesc.memory = rhi::MemoryType::GPU_CPU_Coherent;
+            vbDesc.debugName = "ScreenTextVB_dyn";
+            m_vertexBuffer = device->createBuffer(vbDesc);
+            m_vertexBufferCapacity = vertBytes * 2;
         }
-        rhi::BufferDesc vbDesc{};
-        vbDesc.size = vertBytes;
-        vbDesc.usage = rhi::BufferUsage::Vertex;
-        vbDesc.memory = rhi::MemoryType::GPU_CPU_Coherent;
-        vbDesc.debugName = "ScreenTextVB_dyn";
-        m_vertexBuffer = device->createBuffer(vbDesc);
         device->uploadBuffer(m_vertexBuffer, 0, vertBytes, m_frameVerts.data());
 
         // 图集纹理有新字形时上传
