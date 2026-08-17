@@ -1,6 +1,14 @@
 /**
  * @file rhi_metal.mm
- * @brief Metal render device implementation
+ * @brief Metal render device implementation — [D2-P1] EXPERIMENTAL / FROZEN
+ *
+ * [D2-P1 状态说明] 此 Metal 后端为结构残缺的实验性实现，当前不可渲染。
+ * 已知问题：m_framebufferOnly 被 3 种不同类型指针复用（类型错乱）；
+ * 无 .metal shader 文件；CAMetalLayer API 调用不存在。
+ *
+ * 决策：此文件已冻结（FROZEN），不再接受功能新增。
+ * 如需 Metal 支持，请从零重建，而非修补此文件。
+ * 非 GL 后端在 CMake 中默认不参与 Release 构建。
  *
  * Objective-C++ implementation of the Metal RHI backend.
  * Provides full IDevice interface implementation using Apple's Metal API.

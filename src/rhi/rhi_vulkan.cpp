@@ -1,6 +1,14 @@
 /**
  * @file rhi_vulkan.cpp
- * @brief Vulkan render device implementation
+ * @brief Vulkan render device implementation — [D1-P1] EXPERIMENTAL / FROZEN
+ *
+ * [D1-P1 状态说明] 此 Vulkan 后端为结构残缺的实验性实现，当前不可渲染。
+ * 已知缺失：vkCreateRenderPass / vkCreateSemaphore / vkCmdPushConstants /
+ * vkAllocateDescriptorSets / shader stages 均未实现。
+ *
+ * 决策：此文件已冻结（FROZEN），不再接受功能新增。
+ * 如需 Vulkan 支持，请从零重建（参考官方 Vulkan Tutorial），而非修补此文件。
+ * 非 GL 后端在 CMake 中默认不参与 Release 构建（SANYI_ENABLE_VULKAN=OFF）。
  *
  * Implements the IDevice interface using Vulkan API for cross-platform
  * GPU-accelerated rendering. Provides full resource management, command
