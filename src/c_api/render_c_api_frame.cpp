@@ -637,27 +637,23 @@ extern "C"
             uint32_t gpuVisibleCount = readBackGpuVisibility(
                 dev, dev->visibleIndices.data(), static_cast<uint32_t>(dev->visibleIndices.size()));
 
-            // 5. GPU 剔除成功则使用其结果，否则回退到 CPU 四叉树
+            // 5. GPU 剔除成功则使用其结果，否则回退到 CPU 可见性查询
             if (gpuVisibleCount > 0)
             {
                 visibleCount = gpuVisibleCount;
             }
             else
             {
-                // GPU 剔除返回 0：可能是视图内确实无图元（用户缩小/平移出界），
-                // 也可能是剔除链路异常。用 CPU 四叉树交叉验证，避免误判。
-                dev->world2D.queryVisible(dev->view2D.viewMatrix,
-                    dev->view2D.viewWidth,
-                    dev->view2D.viewHeight,
+                // GPU 剔除返回 0（macOS 无 GL 4.6 compute shader）：
+                // 使用暴力遍历所有图元做 AABB-视锥相交测试，跳过四叉树以避免
+                // 四叉树在特定视图/缩放下错误丢弃图元的问题。
+                dev->world2D.queryVisibleBruteForce(dev->view2D.viewMatrix,
                     dev->visibleIndices.data(),
                     &visibleCount,
                     maxVisible);
 
                 if (maxVisible > 0 && visibleCount == 0)
                 {
-                    // CPU 四叉树也返回 0。判断 viewMatrix 是否退化（scale 无效）：
-                    // - 退化矩阵（scale≈0）：剔除结果不可信，强制显示全部，宁可多画不丢图元。
-                    // - 有效矩阵：视图内确实无图元可见，保持 0（不强制显示，否则缩放到空白处会误画全部）。
                     const float sx = dev->view2D.viewMatrix[0];
                     const float sy = dev->view2D.viewMatrix[4];
                     const bool degenerate = std::abs(sx) < 1e-10f || std::abs(sy) < 1e-10f;
@@ -1003,4 +999,6 @@ extern "C"
         dev->cameraCenter[0] = cx;
         dev->cameraCenter[1] = cy;
     }
-}  // extern "C"
+            }
+
+            // extern "C"
