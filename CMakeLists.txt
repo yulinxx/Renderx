@@ -66,34 +66,12 @@ set(RENDER_PUBLIC_HEADERS
 )
 
 # 源文件列表
-set(RENDER_SOURCES
-    # C API 实现（从 render_c_api.cpp 按功能模块拆分，共 4 个子文件）
-    src/c_api/render_c_api_device.cpp   # 设备生命周期、视图状态、统计查询、屏幕文本
-    src/c_api/render_c_api_entity.cpp   # 图元管理、3D网格管理、材质管理
-    src/c_api/render_c_api_overlay.cpp  # 叠加层包装器、统一 Overlay API、场景环境
-    src/c_api/render_c_api_frame.cpp    # 渲染帧、GPU剔除、场景模式、几何细分、统一提交
-    src/c_api/render_runtime.cpp        # RenderRuntime 实现（渲染运行时共享资源）
-    src/platform/gl_loader.cpp          # OpenGL函数加载器
-    src/rhi/rhi_gl.cpp                  # OpenGL RHI实现
-    src/rhi/rhi_null.cpp                # Null RHI实现（用于测试，无GPU操作）
-    src/core/render_world.cpp           # 渲染世界（图元管理）
-    src/core/batch_queue.cpp            # 批量绘制队列
-    src/core/overlay_queue.cpp          # 叠加层渲染队列
-    src/core/transient_buffer_pool.cpp  # 瞬态缓冲区池（Persistent Mapped Buffer）
-    src/core/command_encoder.cpp        # 统一命令编码器（Phase 3 新增）
-    src/core/render_graph.cpp           # 渲染图 Pass 调度层（Phase 4 新增）
-    src/core/pipeline_state_manager.cpp # 管线状态管理器（Phase 7 新增）
-    src/core/draw_batcher.cpp           # 绘制合批器（Phase 8 新增）
-    src/core/persistent_entity_manager.cpp # 持久图元管理器（Phase 9 新增）
-    src/core/mesh_manager.cpp           # 3D网格管理器
-    src/core/render_world_3d.cpp        # 3D渲染世界
-    src/core/text_atlas.cpp             # 文本图集管理器
-    src/core/scene_env.cpp              # 场景环境渲染器
-    src/core/bitmap_renderer.cpp        # 位图渲染器（单张 RGBA 纹理四边形）
-    src/core/stb_truetype_impl.cpp      # stb_truetype字体库实现
-    src/core/screen_text_renderer.cpp   # 屏幕文本渲染器
-    src/shader/shaders.cpp              # Shader加载管理
+# 源文件自动收集（新增 .cpp 文件无需修改此处）
+file(GLOB_RECURSE RENDER_SOURCES CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
 )
+# 排除条件编译的后端（Vulkan/Metal 在后续条件中添加）
+list(FILTER RENDER_SOURCES EXCLUDE REGEX ".*/rhi_vulkan\.cpp$")
 
 # Phase 3: Vulkan backend (optional, requires Vulkan SDK)
 option(RENDERX_ENABLE_VULKAN "Enable Vulkan backend" ON)
