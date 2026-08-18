@@ -722,5 +722,105 @@ namespace render
             }
             return false;
         }
+
+        void RenderWorld::queryVisibleBruteForce(const float viewMatrix[9],
+            uint32_t* outIndices,
+            uint32_t* outCount,
+            uint32_t maxOut) const
+        {
+            if (outCount)
+            {
+                *outCount = 0;
+            }
+
+            if (m_entities.size() == 0)
+            {
+                return;
+            }
+
+            // 计算视锥体（与 queryVisible 相同的逻辑）
+            float m00 = viewMatrix[0], m01 = viewMatrix[3], m02 = viewMatrix[6];
+            float m10 = viewMatrix[1], m11 = viewMatrix[4], m12 = viewMatrix[7];
+            float m20 = viewMatrix[2], m21 = viewMatrix[5], m22 = viewMatrix[8];
+
+            float det = m00 * (m11 * m22 - m12 * m21) - m01 * (m10 * m22 - m12 * m20) + m02 * (m10 * m21 - m11 * m20);
+
+            float frustum[4];
+
+            if (std::abs(det) < 1e-10f)
+            {
+                frustum[0] = -FLT_MAX;
+                frustum[1] = -FLT_MAX;
+                frustum[2] = FLT_MAX;
+                frustum[3] = FLT_MAX;
+            }
+            else
+            {
+                float invDet = 1.0f / det;
+                float inv[9];
+                inv[0] = (m11 * m22 - m12 * m21) * invDet;
+                inv[3] = (m02 * m21 - m01 * m22) * invDet;
+                inv[6] = (m01 * m12 - m02 * m11) * invDet;
+                inv[1] = (m12 * m20 - m10 * m22) * invDet;
+                inv[4] = (m00 * m22 - m02 * m20) * invDet;
+                inv[7] = (m02 * m10 - m00 * m12) * invDet;
+                inv[2] = (m10 * m21 - m11 * m20) * invDet;
+                inv[5] = (m01 * m20 - m00 * m21) * invDet;
+                inv[8] = (m00 * m11 - m01 * m10) * invDet;
+
+                static const float kCorners[4][2] = {
+                    { -1.0f, -1.0f }, { 1.0f, -1.0f }, { 1.0f, 1.0f }, { -1.0f, 1.0f }
+                };
+
+                frustum[0] = FLT_MAX;
+                frustum[1] = FLT_MAX;
+                frustum[2] = -FLT_MAX;
+                frustum[3] = -FLT_MAX;
+
+                for (int i = 0; i < 4; i++)
+                {
+                    float cx = kCorners[i][0], cy = kCorners[i][1];
+                    float wx = inv[0] * cx + inv[3] * cy + inv[6];
+                    float wy = inv[1] * cx + inv[4] * cy + inv[7];
+                    float w = inv[2] * cx + inv[5] * cy + inv[8];
+                    if (std::abs(w) < 1e-10f)
+                    {
+                        continue;
+                    }
+                    float worldX = wx / w;
+                    float worldY = wy / w;
+                    frustum[0] = std::min(frustum[0], worldX);
+                    frustum[1] = std::min(frustum[1], worldY);
+                    frustum[2] = std::max(frustum[2], worldX);
+                    frustum[3] = std::max(frustum[3], worldY);
+                }
+            }
+
+            // 暴力遍历所有图元，直接检查可见性
+            uint32_t count = 0;
+            for (uint32_t idx = 0; idx < m_entities.size() && count < maxOut; ++idx)
+            {
+                const EntityEntry& entry = *(m_entities.begin() + idx);
+                if (entry.flags & kEntityFlagHidden)
+                {
+                    continue;
+                }
+
+                if (bboxIntersects(
+                        entry.bbox[0], entry.bbox[1], entry.bbox[2], entry.bbox[3], frustum[0], frustum[1], frustum[2], frustum[3]))
+                {
+                    if (outIndices)
+                    {
+                        outIndices[count] = idx;
+                    }
+                    count++;
+                }
+            }
+
+            if (outCount)
+            {
+                *outCount = count;
+            }
+        }
     }  // namespace core
 }  // namespace render

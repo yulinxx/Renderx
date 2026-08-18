@@ -342,6 +342,22 @@ namespace render
                 bool materialChanged =
                     (cmd.space == DrawSpace::World2D) && ((i == 0) || (cmd.materialIndex != boundMaterial));
 
+                // macOS non-DSA 路径：bindPipeline → configureVertexAttribs 会访问
+                // m_currentVBOs[0]，必须先绑定 VBO，否则 NullHandle 导致越界访问崩溃
+                if (spaceChanged || boundVB == rhi::NullHandle)
+                {
+                    if (cmd.space == DrawSpace::Overlay)
+                    {
+                        device->bindVertexBuffer(0, overlayVB, 0);
+                        boundVB = overlayVB;
+                    }
+                    else
+                    {
+                        device->bindVertexBuffer(0, worldVB, 0);
+                        boundVB = worldVB;
+                    }
+                }
+
                 if (spaceChanged || topologyChanged)
                 {
                     // 选择 pipeline
@@ -391,21 +407,6 @@ namespace render
 
                     boundMaterial = cmd.materialIndex;
                     stateDirty = true;
-                }
-
-                // 绑定顶点 buffer（仅在空间变化时，因为 world 和 overlay 用不同 buffer）
-                if (spaceChanged || boundVB == rhi::NullHandle)
-                {
-                    if (cmd.space == DrawSpace::Overlay)
-                    {
-                        device->bindVertexBuffer(0, overlayVB, 0);
-                        boundVB = overlayVB;
-                    }
-                    else
-                    {
-                        device->bindVertexBuffer(0, worldVB, 0);
-                        boundVB = worldVB;
-                    }
                 }
 
                 (void)stateDirty;  // 保留给未来材质属性切换使用

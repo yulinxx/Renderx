@@ -199,6 +199,8 @@ namespace render
              */
             bool hasViewChanged(const float viewMatrix[9]) const;
 
+
+
         public:
             /**
              * @brief 初始化渲染世界
@@ -406,6 +408,11 @@ namespace render
                 *outIndices = m_visibleResult.data();
                 *outCount = static_cast<uint32_t>(m_visibleResult.size());
             }
+
+            void queryVisibleBruteForce(const float viewMatrix[9],
+                uint32_t* outIndices,
+                uint32_t* outCount,
+                uint32_t maxOut) const;
 
             /**
              * @brief 获取世界重置代数（用于检测顶点池是否被重建）
