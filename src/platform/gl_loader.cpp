@@ -145,6 +145,12 @@ extern "C" RENDER_API bool gl_loader_init(void* getProcAddress)
     g_funcs.DeleteFramebuffers = (PFNGLDELETEFRAMEBUFFERSPROC)getProc("glDeleteFramebuffers");
     g_funcs.BindFramebuffer = (PFNGLBINDFRAMEBUFFERPROC)getProc("glBindFramebuffer");
     g_funcs.FramebufferTexture2D = (PFNGLFRAMEBUFFERTEXTURE2DPROC)getProc("glFramebufferTexture2D");
+    g_funcs.GenRenderbuffers = (PFNGLGENRENDERBUFFERSPROC)getProc("glGenRenderbuffers");
+    g_funcs.DeleteRenderbuffers = (PFNGLDELETERENDERBUFFERSPROC)getProc("glDeleteRenderbuffers");
+    g_funcs.BindRenderbuffer = (PFNGLBINDRENDERBUFFERPROC)getProc("glBindRenderbuffer");
+    g_funcs.RenderbufferStorage = (PFNGLRENDERBUFFERSTORAGEPROC)getProc("glRenderbufferStorage");
+    g_funcs.FramebufferRenderbuffer = (PFNGLFRAMEBUFFERRENDERBUFFERPROC)getProc("glFramebufferRenderbuffer");
+    g_funcs.CheckFramebufferStatus = (PFNGLCHECKFRAMEBUFFERSTATUSPROC)getProc("glCheckFramebufferStatus");
 
     g_funcs.CreateBuffers = (PFNGLCREATEBUFFERSPROC)getProc("glCreateBuffers");
     g_funcs.NamedBufferData = (PFNGLNAMEDBUFFERDATAPROC)getProc("glNamedBufferData");

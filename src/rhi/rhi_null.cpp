@@ -289,6 +289,20 @@ namespace render::rhi
     {
         return nullptr;
     }
+
+    // 离屏渲染目标：Null 后端无任何 GPU 资源，均返回无效 / 空操作
+    RenderTargetHandle NullDevice::createRenderTarget(const RenderTargetDesc&)
+    {
+        return NullRenderTarget;
+    }
+
+    void NullDevice::destroyRenderTarget(RenderTargetHandle) {}
+
+    void NullDevice::bindRenderTarget(RenderTargetHandle) {}
+
+    void NullDevice::bindDefaultTarget() {}
+
+    void NullDevice::readRenderTarget(RenderTargetHandle, void*, uint32_t) {}
 }  // namespace render::rhi
 
 // ==================== Factory Function ====================

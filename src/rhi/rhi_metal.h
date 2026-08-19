@@ -89,6 +89,13 @@ namespace render::rhi
         void enableDepthTest(bool enable) override;
         void enableBlend(bool enable) override;
 
+        // 离屏渲染目标（Metal 后端暂未实现，返回无效 / 空操作）
+        RenderTargetHandle createRenderTarget(const RenderTargetDesc&) override;
+        void destroyRenderTarget(RenderTargetHandle) override;
+        void bindRenderTarget(RenderTargetHandle) override;
+        void bindDefaultTarget() override;
+        void readRenderTarget(RenderTargetHandle, void*, uint32_t) override;
+
         void resize(uint32_t width, uint32_t height) override;
         uint64_t getGPUMemoryUsage() const override;
         void* getNativeContext() override;

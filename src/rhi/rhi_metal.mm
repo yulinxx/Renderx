@@ -1072,9 +1072,17 @@ uint64_t MetalDevice::getGPUMemoryUsage() const {
 #endif
 }
 
-void* MetalDevice::getNativeContext() {
-    return m_device;
-}
+ void* MetalDevice::getNativeContext() {
+     return m_device;
+ }
+
+ // 离屏渲染目标：Metal 后端暂未实现，均返回无效 / 空操作
+ RenderTargetHandle MetalDevice::createRenderTarget(const RenderTargetDesc&) { return NullRenderTarget; }
+ void MetalDevice::destroyRenderTarget(RenderTargetHandle) {}
+ void MetalDevice::bindRenderTarget(RenderTargetHandle) {}
+ void MetalDevice::bindDefaultTarget() {}
+ void MetalDevice::readRenderTarget(RenderTargetHandle, void*, uint32_t) {}
+
 
 // Factory function
 IDevice* createMetalDevice() {

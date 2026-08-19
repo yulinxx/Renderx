@@ -276,6 +276,27 @@ typedef long long GLint64;
 #ifndef GL_DEPTH_ATTACHMENT
     #define GL_DEPTH_ATTACHMENT 0x8D00
 #endif
+#ifndef GL_RENDERBUFFER
+    #define GL_RENDERBUFFER 0x8D41
+#endif
+#ifndef GL_READ_FRAMEBUFFER
+    #define GL_READ_FRAMEBUFFER 0x8CA8
+#endif
+#ifndef GL_DRAW_FRAMEBUFFER
+    #define GL_DRAW_FRAMEBUFFER 0x8CA9
+#endif
+#ifndef GL_FRAMEBUFFER_COMPLETE
+    #define GL_FRAMEBUFFER_COMPLETE 0x8CD5
+#endif
+#ifndef GL_DEPTH_COMPONENT24
+    #define GL_DEPTH_COMPONENT24 0x81A6
+#endif
+#ifndef GL_DEPTH_COMPONENT32F
+    #define GL_DEPTH_COMPONENT32F 0x8C29
+#endif
+#ifndef GL_DEPTH24_STENCIL8
+    #define GL_DEPTH24_STENCIL8 0x88F0
+#endif
 
 #ifndef GL_SYNC_GPU_COMMANDS_COMPLETE
     #define GL_SYNC_GPU_COMMANDS_COMPLETE 0x9117
@@ -437,6 +458,14 @@ typedef void(RENDER_GLAPI* PFNGLDELETEFRAMEBUFFERSPROC)(GLsizei n, const GLuint*
 typedef void(RENDER_GLAPI* PFNGLBINDFRAMEBUFFERPROC)(GLenum target, GLuint framebuffer);
 typedef void(RENDER_GLAPI* PFNGLFRAMEBUFFERTEXTURE2DPROC)(
     GLenum target, GLenum attachment, GLenum textarget, GLuint texture, GLint level);
+typedef void(RENDER_GLAPI* PFNGLGENRENDERBUFFERSPROC)(GLsizei n, GLuint* renderbuffers);
+typedef void(RENDER_GLAPI* PFNGLDELETERENDERBUFFERSPROC)(GLsizei n, const GLuint* renderbuffers);
+typedef void(RENDER_GLAPI* PFNGLBINDRENDERBUFFERPROC)(GLenum target, GLuint renderbuffer);
+typedef void(RENDER_GLAPI* PFNGLRENDERBUFFERSTORAGEPROC)(
+    GLenum target, GLenum internalformat, GLsizei width, GLsizei height);
+typedef void(RENDER_GLAPI* PFNGLFRAMEBUFFERRENDERBUFFERPROC)(
+    GLenum target, GLenum attachment, GLenum renderbuffertarget, GLuint renderbuffer);
+typedef GLenum(RENDER_GLAPI* PFNGLCHECKFRAMEBUFFERSTATUSPROC)(GLenum target);
 
 typedef void(RENDER_GLAPI* PFNGLCREATEBUFFERSPROC)(GLsizei n, GLuint* buffers);
 typedef void(RENDER_GLAPI* PFNGLNAMEDBUFFERDATAPROC)(GLuint buffer, GLsizeiptr size, const void* data, GLenum usage);
@@ -581,6 +610,12 @@ struct GLFuncs
     PFNGLDELETEFRAMEBUFFERSPROC DeleteFramebuffers;
     PFNGLBINDFRAMEBUFFERPROC BindFramebuffer;
     PFNGLFRAMEBUFFERTEXTURE2DPROC FramebufferTexture2D;
+    PFNGLGENRENDERBUFFERSPROC GenRenderbuffers;
+    PFNGLDELETERENDERBUFFERSPROC DeleteRenderbuffers;
+    PFNGLBINDRENDERBUFFERPROC BindRenderbuffer;
+    PFNGLRENDERBUFFERSTORAGEPROC RenderbufferStorage;
+    PFNGLFRAMEBUFFERRENDERBUFFERPROC FramebufferRenderbuffer;
+    PFNGLCHECKFRAMEBUFFERSTATUSPROC CheckFramebufferStatus;
 
     PFNGLCREATEBUFFERSPROC CreateBuffers;
     PFNGLNAMEDBUFFERDATAPROC NamedBufferData;

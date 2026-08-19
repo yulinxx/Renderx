@@ -447,6 +447,60 @@ namespace render::rhi
          * @return 原生上下文指针（如OpenGL的HGLRC）
          */
         virtual void* getNativeContext() = 0;
+
+        /// @name 离屏渲染目标（截图 / 离屏合成）
+        /// @{
+        ///
+        /// 离屏渲染目标允许将一帧渲染到独立的 Framebuffer Object，
+        /// 而非当前默认帧缓冲，从而在不干扰屏幕显示（无闪烁）的前提下
+        /// 获取渲染结果（如视图截图、自定义范围截图、固定视角全场景截图）。
+
+        /**
+         * @brief 创建离屏渲染目标
+         *
+         * 根据描述创建一张离屏 Framebuffer（颜色附件 + 可选深度附件）。
+         *
+         * @param desc 渲染目标描述
+         * @return 渲染目标句柄，失败返回 NullRenderTarget
+         */
+        virtual RenderTargetHandle createRenderTarget(const RenderTargetDesc& desc) = 0;
+
+        /**
+         * @brief 销毁离屏渲染目标
+         *
+         * @param handle 渲染目标句柄（NullRenderTarget 被忽略）
+         */
+        virtual void destroyRenderTarget(RenderTargetHandle handle) = 0;
+
+        /**
+         * @brief 绑定离屏渲染目标为当前绘制目标
+         *
+         * 绑定后，后续 draw / renderFrame 调用将渲染到该目标。
+         * 同时把视口设置为目标尺寸，并记录调用前的默认绑定以便恢复。
+         *
+         * @param handle 渲染目标句柄（NullRenderTarget 表示不操作）
+         */
+        virtual void bindRenderTarget(RenderTargetHandle handle) = 0;
+
+        /**
+         * @brief 恢复绑定离屏渲染目标之前的默认绘制目标
+         *
+         * 恢复调用 bindRenderTarget 之前的帧缓冲绑定与视口尺寸。
+         */
+        virtual void bindDefaultTarget() = 0;
+
+        /**
+         * @brief 从离屏渲染目标回读颜色像素
+         *
+         * 回读格式固定为 RGBA8（每像素 4 字节）。像素原点在左下角（与 GL 一致），
+         * 调用方如需 QImage 等左上角原点数据需自行上下翻转。
+         *
+         * @param handle 渲染目标句柄
+         * @param rgba8 输出缓冲区，容量须 >= width*height*4 字节
+         * @param rowPitchBytes 每行字节数（通常 = width*4）
+         */
+        virtual void readRenderTarget(RenderTargetHandle handle, void* rgba8, uint32_t rowPitchBytes) = 0;
+        /// @}
     };
 
     /**

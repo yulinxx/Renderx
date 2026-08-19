@@ -1493,6 +1493,214 @@ namespace render::rhi
         return m_nativeContext;
     }
 
+    // ============================================================================
+    // 离屏渲染目标（截图 / 离屏合成）
+    // ============================================================================
+
+    namespace
+    {
+        GLuint depthInternalFormatToGL(render::DepthFormat fmt)
+        {
+            switch (fmt)
+            {
+            case render::DepthFormat::D32F:
+                return GL_DEPTH_COMPONENT32F;
+            case render::DepthFormat::D24S8:
+            default:
+                return GL_DEPTH24_STENCIL8;
+            }
+        }
+    }
+
+    RenderTargetHandle GLDevice::createRenderTarget(const RenderTargetDesc& desc)
+    {
+        if (desc.width == 0 || desc.height == 0)
+        {
+            SY_WARNF("GLDevice::createRenderTarget: invalid size %ux%u", desc.width, desc.height);
+            return NullRenderTarget;
+        }
+
+        auto* g = gl();
+        if (!g->GenFramebuffers || !g->BindFramebuffer || !g->FramebufferTexture2D)
+        {
+            SY_ERROR("GLDevice::createRenderTarget: framebuffer functions unavailable");
+            return NullRenderTarget;
+        }
+
+        GLRenderTargetEntry e{};
+        e.width = desc.width;
+        e.height = desc.height;
+
+        // 颜色附件（RGBA8 纹理）
+        if (g->CreateTextures)
+        {
+            g->CreateTextures(GL_TEXTURE_2D, 1, &e.colorTex);
+            g->TextureStorage2D(e.colorTex, 1, GL_RGBA8, (GLsizei)desc.width, (GLsizei)desc.height);
+            g->TextureParameteri(e.colorTex, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            g->TextureParameteri(e.colorTex, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            g->TextureParameteri(e.colorTex, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+            g->TextureParameteri(e.colorTex, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        }
+        else
+        {
+            g->GenTextures(1, &e.colorTex);
+            g->BindTexture(GL_TEXTURE_2D, e.colorTex);
+            g->TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, (GLsizei)desc.width, (GLsizei)desc.height, 0, GL_RGBA,
+                GL_UNSIGNED_BYTE, nullptr);
+            g->TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            g->TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            g->TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+            g->TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+            g->BindTexture(GL_TEXTURE_2D, 0);
+        }
+
+        // 深度附件（可选）
+        if (desc.depth)
+        {
+            if (g->GenRenderbuffers && g->BindRenderbuffer && g->RenderbufferStorage && g->FramebufferRenderbuffer)
+            {
+                g->GenRenderbuffers(1, &e.depthRb);
+                g->BindRenderbuffer(GL_RENDERBUFFER, e.depthRb);
+                g->RenderbufferStorage(GL_RENDERBUFFER, depthInternalFormatToGL(desc.depthFormat),
+                    (GLsizei)desc.width, (GLsizei)desc.height);
+                g->BindRenderbuffer(GL_RENDERBUFFER, 0);
+            }
+            else
+            {
+                SY_WARNF("GLDevice::createRenderTarget: renderbuffer functions unavailable, depth disabled");
+                e.depthRb = 0;
+            }
+        }
+
+        // 组装 FBO
+        g->GenFramebuffers(1, &e.fbo);
+        g->BindFramebuffer(GL_FRAMEBUFFER, e.fbo);
+        g->FramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, e.colorTex, 0);
+        if (e.depthRb != 0)
+        {
+            g->FramebufferRenderbuffer(
+                GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, e.depthRb);
+        }
+
+        GLenum status = g->CheckFramebufferStatus ? g->CheckFramebufferStatus(GL_FRAMEBUFFER) : GL_FRAMEBUFFER_COMPLETE;
+        g->BindFramebuffer(GL_FRAMEBUFFER, 0);
+
+        if (status != GL_FRAMEBUFFER_COMPLETE)
+        {
+            SY_ERRORF("GLDevice::createRenderTarget: framebuffer incomplete (0x%04X)", static_cast<uint32_t>(status));
+            if (e.fbo)
+                g->DeleteFramebuffers(1, &e.fbo);
+            if (e.colorTex)
+                g->DeleteTextures(1, &e.colorTex);
+            if (e.depthRb)
+                g->DeleteRenderbuffers(1, &e.depthRb);
+            return NullRenderTarget;
+        }
+
+        // 分配句柄
+        RenderTargetHandle h = 0;
+        if (!m_renderTargetFreeList.empty())
+        {
+            h = m_renderTargetFreeList.back();
+            m_renderTargetFreeList.pop_back();
+            m_renderTargets[size_t(h - 1)] = e;
+        }
+        else
+        {
+            m_renderTargets.push_back(e);
+            h = static_cast<RenderTargetHandle>(m_renderTargets.size());  // 1-based
+        }
+        return h;
+    }
+
+    void GLDevice::destroyRenderTarget(RenderTargetHandle handle)
+    {
+        if (handle == NullRenderTarget || handle > m_renderTargets.size())
+        {
+            return;
+        }
+        auto& e = m_renderTargets[size_t(handle - 1)];
+        auto* g = gl();
+        if (e.fbo)
+            g->DeleteFramebuffers(1, &e.fbo);
+        if (e.colorTex)
+            g->DeleteTextures(1, &e.colorTex);
+        if (e.depthRb)
+            g->DeleteRenderbuffers(1, &e.depthRb);
+        e = GLRenderTargetEntry{};
+        m_renderTargetFreeList.push_back(static_cast<uint32_t>(handle));
+    }
+
+    void GLDevice::bindRenderTarget(RenderTargetHandle handle)
+    {
+        if (handle == NullRenderTarget || handle > m_renderTargets.size())
+        {
+            return;
+        }
+        auto& e = m_renderTargets[size_t(handle - 1)];
+        auto* g = gl();
+
+        if (!m_renderTargetBound)
+        {
+            GLint bound = 0;
+            g->GetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &bound);
+            m_savedFramebuffer = static_cast<GLuint>(bound);
+            m_savedWidth = static_cast<int32_t>(m_width);
+            m_savedHeight = static_cast<int32_t>(m_height);
+            m_renderTargetBound = true;
+        }
+
+        g->BindFramebuffer(GL_FRAMEBUFFER, e.fbo);
+        m_width = e.width;
+        m_height = e.height;
+        g->Viewport(0, 0, (GLsizei)e.width, (GLsizei)e.height);
+    }
+
+    void GLDevice::bindDefaultTarget()
+    {
+        if (!m_renderTargetBound)
+        {
+            return;
+        }
+        auto* g = gl();
+        g->BindFramebuffer(GL_FRAMEBUFFER, m_savedFramebuffer);
+        m_width = static_cast<uint32_t>(m_savedWidth);
+        m_height = static_cast<uint32_t>(m_savedHeight);
+        g->Viewport(0, 0, (GLsizei)m_width, (GLsizei)m_height);
+        m_renderTargetBound = false;
+    }
+
+    void GLDevice::readRenderTarget(RenderTargetHandle handle, void* rgba8, uint32_t rowPitchBytes)
+    {
+        if (handle == NullRenderTarget || handle > m_renderTargets.size() || !rgba8)
+        {
+            return;
+        }
+        auto& e = m_renderTargets[size_t(handle - 1)];
+        auto* g = gl();
+        if (!g->ReadPixels)
+        {
+            return;
+        }
+        g->BindFramebuffer(GL_READ_FRAMEBUFFER, e.fbo);
+        // GL 行间距固定为 width*4；若调用方要求更宽行距则逐行拷贝。
+        if (rowPitchBytes == e.width * 4 || rowPitchBytes == 0)
+        {
+            g->ReadPixels(0, 0, (GLsizei)e.width, (GLsizei)e.height, GL_RGBA, GL_UNSIGNED_BYTE, rgba8);
+        }
+        else
+        {
+            const uint32_t tight = e.width * 4;
+            uint8_t* dst = static_cast<uint8_t*>(rgba8);
+            std::vector<uint8_t> row(tight);
+            for (uint32_t y = 0; y < e.height; ++y)
+            {
+                g->ReadPixels(0, (GLsizei)y, (GLsizei)e.width, 1, GL_RGBA, GL_UNSIGNED_BYTE, row.data());
+                std::memcpy(dst + y * rowPitchBytes, row.data(), tight);
+            }
+        }
+    }
+
     uint32_t GLDevice::shaderStageToGL(ShaderStage stage) const
     {
         switch (stage)
