@@ -435,6 +435,23 @@ namespace render::rhi
         virtual void resize(uint32_t width, uint32_t height) = 0;
 
         /**
+         * @brief 读取帧缓冲区像素数据
+         *
+         * 从当前绑定的帧缓冲区读取像素数据到 CPU 内存。
+         * 数据格式为 RGBA8（每像素 4 字节，行跨度由 outRowPitch 返回）。
+         *
+         * @param x           起始 X 坐标（像素）
+         * @param y           起始 Y 坐标（像素）
+         * @param width       读取宽度
+         * @param height      读取高度
+         * @param outPixels   输出缓冲区，需至少 width * height * 4 字节
+         * @param outRowPitch 输出行跨度（字节），可为 nullptr
+         * @return 成功返回 1，失败返回 0
+         */
+        virtual int readPixels(uint32_t x, uint32_t y, uint32_t width, uint32_t height,
+            void* outPixels, uint32_t* outRowPitch) = 0;
+
+        /**
          * @brief 获取GPU内存使用量
          *
          * @return GPU内存使用量（字节）

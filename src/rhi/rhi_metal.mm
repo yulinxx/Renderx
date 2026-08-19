@@ -1053,6 +1053,13 @@ void MetalDevice::resize(uint32_t width, uint32_t height) {
     createDepthBuffer();
 }
 
+int MetalDevice::readPixels(uint32_t /*x*/, uint32_t /*y*/, uint32_t /*width*/, uint32_t /*height*/,
+    void* /*outPixels*/, uint32_t* /*outRowPitch*/)
+{
+    // Metal readPixels requires blit encoder and texture. Not implemented for now.
+    return 0;
+}
+
 uint64_t MetalDevice::getGPUMemoryUsage() const {
 #ifdef __APPLE__
     if (!m_device) return 0;

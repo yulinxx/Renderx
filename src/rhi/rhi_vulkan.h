@@ -117,6 +117,8 @@ namespace render::rhi
         void readRenderTarget(RenderTargetHandle, void*, uint32_t) override;
 
         void resize(uint32_t width, uint32_t height) override;
+        int readPixels(uint32_t x, uint32_t y, uint32_t width, uint32_t height,
+            void* outPixels, uint32_t* outRowPitch) override;
         uint64_t getGPUMemoryUsage() const override;
         void* getNativeContext() override;
 

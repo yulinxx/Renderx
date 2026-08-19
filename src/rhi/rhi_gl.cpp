@@ -1913,6 +1913,26 @@ namespace render::rhi
         return nonBg;
     }
 
+    int GLDevice::readPixels(uint32_t x, uint32_t y, uint32_t width, uint32_t height,
+        void* outPixels, uint32_t* outRowPitch)
+    {
+        auto* g = gl();
+        if (!g->ReadPixels || width == 0 || height == 0 || width > 8192 || height > 8192 || !outPixels)
+        {
+            return 0;
+        }
+
+        // 对齐到 4 字节边界（GL_PACK_ALIGNMENT 默认为 4）
+        uint32_t rowPitch = ((width * 4 + 3) / 4) * 4;
+        if (outRowPitch)
+        {
+            *outRowPitch = rowPitch;
+        }
+
+        g->ReadPixels((GLint)x, (GLint)y, (GLsizei)width, (GLsizei)height, GL_RGBA, GL_UNSIGNED_BYTE, outPixels);
+        return 1;
+    }
+
     uint32_t GLDevice::topologyToGL(PrimitiveTopology topo) const
     {
         switch (topo)

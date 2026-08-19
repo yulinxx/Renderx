@@ -468,6 +468,20 @@ extern "C"
         return dev->rhiDevice->getNativeContext();
     }
 
+    /**
+     * @brief 读取当前帧缓冲区像素数据
+     */
+    RENDER_API int renderReadPixels(RenderDevice* dev,
+        uint32_t x, uint32_t y, uint32_t width, uint32_t height,
+        void* outPixels, uint32_t* outRowPitch)
+    {
+        if (!dev || !dev->rhiDevice)
+        {
+            return 0;
+        }
+        return dev->rhiDevice->readPixels(x, y, width, height, outPixels, outRowPitch);
+    }
+
     // ==================== 屏幕文本 ====================
 
     /**

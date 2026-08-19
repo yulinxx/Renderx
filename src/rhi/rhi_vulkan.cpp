@@ -2032,6 +2032,14 @@ namespace render::rhi
         createSwapchain(width, height);
     }
 
+    int VulkanDevice::readPixels(uint32_t /*x*/, uint32_t /*y*/, uint32_t /*width*/, uint32_t /*height*/,
+        void* /*outPixels*/, uint32_t* /*outRowPitch*/)
+    {
+        // Vulkan readPixels requires staging buffer and command submission.
+        // Not implemented for now - return failure.
+        return 0;
+    }
+
     uint64_t VulkanDevice::getGPUMemoryUsage() const
     {
         uint64_t totalSize = 0;

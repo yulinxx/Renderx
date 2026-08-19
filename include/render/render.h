@@ -528,6 +528,26 @@ namespace render
         RENDER_API void renderFrame(RenderDevice* dev);
 
         /**
+         * @brief 读取当前帧缓冲区像素数据
+         *
+         * 从当前绑定的帧缓冲区读取像素数据到 CPU 内存。
+         * 数据格式为 RGBA8（每像素 4 字节，行跨度由 rowPitch 返回）。
+         * 注意：GL 行序为底部向上，调用方通常需要自行翻转（垂直镜像）。
+         *
+         * @param dev      渲染设备
+         * @param x        起始 X 坐标（像素）
+         * @param y        起始 Y 坐标（像素）
+         * @param width    读取宽度
+         * @param height   读取高度
+         * @param outPixels 输出缓冲区，需至少 width * height * 4 字节
+         * @param outRowPitch 输出行跨度（字节），可为 nullptr
+         * @return 成功返回 1，失败返回 0
+         */
+        RENDER_API int renderReadPixels(RenderDevice* dev,
+            uint32_t x, uint32_t y, uint32_t width, uint32_t height,
+            void* outPixels, uint32_t* outRowPitch);
+
+        /**
          * @brief 获取渲染统计信息
          *
          * @param dev 渲染设备
