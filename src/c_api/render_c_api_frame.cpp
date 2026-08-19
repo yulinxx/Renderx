@@ -988,6 +988,98 @@ extern "C"
         }
     }
 
+    // ==================== 离屏渲染目标（截图 / 离屏合成） ====================
+
+    RENDER_API RenderTargetHandle renderCreateRenderTarget(RenderDevice* dev, const RenderTargetDesc* desc)
+    {
+        if (!dev || !dev->rhiDevice || !desc)
+        {
+            return NullRenderTarget;
+        }
+        return dev->rhiDevice->createRenderTarget(*desc);
+    }
+
+    RENDER_API void renderDestroyRenderTarget(RenderDevice* dev, RenderTargetHandle handle)
+    {
+        if (!dev || !dev->rhiDevice)
+        {
+            return;
+        }
+        dev->rhiDevice->destroyRenderTarget(handle);
+    }
+
+    RENDER_API void renderBindRenderTarget(RenderDevice* dev, RenderTargetHandle handle)
+    {
+        if (!dev || !dev->rhiDevice)
+        {
+            return;
+        }
+        dev->rhiDevice->bindRenderTarget(handle);
+    }
+
+    RENDER_API void renderBindDefaultTarget(RenderDevice* dev)
+    {
+        if (!dev || !dev->rhiDevice)
+        {
+            return;
+        }
+        dev->rhiDevice->bindDefaultTarget();
+    }
+
+    RENDER_API void renderReadRenderTarget(
+        RenderDevice* dev, RenderTargetHandle handle, void* rgba8, uint32_t rowPitchBytes)
+    {
+        if (!dev || !dev->rhiDevice)
+        {
+            return;
+        }
+        dev->rhiDevice->readRenderTarget(handle, rgba8, rowPitchBytes);
+    }
+
+    RENDER_API bool renderCaptureFrame(
+        RenderDevice* dev, uint32_t width, uint32_t height, void* rgba8, uint32_t* outRowPitch)
+    {
+        if (!dev || !dev->rhiDevice || !rgba8 || width == 0 || height == 0)
+        {
+            return false;
+        }
+        auto* rhi = dev->rhiDevice;
+
+        RenderTargetDesc desc;
+        desc.width = width;
+        desc.height = height;
+        desc.depth = (dev->viewMode == ViewMode::Mode3D);
+        desc.depthFormat = DepthFormat::D24S8;
+
+        RenderTargetHandle h = rhi->createRenderTarget(desc);
+        if (h == NullRenderTarget)
+        {
+            return false;
+        }
+
+        // 临时将视口像素尺寸同步到离屏目标尺寸，使屏幕文本等按目标尺寸定位
+        const uint32_t savedVW = dev->viewportWidth;
+        const uint32_t savedVH = dev->viewportHeight;
+        dev->viewportWidth = width;
+        dev->viewportHeight = height;
+
+        rhi->bindRenderTarget(h);
+        renderFrame(dev);  // 渲染当前场景到离屏目标（调用方需提前设置好视图/相机）
+        const uint32_t pitch = width * 4;
+        rhi->readRenderTarget(h, rgba8, pitch);
+        rhi->bindDefaultTarget();
+
+        dev->viewportWidth = savedVW;
+        dev->viewportHeight = savedVH;
+        rhi->destroyRenderTarget(h);
+
+        if (outRowPitch)
+        {
+            *outRowPitch = pitch;
+        }
+        return true;
+    }
+
     // ==================== Camera Center ====================
 
     RENDER_API void renderSetCameraCenter(RenderDevice* dev, double cx, double cy)

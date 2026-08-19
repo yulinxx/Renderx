@@ -2053,6 +2053,13 @@ namespace render::rhi
         return static_cast<void*>(m_device);
     }
 
+    // 离屏渲染目标：Vulkan 后端暂未实现，均返回无效 / 空操作
+    RenderTargetHandle VulkanDevice::createRenderTarget(const RenderTargetDesc&) { return NullRenderTarget; }
+    void VulkanDevice::destroyRenderTarget(RenderTargetHandle) {}
+    void VulkanDevice::bindRenderTarget(RenderTargetHandle) {}
+    void VulkanDevice::bindDefaultTarget() {}
+    void VulkanDevice::readRenderTarget(RenderTargetHandle, void*, uint32_t) {}
+
     // Factory function
     IDevice* createVulkanDevice()
     {

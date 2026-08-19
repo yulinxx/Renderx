@@ -28,6 +28,34 @@ namespace render
     /// 无效网格ID常量
     constexpr MeshId INVALID_MESH_ID = 0;
 
+    /// 离屏渲染目标句柄（0 = 无效）
+    using RenderTargetHandle = uint64_t;
+    /// 无效离屏渲染目标句柄
+    constexpr RenderTargetHandle NullRenderTarget = 0;
+
+    /// 离屏渲染目标的深度附件格式
+    enum class DepthFormat : uint8_t
+    {
+        None = 0,    ///< 无深度附件（纯 2D 离屏）
+        D24S8 = 1,   ///< 24 位深度 + 8 位模板
+        D32F = 2,    ///< 32 位浮点深度
+    };
+
+    /**
+     * @brief 离屏渲染目标（Framebuffer Object）描述
+     *
+     * 用于在 RenderDevice 之外渲染到一张离屏纹理，实现截图、离屏合成等，
+     * 而不干扰屏幕上正在显示的默认帧缓冲（无闪烁）。
+     */
+    struct RenderTargetDesc
+    {
+        uint32_t width = 0;                    ///< 渲染目标宽度（像素）
+        uint32_t height = 0;                   ///< 渲染目标高度（像素）
+        bool depth = true;                     ///< 是否创建深度附件（3D 需要，2D 可省略）
+        DepthFormat depthFormat = DepthFormat::D24S8;  ///< 深度附件格式（depth=true 时有效）
+        const char* debugName = nullptr;
+    };
+
     /// 图元类型枚举，定义了支持的渲染图元类型
     enum class PrimitiveType : uint8_t
     {

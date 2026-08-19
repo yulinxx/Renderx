@@ -127,6 +127,13 @@ namespace render::rhi
         uint64_t getGPUMemoryUsage() const override;
         void* getNativeContext() override;
 
+        // ---- 离屏渲染目标（截图 / 离屏合成）----
+        RenderTargetHandle createRenderTarget(const RenderTargetDesc& desc) override;
+        void destroyRenderTarget(RenderTargetHandle handle) override;
+        void bindRenderTarget(RenderTargetHandle handle) override;
+        void bindDefaultTarget() override;
+        void readRenderTarget(RenderTargetHandle handle, void* rgba8, uint32_t rowPitchBytes) override;
+
     private:
         uint32_t compileShader(uint32_t type, const char* source);
         uint32_t compileShaderSPIRV(
@@ -168,6 +175,23 @@ namespace render::rhi
 
         std::vector<GLPipelineEntry> m_pipelines;
         std::vector<uint32_t> m_pipelineFreeList;
+
+        // 离屏渲染目标（Framebuffer Object）资源与状态
+        struct GLRenderTargetEntry
+        {
+            uint32_t fbo = 0;
+            uint32_t colorTex = 0;
+            uint32_t depthRb = 0;
+            uint32_t width = 0;
+            uint32_t height = 0;
+        };
+        std::vector<GLRenderTargetEntry> m_renderTargets;
+        std::vector<uint32_t> m_renderTargetFreeList;
+        // bindRenderTarget 之前绑定的帧缓冲与视口尺寸（用于 bindDefaultTarget 还原）
+        GLuint m_savedFramebuffer = 0;
+        int32_t m_savedWidth = 0;
+        int32_t m_savedHeight = 0;
+        bool m_renderTargetBound = false;
 
         PipelineHandle m_currentPipeline = NullHandle;
         BufferHandle m_currentVBOs[4] = { NullHandle, NullHandle, NullHandle, NullHandle };

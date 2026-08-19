@@ -17,6 +17,10 @@
 #pragma once
 #include <cstdint>
 
+// 复用公开层定义的离屏渲染目标类型（RenderTargetHandle / RenderTargetDesc），
+// 使 RHI 接口与 C API 共用同一套类型，避免类型分裂。
+#include "../../include/render/render_types.h"
+
 namespace render::rhi
 {
 

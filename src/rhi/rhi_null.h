@@ -88,6 +88,13 @@ namespace render::rhi
         uint64_t getGPUMemoryUsage() const override;
         void* getNativeContext() override;
 
+        // 离屏渲染目标（Null 后端为空实现，返回无效句柄 / 不操作）
+        RenderTargetHandle createRenderTarget(const RenderTargetDesc&) override;
+        void destroyRenderTarget(RenderTargetHandle) override;
+        void bindRenderTarget(RenderTargetHandle) override;
+        void bindDefaultTarget() override;
+        void readRenderTarget(RenderTargetHandle, void*, uint32_t) override;
+
         // Null backend tracks resource counts for testing validation
         uint64_t getBufferCount() const
         {

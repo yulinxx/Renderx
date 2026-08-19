@@ -599,6 +599,70 @@ namespace render
          * @param count 图元数量
          */
         RENDER_API void renderSubmitGeometries(RenderDevice* dev, const GeometryPrimitive* primitives, uint32_t count);
+
+        // ==================== 离屏渲染目标（截图 / 离屏合成） ====================
+
+        /**
+         * @brief 创建离屏渲染目标
+         *
+         * @param dev 渲染设备
+         * @param desc 渲染目标描述
+         * @return 渲染目标句柄，失败返回 NullRenderTarget
+         */
+        RENDER_API RenderTargetHandle renderCreateRenderTarget(RenderDevice* dev, const RenderTargetDesc* desc);
+
+        /**
+         * @brief 销毁离屏渲染目标
+         *
+         * @param dev 渲染设备
+         * @param handle 渲染目标句柄
+         */
+        RENDER_API void renderDestroyRenderTarget(RenderDevice* dev, RenderTargetHandle handle);
+
+        /**
+         * @brief 绑定离屏渲染目标为当前绘制目标
+         *
+         * @param dev 渲染设备
+         * @param handle 渲染目标句柄（NullRenderTarget 表示不操作）
+         */
+        RENDER_API void renderBindRenderTarget(RenderDevice* dev, RenderTargetHandle handle);
+
+        /**
+         * @brief 恢复绑定离屏渲染目标之前的默认绘制目标
+         *
+         * @param dev 渲染设备
+         */
+        RENDER_API void renderBindDefaultTarget(RenderDevice* dev);
+
+        /**
+         * @brief 从离屏渲染目标回读颜色像素（RGBA8）
+         *
+         * @param dev 渲染设备
+         * @param handle 渲染目标句柄
+         * @param rgba8 输出缓冲区，容量须 >= width*height*4 字节
+         * @param rowPitchBytes 每行字节数（通常 = width*4）
+         */
+        RENDER_API void renderReadRenderTarget(RenderDevice* dev, RenderTargetHandle handle, void* rgba8, uint32_t rowPitchBytes);
+
+        /**
+         * @brief 将当前场景渲染到离屏帧缓冲并回读为图像
+         *
+         * 便捷接口：内部创建一张 width×height 的离屏目标，绑定后调用
+         * renderFrame 渲染当前场景（调用方需提前设置好视图矩阵/相机等），
+         * 回读像素后还原默认目标并销毁离屏目标。
+         * 像素原点在左下角（与 GL 一致），调用方按需上下翻转。
+         *
+         * @param dev 渲染设备
+         * @param width 输出宽度（像素）
+         * @param height 输出高度（像素）
+         * @param rgba8 输出缓冲区，容量须 >= width*height*4 字节
+         * @param outRowPitch 输出每行字节数（= width*4），可为 nullptr
+         * @return 成功返回 true
+         *
+         * @note 该接口仅对 2D（Renderx）场景有效；3D 视图请使用其专属离屏捕获接口。
+         */
+        RENDER_API bool renderCaptureFrame(
+            RenderDevice* dev, uint32_t width, uint32_t height, void* rgba8, uint32_t* outRowPitch);
     }
 
 }  // namespace render
