@@ -617,6 +617,11 @@ struct GLFuncs
     PFNGLFRAMEBUFFERRENDERBUFFERPROC FramebufferRenderbuffer;
     PFNGLCHECKFRAMEBUFFERSTATUSPROC CheckFramebufferStatus;
 
+    // GL 3.0+ framebuffer binding query
+    #ifndef GL_DRAW_FRAMEBUFFER_BINDING
+    #define GL_DRAW_FRAMEBUFFER_BINDING 0x8CA6
+    #endif
+
     PFNGLCREATEBUFFERSPROC CreateBuffers;
     PFNGLNAMEDBUFFERDATAPROC NamedBufferData;
     PFNGLNAMEDBUFFERSUBDATAPROC NamedBufferSubData;
