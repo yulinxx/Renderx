@@ -300,7 +300,7 @@ namespace render::rhi
         m_width = width;
         m_height = height;
 
-// --- Create Vulkan instance ---
+        // --- Create Vulkan instance ---
         VkApplicationInfo appInfo{};
         appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
         appInfo.pApplicationName = "SanYiRender";
@@ -2032,8 +2032,12 @@ namespace render::rhi
         createSwapchain(width, height);
     }
 
-    int VulkanDevice::readPixels(uint32_t /*x*/, uint32_t /*y*/, uint32_t /*width*/, uint32_t /*height*/,
-        void* /*outPixels*/, uint32_t* /*outRowPitch*/)
+    int VulkanDevice::readPixels(uint32_t /*x*/,
+        uint32_t /*y*/,
+        uint32_t /*width*/,
+        uint32_t /*height*/,
+        void* /*outPixels*/,
+        uint32_t* /*outRowPitch*/)
     {
         // Vulkan readPixels requires staging buffer and command submission.
         // Not implemented for now - return failure.
@@ -2062,10 +2066,17 @@ namespace render::rhi
     }
 
     // 离屏渲染目标：Vulkan 后端暂未实现，均返回无效 / 空操作
-    RenderTargetHandle VulkanDevice::createRenderTarget(const RenderTargetDesc&) { return NullRenderTarget; }
+    RenderTargetHandle VulkanDevice::createRenderTarget(const RenderTargetDesc&)
+    {
+        return NullRenderTarget;
+    }
+
     void VulkanDevice::destroyRenderTarget(RenderTargetHandle) {}
+
     void VulkanDevice::bindRenderTarget(RenderTargetHandle) {}
+
     void VulkanDevice::bindDefaultTarget() {}
+
     void VulkanDevice::readRenderTarget(RenderTargetHandle, void*, uint32_t) {}
 
     // Factory function

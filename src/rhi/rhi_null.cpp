@@ -238,9 +238,7 @@ namespace render::rhi
 
     // ==================== Compute ====================
 
-    void NullDevice::dispatchCompute(uint32_t, uint32_t, uint32_t)
-    {
-    }
+    void NullDevice::dispatchCompute(uint32_t, uint32_t, uint32_t) {}
 
     void NullDevice::memoryBarrier(uint32_t)
     {
@@ -274,23 +272,23 @@ namespace render::rhi
 
     // ==================== Query ====================
 
-void NullDevice::resize(uint32_t width, uint32_t height)
-{
-    m_width = width;
-    m_height = height;
-}
-
-int NullDevice::readPixels(uint32_t /*x*/, uint32_t /*y*/, uint32_t width, uint32_t height,
-    void* /*outPixels*/, uint32_t* outRowPitch)
-{
-    if (outRowPitch)
+    void NullDevice::resize(uint32_t width, uint32_t height)
     {
-        *outRowPitch = ((width * 4 + 3) / 4) * 4;
+        m_width = width;
+        m_height = height;
     }
-    return 1;  // Null backend always succeeds
-}
 
-uint64_t NullDevice::getGPUMemoryUsage() const
+    int NullDevice::readPixels(
+        uint32_t /*x*/, uint32_t /*y*/, uint32_t width, uint32_t height, void* /*outPixels*/, uint32_t* outRowPitch)
+    {
+        if (outRowPitch)
+        {
+            *outRowPitch = ((width * 4 + 3) / 4) * 4;
+        }
+        return 1;  // Null backend always succeeds
+    }
+
+    uint64_t NullDevice::getGPUMemoryUsage() const
     {
         return 0;
     }

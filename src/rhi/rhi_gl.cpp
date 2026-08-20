@@ -536,14 +536,17 @@ namespace render::rhi
             GLint locCC = g->GetUniformLocation(prog, "uCameraCenter");
 
             auto shortName = [](const char* s) -> const char* {
-                if (!s) return "null";
-                if (std::strlen(s) <= 32) return s;
+                if (!s)
+                    return "null";
+                if (std::strlen(s) <= 32)
+                    return s;
                 static thread_local char buf[48];
                 std::snprintf(buf, sizeof(buf), "%.32s...", s);
                 return buf;
             };
 
-            SY_DEBUGF("[Pipeline] handle=%llu program=%u vs=%s fs=%s fmt=%d topo=%u uViewMatrixLoc=%d uCameraCenterLoc=%d",
+            SY_DEBUGF(
+                "[Pipeline] handle=%llu program=%u vs=%s fs=%s fmt=%d topo=%u uViewMatrixLoc=%d uCameraCenterLoc=%d",
                 static_cast<unsigned long long>(handle),
                 prog,
                 shortName(desc.vertexShader),
@@ -1510,7 +1513,7 @@ namespace render::rhi
                 return GL_DEPTH24_STENCIL8;
             }
         }
-    }
+    }  // namespace
 
     RenderTargetHandle GLDevice::createRenderTarget(const RenderTargetDesc& desc)
     {
@@ -1545,8 +1548,15 @@ namespace render::rhi
         {
             g->GenTextures(1, &e.colorTex);
             g->BindTexture(GL_TEXTURE_2D, e.colorTex);
-            g->TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, (GLsizei)desc.width, (GLsizei)desc.height, 0, GL_RGBA,
-                GL_UNSIGNED_BYTE, nullptr);
+            g->TexImage2D(GL_TEXTURE_2D,
+                0,
+                GL_RGBA8,
+                (GLsizei)desc.width,
+                (GLsizei)desc.height,
+                0,
+                GL_RGBA,
+                GL_UNSIGNED_BYTE,
+                nullptr);
             g->TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
             g->TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
             g->TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -1561,8 +1571,10 @@ namespace render::rhi
             {
                 g->GenRenderbuffers(1, &e.depthRb);
                 g->BindRenderbuffer(GL_RENDERBUFFER, e.depthRb);
-                g->RenderbufferStorage(GL_RENDERBUFFER, depthInternalFormatToGL(desc.depthFormat),
-                    (GLsizei)desc.width, (GLsizei)desc.height);
+                g->RenderbufferStorage(GL_RENDERBUFFER,
+                    depthInternalFormatToGL(desc.depthFormat),
+                    (GLsizei)desc.width,
+                    (GLsizei)desc.height);
                 g->BindRenderbuffer(GL_RENDERBUFFER, 0);
             }
             else
@@ -1578,8 +1590,7 @@ namespace render::rhi
         g->FramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, e.colorTex, 0);
         if (e.depthRb != 0)
         {
-            g->FramebufferRenderbuffer(
-                GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, e.depthRb);
+            g->FramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, e.depthRb);
         }
 
         GLenum status = g->CheckFramebufferStatus ? g->CheckFramebufferStatus(GL_FRAMEBUFFER) : GL_FRAMEBUFFER_COMPLETE;
@@ -1883,8 +1894,7 @@ namespace render::rhi
         return prog;
     }
 
-    uint32_t GLDevice::readRegionNonBgPixels(
-        uint32_t x, uint32_t y, uint32_t w, uint32_t h, const float bg[4], int tol)
+    uint32_t GLDevice::readRegionNonBgPixels(uint32_t x, uint32_t y, uint32_t w, uint32_t h, const float bg[4], int tol)
     {
         auto* g = gl();
         if (!g->ReadPixels || w == 0 || h == 0 || w > 8192 || h > 8192)
@@ -1913,8 +1923,8 @@ namespace render::rhi
         return nonBg;
     }
 
-    int GLDevice::readPixels(uint32_t x, uint32_t y, uint32_t width, uint32_t height,
-        void* outPixels, uint32_t* outRowPitch)
+    int GLDevice::readPixels(
+        uint32_t x, uint32_t y, uint32_t width, uint32_t height, void* outPixels, uint32_t* outRowPitch)
     {
         auto* g = gl();
         if (!g->ReadPixels || width == 0 || height == 0 || width > 8192 || height > 8192 || !outPixels)
@@ -2059,8 +2069,7 @@ namespace render::rhi
         return 0;
     }
 
-    void GLDevice::configureVertexAttribs(
-        GLFuncs* g, PrimitiveTopology /*topo*/, VertexFormat fmt, uint64_t baseOffset)
+    void GLDevice::configureVertexAttribs(GLFuncs* g, PrimitiveTopology /*topo*/, VertexFormat fmt, uint64_t baseOffset)
     {
         if (!g->BindVertexArray)
         {

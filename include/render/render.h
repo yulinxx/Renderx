@@ -40,7 +40,6 @@
 
 namespace render
 {
-
     /**
      * @brief 渲染统计信息结构
      *
@@ -62,7 +61,6 @@ namespace render
 
     extern "C"
     {
-
         /**
          * @brief 创建渲染设备
          *
@@ -544,8 +542,12 @@ namespace render
          * @return 成功返回 1，失败返回 0
          */
         RENDER_API int renderReadPixels(RenderDevice* dev,
-            uint32_t x, uint32_t y, uint32_t width, uint32_t height,
-            void* outPixels, uint32_t* outRowPitch);
+            uint32_t x,
+            uint32_t y,
+            uint32_t width,
+            uint32_t height,
+            void* outPixels,
+            uint32_t* outRowPitch);
 
         /**
          * @brief 获取渲染统计信息
@@ -662,7 +664,8 @@ namespace render
          * @param rgba8 输出缓冲区，容量须 >= width*height*4 字节
          * @param rowPitchBytes 每行字节数（通常 = width*4）
          */
-        RENDER_API void renderReadRenderTarget(RenderDevice* dev, RenderTargetHandle handle, void* rgba8, uint32_t rowPitchBytes);
+        RENDER_API void renderReadRenderTarget(
+            RenderDevice* dev, RenderTargetHandle handle, void* rgba8, uint32_t rowPitchBytes);
 
         /**
          * @brief 将当前场景渲染到离屏帧缓冲并回读为图像
@@ -684,5 +687,4 @@ namespace render
         RENDER_API bool renderCaptureFrame(
             RenderDevice* dev, uint32_t width, uint32_t height, void* rgba8, uint32_t* outRowPitch);
     }
-
 }  // namespace render
