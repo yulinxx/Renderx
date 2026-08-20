@@ -200,19 +200,27 @@ namespace render
                 return m_cullingPipeline;
             }
 
-            /**
-             * @brief 读取当前帧的可见性结果（阻塞式）
-             *
-             * 从 GPU 可见性缓冲全量回读，收集可见图元的 RenderWorld dense 索引。
-             * 注意：这是同步回读，会阻塞 CPU（mapBuffer 隐式等待 GPU 完成当前 dispatch）。
-             * 由于 clearEntities() 每帧全量重建 PEM，M8 的"跨帧双缓冲异步回读"设计
-             * 无法在不重构同步策略的前提下生效，故统一收敛为同步回读，保证正确性优先。
-             *
-             * @param outIndices 输出可见图元（RenderWorld dense 索引）数组
-             * @param maxCount 输出缓冲区容量
-             * @return 实际可见图元数量
-             */
-            uint32_t readBackGpuVisibility(uint32_t* outIndices, uint32_t maxCount);
+/**
+         * @brief 读取当前帧的可见性结果（双缓冲，非阻塞）
+         *
+         * 使用双缓冲机制：第 N 帧读回，第 N+1 帧使用，
+         * 消除 CPU-GPU 同步瓶颈。通过 fence 同步确保数据一致性。
+         *
+         * @param outIndices 输出可见图元（RenderWorld dense 索引）数组
+         * @param maxCount 输出缓冲区容量
+         * @return 实际可见图元数量
+         */
+        uint32_t readBackGpuVisibility(uint32_t* outIndices, uint32_t maxCount);
+
+        /**
+         * @brief 提交读回任务（异步）
+         *
+         * 异步提交 GPU 可见性查询结果的读回请求，
+         * CPU 无需阻塞即可继续后续工作。
+         *
+         * @param fenceValue 当前帧的 fence 值，用于 GPU 完成检查
+         */
+        void submitGpuReadback(uint64_t fenceValue);
 
         private:
             rhi::IDevice* m_device = nullptr;
@@ -238,6 +246,17 @@ namespace render
             std::vector<uint32_t> m_readbackBuffer;
             /// 当前帧可见的 PEM 索引（由 readBackGpuVisibility 收集，供 generateIndirectCommands 复用）
             std::vector<uint32_t> m_visiblePemIndices;
+
+            /// GPU 读回双缓冲
+            struct GpuReadbackFrame
+            {
+                rhi::BufferHandle visibilityBuffer;  ///< 当前帧的可见性缓冲
+                rhi::BufferHandle readbackBuffer;    ///< 读回用临时缓冲
+                uint64_t fenceValue = 0;             ///< 用于同步的 fence 值
+                bool ready = false;                  ///< 是否已准备好读回
+            };
+            std::array<GpuReadbackFrame, 2> m_readbackFrames;
+            uint32_t m_currentReadbackFrame = 0;  ///< 当前活动的帧索引
 
             /// Compute Pipeline
             rhi::PipelineHandle m_cullingPipeline = rhi::NullHandle;

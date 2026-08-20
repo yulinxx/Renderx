@@ -190,8 +190,8 @@ static uint32_t readBackGpuVisibility(RenderDevice* dev, uint32_t* outIndices, u
  * @param outVertices 输出顶点数组
  * @param cameraCenter 相机中心（世界坐标 double[2]），用于精度优化
  */
-static void tessellatePolyline(const GeometryPolyline* polyline, std::vector<render::VertexP3C3>& outVertices,
-    const double cameraCenter[2])
+static void tessellatePolyline(
+    const GeometryPolyline* polyline, std::vector<render::VertexP3C3>& outVertices, const double cameraCenter[2])
 {
     if (!polyline || !polyline->points || polyline->pointCount < 2)
     {
@@ -229,8 +229,8 @@ static void tessellatePolyline(const GeometryPolyline* polyline, std::vector<ren
  * @param outVertices 输出顶点数组
  * @param cameraCenter 相机中心（世界坐标 double[2]），用于精度优化
  */
-static void tessellateCircle(const GeometryCircle* circle, std::vector<render::VertexP3C3>& outVertices,
-    const double cameraCenter[2])
+static void tessellateCircle(
+    const GeometryCircle* circle, std::vector<render::VertexP3C3>& outVertices, const double cameraCenter[2])
 {
     if (!circle || circle->radius <= 0)
     {
@@ -268,8 +268,8 @@ static void tessellateCircle(const GeometryCircle* circle, std::vector<render::V
  * @param outVertices 输出顶点数组
  * @param cameraCenter 相机中心（世界坐标 double[2]），用于精度优化
  */
-static void tessellateArc(const GeometryArc* arc, std::vector<render::VertexP3C3>& outVertices,
-    const double cameraCenter[2])
+static void tessellateArc(
+    const GeometryArc* arc, std::vector<render::VertexP3C3>& outVertices, const double cameraCenter[2])
 {
     if (!arc || arc->radius <= 0)
     {
@@ -317,8 +317,8 @@ static void tessellateArc(const GeometryArc* arc, std::vector<render::VertexP3C3
  * @param outVertices 输出顶点数组
  * @param cameraCenter 相机中心（世界坐标 double[2]），用于精度优化
  */
-static void tessellateEllipse(const GeometryEllipse* ellipse, std::vector<render::VertexP3C3>& outVertices,
-    const double cameraCenter[2])
+static void tessellateEllipse(
+    const GeometryEllipse* ellipse, std::vector<render::VertexP3C3>& outVertices, const double cameraCenter[2])
 {
     if (!ellipse || ellipse->radiusX <= 0 || ellipse->radiusY <= 0)
     {
@@ -414,8 +414,8 @@ static void renderSubmitGeometryImpl(RenderDevice* dev, const GeometryPrimitive*
         tessellatePolyline(primitive->desc.polyline, vertices, dev->cameraCenter);
         if (!vertices.empty())
         {
-            render::PrimitiveType type = primitive->desc.polyline->closed ? render::PrimitiveType::LineLoop
-                                                                          : render::PrimitiveType::LineStrip;
+            render::PrimitiveType type =
+                primitive->desc.polyline->closed ? render::PrimitiveType::LineLoop : render::PrimitiveType::LineStrip;
             EntityId eid = resolveEntityId(dev, primitive->entityId);
             dev->world2D.addEntity(eid, vertices.data(), static_cast<uint32_t>(vertices.size()), type, 0);
         }
@@ -647,10 +647,8 @@ extern "C"
                 // GPU 剔除返回 0（macOS 无 GL 4.6 compute shader）：
                 // 使用暴力遍历所有图元做 AABB-视锥相交测试，跳过四叉树以避免
                 // 四叉树在特定视图/缩放下错误丢弃图元的问题。
-                dev->world2D.queryVisibleBruteForce(dev->view2D.viewMatrix,
-                    dev->visibleIndices.data(),
-                    &visibleCount,
-                    maxVisible);
+                dev->world2D.queryVisibleBruteForce(
+                    dev->view2D.viewMatrix, dev->visibleIndices.data(), &visibleCount, maxVisible);
 
                 if (maxVisible > 0 && visibleCount == 0)
                 {
@@ -672,8 +670,6 @@ extern "C"
                     }
                 }
             }
-
-
 
             // 先提交给 BatchQueue（此时 dirty 标志尚未清除，增量更新可正常工作）
             dev->batchQueue.submit(dev->visibleIndices.data(), visibleCount, dev->world2D);
@@ -1091,6 +1087,6 @@ extern "C"
         dev->cameraCenter[0] = cx;
         dev->cameraCenter[1] = cy;
     }
-            }
+}
 
-            // extern "C"
+// extern "C"

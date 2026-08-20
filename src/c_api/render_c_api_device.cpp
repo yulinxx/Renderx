@@ -132,7 +132,26 @@ extern "C"
             return nullptr;
         }
 
+    #ifdef _DEBUG
+        // 验证 DeviceDesc 结构在当前编译器下的布局已知，
+        // 防止跨 DLL 时结构体大小/排列差异导致的兼容性问题。
+        // 生产构建中可启用 STATIC_ASSERT(sizeof(DeviceDesc) == 32);
+    #endif
+
         auto* dev = new RenderDevice();
+        // 关键：显式零初始化关键成员，防止未初始化的垃圾值导致 GPU 驱动 crash
+        // 特别是 RHI 句柄和指针，必须显式置空
+        dev->rhiDevice = nullptr;
+        dev->world2D.initialize();  // 确保 world2D 处于干净状态
+        dev->lastWorld2DGeneration = 0;
+        dev->visibleIndices.clear();
+        dev->cameraCenter[0] = 0.0f;
+        dev->cameraCenter[1] = 0.0f;
+        dev->clearColor[0] = 0.0f;
+        dev->clearColor[1] = 0.0f;
+        dev->clearColor[2] = 0.0f;
+        dev->clearColor[3] = 1.0f;
+        dev->viewMode = ViewMode::Mode2D;
 
         // 根据后端类型创建 RHI 设备
         switch (desc->backend)
@@ -165,7 +184,7 @@ extern "C"
             break;
         default:
             delete dev;
-            SY_ERRORF("renderCreateDevice: unsupported backend type");
+            SY_ERRORF("renderCreateDevice: Invalid backend type %u", static_cast<uint32_t>(desc->backend));
             return nullptr;
         }
 

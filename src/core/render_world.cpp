@@ -273,7 +273,6 @@ namespace render
             uint32_t* outCount,
             uint32_t maxOut) const
         {
-
             // viewWidth/viewHeight 当前不直接参与视锥计算，因为 viewMatrix
             // 已是正交投影矩阵（包含缩放）。保留参数用于未来扩展和退化矩阵兜底。
             RenderWorld* self = const_cast<RenderWorld*>(this);
@@ -283,8 +282,10 @@ namespace render
                 *outCount = 0;
             }
 
-            // 四叉树重建条件：脏标记 / 变更累积超阈值 / 视图变化
-            bool needsRebuild = m_quadTreeDirty || m_changeCount >= kRebuildThreshold;
+            // 四叉树重建条件：脏标记 / 变更累积超动态阈值 / 视图变化
+            // 动态阈值 = 总图元数 * 当前阈值比例
+            uint32_t dynamicThreshold = static_cast<uint32_t>(m_entities.size() * m_adaptiveRebuildRatio);
+            bool needsRebuild = m_quadTreeDirty || m_changeCount >= dynamicThreshold;
             if (!needsRebuild)
             {
                 needsRebuild = hasViewChanged(viewMatrix);
@@ -436,29 +437,81 @@ namespace render
             }
         }
 
-        void RenderWorld::update()
+void RenderWorld::update()
+{
+    if (m_dirtyList.empty() && !m_vertexPoolResized)
+    {
+        return;
+    }
+
+    // 计算本帧变化比例，用于自适应调整四叉树重建阈值
+    // m_dirtyList 包含本帧所有变化的图元索引
+    uint32_t dirtyCount = 0;
+    if (m_entityCount > 0)
+    {
+        // 统计实际脏图元数量（通过 entry.dirty 检查）
+        for (uint32_t denseIdx : m_dirtyList)
         {
-            if (m_dirtyList.empty() && !m_vertexPoolResized)
+            if (denseIdx < m_entities.size())
             {
-                return;
-            }
-
-            for (uint32_t denseIdx : m_dirtyList)
-            {
-                if (denseIdx >= m_entities.size())
+                const EntityEntry& entry = m_entities[denseIdx];
+                if (entry.dirty)
                 {
-                    continue;
-                }
-                EntityEntry* entry = m_entities.begin() + denseIdx;
-                if (entry->dirty)
-                {
-                    entry->dirty = false;
+                    ++dirtyCount;
                 }
             }
-
-            m_dirtyList.clear();
-            m_vertexPoolResized = false;
         }
+    }
+
+    // 更新样本环（最近8帧）
+    if (m_changeRatioSampleCount < 8)
+    {
+        m_changeRatioSamples[m_changeRatioSampleCount++] = dirtyCount;
+    }
+    else
+    {
+        // 循环覆盖：用新数据覆盖最旧的样本
+        m_changeRatioSamples[m_changeRatioSampleCount % 8] = dirtyCount;
+        m_changeRatioSampleCount = 8;  // 保持计数在8
+    }
+
+    // 计算平均变化比例
+    float totalRatio = 0.0f;
+    uint32_t sampleCnt = (m_changeRatioSampleCount < 8) ? m_changeRatioSampleCount : 8;
+    for (uint32_t i = 0; i < sampleCnt; ++i)
+    {
+        totalRatio += static_cast<float>(m_changeRatioSamples[i]) / static_cast<float>(m_entityCount + 1);  // +1 避免除0
+    }
+    m_adaptiveRebuildRatio = totalRatio / static_cast<float>(sampleCnt);
+
+    // 防止阈值过快波动：使用平滑因子
+    constexpr float kSmoothing = 0.2f;
+    // 如果当前比例远离 0.1（10%），则缓慢趋近
+    if (m_adaptiveRebuildRatio < 0.05f)
+    {
+        m_adaptiveRebuildRatio = 0.05f;  // 下限 5%
+    }
+    else if (m_adaptiveRebuildRatio > 0.5f)
+    {
+        m_adaptiveRebuildRatio = 0.5f;  // 上限 50%
+    }
+
+    for (uint32_t denseIdx : m_dirtyList)
+    {
+        if (denseIdx >= m_entities.size())
+        {
+            continue;
+        }
+        EntityEntry* entry = m_entities.begin() + denseIdx;
+        if (entry->dirty)
+        {
+            entry->dirty = false;
+        }
+    }
+
+    m_dirtyList.clear();
+    m_vertexPoolResized = false;
+}
 
         uint32_t RenderWorld::getDirtyVertexRanges(VertexUploadRange* outRanges, uint32_t maxRanges) const
         {
@@ -723,10 +776,8 @@ namespace render
             return false;
         }
 
-        void RenderWorld::queryVisibleBruteForce(const float viewMatrix[9],
-            uint32_t* outIndices,
-            uint32_t* outCount,
-            uint32_t maxOut) const
+        void RenderWorld::queryVisibleBruteForce(
+            const float viewMatrix[9], uint32_t* outIndices, uint32_t* outCount, uint32_t maxOut) const
         {
             if (outCount)
             {
@@ -806,8 +857,14 @@ namespace render
                     continue;
                 }
 
-                if (bboxIntersects(
-                        entry.bbox[0], entry.bbox[1], entry.bbox[2], entry.bbox[3], frustum[0], frustum[1], frustum[2], frustum[3]))
+                if (bboxIntersects(entry.bbox[0],
+                        entry.bbox[1],
+                        entry.bbox[2],
+                        entry.bbox[3],
+                        frustum[0],
+                        frustum[1],
+                        frustum[2],
+                        frustum[3]))
                 {
                     if (outIndices)
                     {

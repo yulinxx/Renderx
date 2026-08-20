@@ -188,5 +188,4 @@ extern "C"
         }
         dev->bitmapRenderer.clear();
     }
-
 }  // extern "C"

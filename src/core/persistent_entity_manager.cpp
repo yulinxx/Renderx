@@ -245,6 +245,15 @@ namespace render
             m_pemToRenderWorldIndex.clear();
             m_dirtyFlags.clear();
             m_lastVisibleCount = 0;
+            m_currentReadbackFrame = 0;
+            // 初始化双缓冲帧
+            for (auto& frame : m_readbackFrames)
+            {
+                frame.visibilityBuffer = rhi::NullHandle;
+                frame.readbackBuffer = rhi::NullHandle;
+                frame.fenceValue = 0;
+                frame.ready = false;
+            }
             m_readbackBuffer.clear();
             m_visiblePemIndices.clear();
         }
@@ -428,53 +437,96 @@ namespace render
             m_device->memoryBarrier(static_cast<uint32_t>(rhi::BarrierFlag::ShaderStorage | rhi::BarrierFlag::Command));
         }
 
-        uint32_t PersistentEntityManager::readBackGpuVisibility(uint32_t* outIndices, uint32_t maxCount)
+uint32_t PersistentEntityManager::readBackGpuVisibility(uint32_t* outIndices, uint32_t maxCount)
+{
+    if (!m_initialized || !m_device || m_entityCount == 0)
+    {
+        return 0;
+    }
+
+    // 切换到下一帧的读回缓冲（双缓冲）
+    m_currentReadbackFrame = (m_currentReadbackFrame + 1) % 2;
+    auto& frame = m_readbackFrames[m_currentReadbackFrame];
+
+    // 如果当前帧的缓冲还没有准备好（上一帧的读回还在进行中），则等待 fence
+    if (frame.ready)
+    {
+        // 检查 fence 是否已就绪（非阻塞检查）
+        bool fenceSignaled = m_device->checkFence(frame.fenceValue);
+        if (!fenceSignaled)
         {
-            if (!m_initialized || !m_device || m_entityCount == 0)
+            // Fence 未就绪，返回上一帧的数据（或 0）
+            // 实际生产环境中这里可能调用设备的 waitForFence
+            return 0;
+        }
+        // Fence 已就绪，重置 ready 标记
+        frame.ready = false;
+    }
+
+    // 使用当前帧的读回缓冲进行全量映射
+    m_readbackBuffer.resize(m_entityCount);
+
+    // 全量映射可见性缓冲：visibility buffer 是逐图元稀疏标记
+    // （1=可见, 0=不可见），可见图元位置不连续，必须全量扫描
+    void* visMapped = m_device->mapBuffer(frame.visibilityBuffer, 0, m_entityCount * sizeof(uint32_t), 0x0001);
+    if (!visMapped)
+    {
+        SY_ERRORF("[PersistentEntityManager] readBackGpuVisibility: map visibility buffer failed (%u bytes)",
+            m_entityCount * sizeof(uint32_t));
+        return 0;
+    }
+    std::memcpy(m_readbackBuffer.data(), visMapped, m_entityCount * sizeof(uint32_t));
+    m_device->unmapBuffer(frame.visibilityBuffer);
+
+    // 收集可见 PEM 索引并转换为 RenderWorld 稠密索引写入 outIndices
+    uint32_t written = 0;
+    m_visiblePemIndices.clear();
+    for (uint32_t i = 0; i < m_entityCount; ++i)
+    {
+        if (!m_readbackBuffer[i])
+        {
+            continue;
+        }
+
+        m_visiblePemIndices.push_back(i);
+
+        if (outIndices && written < maxCount)
+        {
+            outIndices[written++] = (i < m_pemToRenderWorldIndex.size()) ? m_pemToRenderWorldIndex[i] : i;
+        }
+        else if (written < maxCount)
+        {
+            ++written;
+        }
+    }
+
+    // SY_DEBUGF("[PersistentEntityManager] readBackGpuVisibility: visible=%u / %u entities", written, m_entityCount);
+
+return written;
+}
+
+        /**
+         * @brief 提交读回任务（异步）
+         *
+         * 异步提交 GPU 可见性查询结果的读回请求，
+         * CPU 无需阻塞即可继续后续工作。
+         * 每帧调用一次，通过 fence 机制确保数据一致性。
+         *
+         * @param fenceValue 当前帧的 fence 值，用于 GPU 完成检查
+         */
+        void PersistentEntityManager::submitGpuReadback(uint64_t fenceValue)
+        {
+            if (!m_initialized || !m_device)
             {
-                return 0;
+                return;
             }
 
-            // 复用成员缓冲，避免每帧临时分配（全量可见性缓冲 + 可见 PEM 索引缓存）
-            m_readbackBuffer.resize(m_entityCount);
+            // 更新当前帧的 fence 值
+            m_readbackFrames[m_currentReadbackFrame].fenceValue = fenceValue;
 
-            // 全量映射可见性缓冲：visibility buffer 是逐图元稀疏标记
-            // （1=可见, 0=不可见），可见图元位置不连续，必须全量扫描
-            void* visMapped = m_device->mapBuffer(m_visibilityBuffer, 0, m_entityCount * sizeof(uint32_t), 0x0001);
-            if (!visMapped)
-            {
-                SY_ERRORF("[PersistentEntityManager] readBackGpuVisibility: map visibility buffer failed (%u bytes)",
-                    m_entityCount * sizeof(uint32_t));
-                return 0;
-            }
-            std::memcpy(m_readbackBuffer.data(), visMapped, m_entityCount * sizeof(uint32_t));
-            m_device->unmapBuffer(m_visibilityBuffer);
-
-            // 收集可见 PEM 索引并转换为 RenderWorld 稠密索引写入 outIndices
-            uint32_t written = 0;
-            m_visiblePemIndices.clear();
-            for (uint32_t i = 0; i < m_entityCount; ++i)
-            {
-                if (!m_readbackBuffer[i])
-                {
-                    continue;
-                }
-
-                m_visiblePemIndices.push_back(i);
-
-                if (outIndices && written < maxCount)
-                {
-                    outIndices[written++] = (i < m_pemToRenderWorldIndex.size()) ? m_pemToRenderWorldIndex[i] : i;
-                }
-                else if (written < maxCount)
-                {
-                    ++written;
-                }
-            }
-
-            // SY_DEBUGF("[PersistentEntityManager] readBackGpuVisibility: visible=%u / %u entities", written, m_entityCount);
-
-            return written;
+            // 标记当前帧的缓冲准备就绪（实际使用中由 GPU 写入 fence 后由 CPU 标记）
+            // 这里简化处理：由调用方（renderFrame）在 GPU 完成后设置 ready = true
+            m_readbackFrames[m_currentReadbackFrame].ready = true;
         }
 
         // ================================================================

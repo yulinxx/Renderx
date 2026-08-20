@@ -70,7 +70,7 @@ namespace render
         {
             m_passes.clear();
             m_lastExecutedCount = 0;
-            //SY_DEBUGF("RenderGraph::clear: all passes removed");
+            // SY_DEBUGF("RenderGraph::clear: all passes removed");
         }
 
         void RenderGraph::execute(rhi::IDevice* device)

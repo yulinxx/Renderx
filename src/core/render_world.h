@@ -167,8 +167,12 @@ namespace render
             /// 可见性查询结果缓存
             mutable std::vector<uint32_t> m_visibleResult;
 
-            /// 触发四叉树重建的变更阈值
-            static constexpr uint32_t kRebuildThreshold = 100;
+            /// 触发四叉树重建的变更阈值（动态计算：每帧变化图元占总图元的比例）
+            uint32_t m_rebuildThreshold = 100;  ///< 基础阈值，可被动态调整
+            float m_changeRatioSamples[8] = {0};  ///< 最近8帧的变化比例样本
+            uint32_t m_changeRatioSampleCount = 0;  ///< 样本计数
+            float m_adaptiveRebuildRatio = 0.1f;  ///< 当前动态阈值比例（0.1 = 10%）
+
             /// 视图矩阵变化检测的epsilon值
             static constexpr float kViewChangeEpsilon = 1e-6f;
 

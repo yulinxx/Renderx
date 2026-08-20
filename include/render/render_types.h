@@ -17,7 +17,6 @@
 
 namespace render
 {
-
     /// 图元唯一标识符类型
     using EntityId = uint64_t;
     /// 网格唯一标识符类型
@@ -36,9 +35,9 @@ namespace render
     /// 离屏渲染目标的深度附件格式
     enum class DepthFormat : uint8_t
     {
-        None = 0,    ///< 无深度附件（纯 2D 离屏）
-        D24S8 = 1,   ///< 24 位深度 + 8 位模板
-        D32F = 2,    ///< 32 位浮点深度
+        None = 0,   ///< 无深度附件（纯 2D 离屏）
+        D24S8 = 1,  ///< 24 位深度 + 8 位模板
+        D32F = 2,   ///< 32 位浮点深度
     };
 
     /**
@@ -49,9 +48,9 @@ namespace render
      */
     struct RenderTargetDesc
     {
-        uint32_t width = 0;                    ///< 渲染目标宽度（像素）
-        uint32_t height = 0;                   ///< 渲染目标高度（像素）
-        bool depth = true;                     ///< 是否创建深度附件（3D 需要，2D 可省略）
+        uint32_t width = 0;                            ///< 渲染目标宽度（像素）
+        uint32_t height = 0;                           ///< 渲染目标高度（像素）
+        bool depth = true;                             ///< 是否创建深度附件（3D 需要，2D 可省略）
         DepthFormat depthFormat = DepthFormat::D24S8;  ///< 深度附件格式（depth=true 时有效）
         const char* debugName = nullptr;
     };
@@ -681,5 +680,4 @@ namespace render
     };
 
     static_assert(sizeof(SceneEnvGeometryDesc) == 16, "SceneEnvGeometryDesc must be 16 bytes");
-
 }  // namespace render
