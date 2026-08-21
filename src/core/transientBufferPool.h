@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file transient_buffer_pool.h
  * @brief Transient Buffer Pool using Persistent Mapped Buffers
  *
@@ -14,12 +14,12 @@
  */
 #pragma once
 
-#include "rhi/rhi_device.h"
-#include "rhi/rhi_types.h"
+#include "rhi/rhiDevice.h"
+#include "rhi/rhiTypes.h"
 #include <cstdint>
 #include <vector>
 
-namespace render
+namespace Render
 {
     namespace core
     {
@@ -38,7 +38,7 @@ namespace render
              */
             struct Allocation
             {
-                rhi::BufferHandle buffer = rhi::NullHandle;  ///< RHI 缓冲区句柄
+                RHI::BufferHandle buffer = RHI::NullHandle;  ///< RHI 缓冲区句柄
                 uint64_t offset = 0;                         ///< 在缓冲区内的字节偏移
                 void* cpuPtr = nullptr;                      ///< CPU 可直接写入的内存指针
                 uint64_t size = 0;                           ///< 分配大小（字节）
@@ -61,7 +61,7 @@ namespace render
              * @param frameCount 帧槽数量（默认 3，即 Triple Buffering）
              * @return true 初始化成功
              */
-            bool initialize(rhi::IDevice* device, uint64_t bufferSize, uint32_t frameCount = 3);
+            bool initialize(RHI::IDevice* device, uint64_t bufferSize, uint32_t frameCount = 3);
 
             /**
              * @brief 释放所有资源
@@ -108,21 +108,21 @@ namespace render
         private:
             struct FallbackBuffer
             {
-                rhi::BufferHandle handle = rhi::NullHandle;
+                RHI::BufferHandle handle = RHI::NullHandle;
                 void* mappedPtr = nullptr;
                 uint64_t capacity = 0;
             };
 
             struct FrameBuffer
             {
-                rhi::BufferHandle handle = rhi::NullHandle;
+                RHI::BufferHandle handle = RHI::NullHandle;
                 void* mappedPtr = nullptr;
                 uint64_t used = 0;
                 std::vector<FallbackBuffer> fallbacks;
                 void* fence = nullptr;  ///< GPU 同步栅栏（GLsync），确保旧帧槽在重写前 GPU 已完成读取
             };
 
-            rhi::IDevice* m_device = nullptr;
+            RHI::IDevice* m_device = nullptr;
             uint64_t m_bufferSize = 0;
             uint32_t m_frameCount = 3;
             uint32_t m_currentFrame = 0;

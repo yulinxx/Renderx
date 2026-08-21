@@ -1,15 +1,15 @@
 /**
- * @file draw_batcher.cpp
+ * @file drawBatcher.cpp
  * @brief 绘制合批器实现
  */
-#include "draw_batcher.h"
+#include "drawBatcher.h"
 #include "Log/SyLogger.h"
 
-namespace render
+namespace Render
 {
     namespace core
     {
-        bool DrawBatcher::initialize(rhi::IDevice* device)
+        bool DrawBatcher::initialize(RHI::IDevice* device)
         {
             if (m_initialized || !device)
             {
@@ -30,10 +30,10 @@ namespace render
                 return;
             }
 
-            if (m_indirectBuffer != rhi::NullHandle && m_device)
+            if (m_indirectBuffer != RHI::NullHandle && m_device)
             {
                 m_device->destroyBuffer(m_indirectBuffer);
-                m_indirectBuffer = rhi::NullHandle;
+                m_indirectBuffer = RHI::NullHandle;
             }
 
             m_indirectCmds.clear();
@@ -59,7 +59,7 @@ namespace render
             m_cmdCount = 0;
         }
 
-        void DrawBatcher::appendOverlayCmd(rhi::PipelineHandle pipeline, uint32_t vertexOffset, uint32_t vertexCount)
+        void DrawBatcher::appendOverlayCmd(RHI::PipelineHandle pipeline, uint32_t vertexOffset, uint32_t vertexCount)
         {
             if (!m_initialized)
             {
@@ -91,10 +91,10 @@ namespace render
             // 确保 indirect GPU buffer 足够
             if (cmdCount > m_bufferCapacity)
             {
-                if (m_indirectBuffer != rhi::NullHandle)
+                if (m_indirectBuffer != RHI::NullHandle)
                 {
                     m_device->destroyBuffer(m_indirectBuffer);
-                    m_indirectBuffer = rhi::NullHandle;
+                    m_indirectBuffer = RHI::NullHandle;
                 }
 
                 uint32_t newCap = m_bufferCapacity;
@@ -107,10 +107,10 @@ namespace render
                     newCap *= 2;
                 }
 
-                rhi::BufferDesc desc;
+                RHI::BufferDesc desc;
                 desc.size = newCap * sizeof(DrawIndirectCmd);
-                desc.usage = rhi::BufferUsage::Indirect;
-                desc.memory = rhi::MemoryType::GPU_CPU_Coherent;
+                desc.usage = RHI::BufferUsage::Indirect;
+                desc.memory = RHI::MemoryType::GPU_CPU_Coherent;
                 desc.debugName = "DrawBatcher_Indirect";
                 m_indirectBuffer = m_device->createBuffer(desc);
                 m_bufferCapacity = newCap;
@@ -121,7 +121,7 @@ namespace render
 
             // 按 pipeline 分组：连续相同 pipeline 的命令合并为一组
             uint32_t groupStart = 0;
-            rhi::PipelineHandle currentPipeline = m_cmdPipelines[0];
+            RHI::PipelineHandle currentPipeline = m_cmdPipelines[0];
 
             for (uint32_t i = 1; i <= cmdCount; ++i)
             {
@@ -136,7 +136,7 @@ namespace render
                         bg.indirectOffset = groupStart * sizeof(DrawIndirectCmd);
                         bg.drawCount = groupCount;
                         bg.space = DrawSpace::Overlay;
-                        bg.vertexBuffer = rhi::NullHandle;  // 由调用方绑定
+                        bg.vertexBuffer = RHI::NullHandle;  // 由调用方绑定
                         m_groups.push_back(bg);
                     }
 
@@ -151,4 +151,4 @@ namespace render
             return m_groups;
         }
     }  // namespace core
-}  // namespace render
+}  // namespace Render

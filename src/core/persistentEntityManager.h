@@ -1,5 +1,5 @@
-/**
- * @file persistent_entity_manager.h
+﻿/**
+ * @file PersistentEntityManager.h
  * @brief 持久图元管理器
  *
  * Phase 9 核心组件。管理稳定图元的 GPU 端持久化存储，
@@ -12,12 +12,13 @@
  */
 #pragma once
 
-#include "render/render_types.h"
-#include "../rhi/rhi_device.h"
+#include "render/RenderTypes.h"
+#include "../rhi/rhiDevice.h"
+#include <array>
 #include <vector>
 #include <cstdint>
 
-namespace render
+namespace Render
 {
     namespace core
     {
@@ -78,7 +79,7 @@ namespace render
              * @param maxEntities 最大支持的图元数量（决定 SSBO 大小）
              * @return true 初始化成功，false 初始化失败
              */
-            bool initialize(rhi::IDevice* device, uint32_t maxEntities = 1u << 20);
+            bool initialize(RHI::IDevice* device, uint32_t maxEntities = 1u << 20);
 
             /**
              * @brief 关闭并释放 GPU 资源
@@ -150,12 +151,12 @@ namespace render
              * @param outIndirectBuffer 输出 indirect buffer
              * @param outCommandCount   输出命令数量
              */
-            void generateIndirectCommands(rhi::BufferHandle outIndirectBuffer, uint32_t* outCommandCount);
+            void generateIndirectCommands(RHI::BufferHandle outIndirectBuffer, uint32_t* outCommandCount);
 
             /**
              * @brief 获取图元元数据 SSBO 句柄
              */
-            rhi::BufferHandle getEntityBuffer() const
+            RHI::BufferHandle getEntityBuffer() const
             {
                 return m_entityBuffer;
             }
@@ -163,7 +164,7 @@ namespace render
             /**
              * @brief 获取可见性结果缓冲句柄
              */
-            rhi::BufferHandle getVisibilityBuffer() const
+            RHI::BufferHandle getVisibilityBuffer() const
             {
                 return m_visibilityBuffer;
             }
@@ -171,7 +172,7 @@ namespace render
             /**
              * @brief 获取 indirect draw 缓冲句柄
              */
-            rhi::BufferHandle getIndirectBuffer() const
+            RHI::BufferHandle getIndirectBuffer() const
             {
                 return m_indirectBuffer;
             }
@@ -181,7 +182,7 @@ namespace render
              */
             uint32_t getEntityCount() const
             {
-                return m_entityCount;
+                return static_cast<uint32_t>(m_entities.size());
             }
 
             /**
@@ -195,7 +196,7 @@ namespace render
             /**
              * @brief 获取 compute pipeline 句柄
              */
-            rhi::PipelineHandle getCullingPipeline() const
+            RHI::PipelineHandle getCullingPipeline() const
             {
                 return m_cullingPipeline;
             }
@@ -223,7 +224,7 @@ namespace render
         void submitGpuReadback(uint64_t fenceValue);
 
         private:
-            rhi::IDevice* m_device = nullptr;
+            RHI::IDevice* m_device = nullptr;
             bool m_initialized = false;
 
             uint32_t m_maxEntities = 0;  ///< SSBO 容量
@@ -237,10 +238,10 @@ namespace render
             std::vector<bool> m_dirtyFlags;
 
             /// GPU 资源
-            rhi::BufferHandle m_entityBuffer = rhi::NullHandle;      ///< 图元元数据 SSBO
-            rhi::BufferHandle m_visibilityBuffer = rhi::NullHandle;  ///< 可见性结果缓冲
-            rhi::BufferHandle m_indirectBuffer = rhi::NullHandle;    ///< indirect draw 缓冲
-            rhi::BufferHandle m_countBuffer = rhi::NullHandle;       ///< 原子计数缓冲（用于写入 indirect 数量）
+            RHI::BufferHandle m_entityBuffer = RHI::NullHandle;      ///< 图元元数据 SSBO
+            RHI::BufferHandle m_visibilityBuffer = RHI::NullHandle;  ///< 可见性结果缓冲
+            RHI::BufferHandle m_indirectBuffer = RHI::NullHandle;    ///< indirect draw 缓冲
+            RHI::BufferHandle m_countBuffer = RHI::NullHandle;       ///< 原子计数缓冲（用于写入 indirect 数量）
 
             /// 图元元数据 SSBO 全量回读用临时缓冲（复用，避免每帧重新分配）
             std::vector<uint32_t> m_readbackBuffer;
@@ -250,16 +251,17 @@ namespace render
             /// GPU 读回双缓冲
             struct GpuReadbackFrame
             {
-                rhi::BufferHandle visibilityBuffer;  ///< 当前帧的可见性缓冲
-                rhi::BufferHandle readbackBuffer;    ///< 读回用临时缓冲
+                RHI::BufferHandle visibilityBuffer;  ///< 当前帧的可见性缓冲
+                RHI::BufferHandle readbackBuffer;    ///< 读回用临时缓冲
                 uint64_t fenceValue = 0;             ///< 用于同步的 fence 值
                 bool ready = false;                  ///< 是否已准备好读回
             };
+
             std::array<GpuReadbackFrame, 2> m_readbackFrames;
             uint32_t m_currentReadbackFrame = 0;  ///< 当前活动的帧索引
 
             /// Compute Pipeline
-            rhi::PipelineHandle m_cullingPipeline = rhi::NullHandle;
+            RHI::PipelineHandle m_cullingPipeline = RHI::NullHandle;
 
             /// 统计
             uint32_t m_lastVisibleCount = 0;

@@ -1,5 +1,5 @@
-/**
- * @file overlay_queue.h
+﻿/**
+ * @file OverlayQueue.h
  * @brief 叠加层渲染队列类定义
  *
  * OverlayQueue 负责渲染叠加在场景之上的UI元素，包括：
@@ -15,12 +15,12 @@
  */
 #pragma once
 
-#include "render/render_types.h"
-#include "../rhi/rhi_device.h"
+#include "render/RenderTypes.h"
+#include "../rhi/rhiDevice.h"
 #include <vector>
 #include <cstdint>
 
-namespace render
+namespace Render
 {
     namespace core
     {
@@ -42,7 +42,7 @@ namespace render
              * @param device RHI设备指针
              * @return true 初始化成功，false 初始化失败
              */
-            bool initialize(rhi::IDevice* device);
+            bool initialize(RHI::IDevice* device);
 
             /**
              * @brief 关闭并释放所有资源
@@ -162,14 +162,14 @@ namespace render
              * @param encoder  统一命令编码器（Phase 3 新增）
              * @param viewMatrix 3x3视图矩阵
              */
-            void render(rhi::IDevice* device, CommandEncoder* encoder, const float viewMatrix[9]);
+            void render(RHI::IDevice* device, CommandEncoder* encoder, const float viewMatrix[9]);
 
             /**
              * @brief 获取 overlay 顶点缓冲区句柄
              *
              * 供 CommandEncoder::execute() 绑定使用。
              */
-            rhi::BufferHandle getVertexBuffer() const
+            RHI::BufferHandle getVertexBuffer() const
             {
                 return m_vertexBuffer;
             }
@@ -214,9 +214,9 @@ namespace render
             uint32_t m_unifiedStart = 0;
 
             /// RHI设备指针
-            rhi::IDevice* m_device = nullptr;
+            RHI::IDevice* m_device = nullptr;
             /// 顶点缓冲区
-            rhi::BufferHandle m_vertexBuffer = rhi::NullHandle;
+            RHI::BufferHandle m_vertexBuffer = RHI::NullHandle;
             /// 顶点缓冲区容量
             uint32_t m_vbCapacity = 0;
             /// 是否有脏数据需要上传

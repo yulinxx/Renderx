@@ -2,16 +2,16 @@
  * @file persistent_entity_manager.cpp
  * @brief 持久图元管理器实现
  */
-#include "persistent_entity_manager.h"
+#include "persistentEntityManager.h"
 #include "Log/SyLogger.h"
 #include <algorithm>
 #include <cstring>
 
-namespace render
+namespace Render
 {
     namespace core
     {
-        bool PersistentEntityManager::initialize(rhi::IDevice* device, uint32_t maxEntities)
+        bool PersistentEntityManager::initialize(RHI::IDevice* device, uint32_t maxEntities)
         {
             if (m_initialized || !device || maxEntities == 0)
             {
@@ -29,14 +29,14 @@ namespace render
             // 创建图元元数据 SSBO
             // ------------------------------------------------------------------------
             {
-                rhi::BufferDesc desc;
+                RHI::BufferDesc desc;
                 desc.size = maxEntities * sizeof(EntityGpuData);
-                desc.usage = rhi::BufferUsage::ShaderStorage;
-                desc.memory = rhi::MemoryType::GPU_CPU_Coherent;
+                desc.usage = RHI::BufferUsage::ShaderStorage;
+                desc.memory = RHI::MemoryType::GPU_CPU_Coherent;
                 desc.debugName = "PersistentEntity_SSBO";
                 m_entityBuffer = device->createBuffer(desc);
 
-                if (m_entityBuffer == rhi::NullHandle)
+                if (m_entityBuffer == RHI::NullHandle)
                 {
                     SY_ERROR("[PersistentEntityManager] failed to create entity buffer");
                     return false;
@@ -47,13 +47,14 @@ namespace render
             // 创建可见性结果缓冲（每个图元一个 uint32：0=不可见 1=可见）
             // ------------------------------------------------------------------------
             {
-                rhi::BufferDesc desc;
+                RHI::BufferDesc desc;
                 desc.size = maxEntities * sizeof(uint32_t);
-                desc.usage = rhi::BufferUsage::ShaderStorage;
-                desc.memory = rhi::MemoryType::GPU_CPU_Coherent;
+                desc.usage = RHI::BufferUsage::ShaderStorage;
+                desc.memory = RHI::MemoryType::GPU_CPU_Coherent;
                 desc.debugName = "PersistentEntity_Visibility";
+
                 m_visibilityBuffer = device->createBuffer(desc);
-                if (m_visibilityBuffer == rhi::NullHandle)
+                if (m_visibilityBuffer == RHI::NullHandle)
                 {
                     SY_ERROR("[PersistentEntityManager] failed to create visibility buffer");
                     return false;
@@ -68,13 +69,13 @@ namespace render
             // 创建 indirect draw 缓冲
             // ------------------------------------------------------------------------
             {
-                rhi::BufferDesc desc;
+                RHI::BufferDesc desc;
                 desc.size = maxEntities * sizeof(DrawIndirectCmd);
-                desc.usage = rhi::BufferUsage::Indirect;
-                desc.memory = rhi::MemoryType::GPU_CPU_Coherent;
+                desc.usage = RHI::BufferUsage::Indirect;
+                desc.memory = RHI::MemoryType::GPU_CPU_Coherent;
                 desc.debugName = "PersistentEntity_Indirect";
                 m_indirectBuffer = device->createBuffer(desc);
-                if (m_indirectBuffer == rhi::NullHandle)
+                if (m_indirectBuffer == RHI::NullHandle)
                 {
                     SY_ERROR("[PersistentEntityManager] failed to create indirect buffer");
                     return false;
@@ -85,13 +86,14 @@ namespace render
             // 创建原子计数缓冲（用于 compute shader 写入 indirect 命令数量）
             // ------------------------------------------------------------------------
             {
-                rhi::BufferDesc desc;
+                RHI::BufferDesc desc;
                 desc.size = sizeof(uint32_t);
-                desc.usage = rhi::BufferUsage::ShaderStorage;
-                desc.memory = rhi::MemoryType::GPU_CPU_Coherent;
+                desc.usage = RHI::BufferUsage::ShaderStorage;
+                desc.memory = RHI::MemoryType::GPU_CPU_Coherent;
                 desc.debugName = "PersistentEntity_Count";
+
                 m_countBuffer = device->createBuffer(desc);
-                if (m_countBuffer == rhi::NullHandle)
+                if (m_countBuffer == RHI::NullHandle)
                 {
                     SY_ERROR("[PersistentEntityManager] failed to create count buffer");
                     return false;
@@ -120,34 +122,34 @@ namespace render
                 return;
             }
 
-            if (m_entityBuffer != rhi::NullHandle)
+            if (m_entityBuffer != RHI::NullHandle)
             {
                 m_device->destroyBuffer(m_entityBuffer);
-                m_entityBuffer = rhi::NullHandle;
+                m_entityBuffer = RHI::NullHandle;
             }
 
-            if (m_visibilityBuffer != rhi::NullHandle)
+            if (m_visibilityBuffer != RHI::NullHandle)
             {
                 m_device->destroyBuffer(m_visibilityBuffer);
-                m_visibilityBuffer = rhi::NullHandle;
+                m_visibilityBuffer = RHI::NullHandle;
             }
 
-            if (m_indirectBuffer != rhi::NullHandle)
+            if (m_indirectBuffer != RHI::NullHandle)
             {
                 m_device->destroyBuffer(m_indirectBuffer);
-                m_indirectBuffer = rhi::NullHandle;
+                m_indirectBuffer = RHI::NullHandle;
             }
 
-            if (m_countBuffer != rhi::NullHandle)
+            if (m_countBuffer != RHI::NullHandle)
             {
                 m_device->destroyBuffer(m_countBuffer);
-                m_countBuffer = rhi::NullHandle;
+                m_countBuffer = RHI::NullHandle;
             }
 
-            if (m_cullingPipeline != rhi::NullHandle)
+            if (m_cullingPipeline != RHI::NullHandle)
             {
                 m_device->destroyPipeline(m_cullingPipeline);
-                m_cullingPipeline = rhi::NullHandle;
+                m_cullingPipeline = RHI::NullHandle;
             }
 
             m_entities.clear();
@@ -222,7 +224,7 @@ namespace render
 
         void PersistentEntityManager::removeEntity(uint32_t index)
         {
-            if (!m_initialized || index >= m_entityCount)
+            if (!m_initialized || index >= m_entities.size())
             {
                 return;
             }
@@ -249,8 +251,8 @@ namespace render
             // 初始化双缓冲帧
             for (auto& frame : m_readbackFrames)
             {
-                frame.visibilityBuffer = rhi::NullHandle;
-                frame.readbackBuffer = rhi::NullHandle;
+                frame.visibilityBuffer = RHI::NullHandle;
+                frame.readbackBuffer = RHI::NullHandle;
                 frame.fenceValue = 0;
                 frame.ready = false;
             }
@@ -367,24 +369,24 @@ namespace render
 
         bool PersistentEntityManager::ensureCullingPipeline()
         {
-            if (!m_device || m_cullingPipeline != rhi::NullHandle)
+            if (!m_device || m_cullingPipeline != RHI::NullHandle)
             {
                 return true;
             }
 
-            rhi::PipelineDesc desc{};
+            RHI::PipelineDesc desc{};
             desc.computeShader = "culling_comp";
             desc.vertexShader = nullptr;
             desc.fragmentShader = nullptr;
-            desc.topology = rhi::PrimitiveTopology::PointList;  // 计算管线不依赖拓扑类型
-            desc.vertexFormat = rhi::VertexFormat::P3C3;
+            desc.topology = RHI::PrimitiveTopology::PointList;  // 计算管线不依赖拓扑类型
+            desc.vertexFormat = RHI::VertexFormat::P3C3;
             desc.depthTest = false;
             desc.depthWrite = false;
             desc.blendEnable = false;
 
             m_cullingPipeline = m_device->createPipeline(desc);
 
-            if (m_cullingPipeline == rhi::NullHandle)
+            if (m_cullingPipeline == RHI::NullHandle)
             {
                 // macOS 仅支持 OpenGL 4.1（无 compute shader，需 4.3+），
                 // GPU 剔除降级为 CPU 四叉树剔除，功能不受影响，不视为警告。
@@ -405,7 +407,7 @@ namespace render
                 return;
             }
 
-            if (m_cullingPipeline == rhi::NullHandle)
+            if (m_cullingPipeline == RHI::NullHandle)
             {
                 // GPU 剔除不可用（compute 不受支持），调用方将回退到 CPU 四叉树
                 return;
@@ -434,7 +436,7 @@ namespace render
             m_device->dispatchCompute(groupsX, 1, 1);
 
             // 确保计算着色器写入完成后，后续绘制命令才能读取
-            m_device->memoryBarrier(static_cast<uint32_t>(rhi::BarrierFlag::ShaderStorage | rhi::BarrierFlag::Command));
+            m_device->memoryBarrier(static_cast<uint32_t>(RHI::BarrierFlag::ShaderStorage | RHI::BarrierFlag::Command));
         }
 
 uint32_t PersistentEntityManager::readBackGpuVisibility(uint32_t* outIndices, uint32_t maxCount)
@@ -468,7 +470,9 @@ uint32_t PersistentEntityManager::readBackGpuVisibility(uint32_t* outIndices, ui
 
     // 全量映射可见性缓冲：visibility buffer 是逐图元稀疏标记
     // （1=可见, 0=不可见），可见图元位置不连续，必须全量扫描
-    void* visMapped = m_device->mapBuffer(frame.visibilityBuffer, 0, m_entityCount * sizeof(uint32_t), 0x0001);
+    // 注意：映射的是 executeCulling 写入的 m_visibilityBuffer，
+    // 双缓冲帧的 visibilityBuffer 从未分配，映射会失败
+    void* visMapped = m_device->mapBuffer(m_visibilityBuffer, 0, m_entityCount * sizeof(uint32_t), 0x0001);
     if (!visMapped)
     {
         SY_ERRORF("[PersistentEntityManager] readBackGpuVisibility: map visibility buffer failed (%u bytes)",
@@ -476,7 +480,7 @@ uint32_t PersistentEntityManager::readBackGpuVisibility(uint32_t* outIndices, ui
         return 0;
     }
     std::memcpy(m_readbackBuffer.data(), visMapped, m_entityCount * sizeof(uint32_t));
-    m_device->unmapBuffer(frame.visibilityBuffer);
+    m_device->unmapBuffer(m_visibilityBuffer);
 
     // 收集可见 PEM 索引并转换为 RenderWorld 稠密索引写入 outIndices
     uint32_t written = 0;
@@ -537,11 +541,11 @@ return written;
         // ================================================================
 
         void PersistentEntityManager::generateIndirectCommands(
-            rhi::BufferHandle outIndirectBuffer, uint32_t* outCommandCount)
+            RHI::BufferHandle outIndirectBuffer, uint32_t* outCommandCount)
         {
             uint32_t count = 0;
 
-            if (m_initialized && m_device && !m_visiblePemIndices.empty() && outIndirectBuffer != rhi::NullHandle)
+            if (m_initialized && m_device && !m_visiblePemIndices.empty() && outIndirectBuffer != RHI::NullHandle)
             {
                 // 为每个可见 PEM 索引写入 DrawIndirectCmd
                 const uint32_t visibleCount = static_cast<uint32_t>(m_visiblePemIndices.size());
@@ -580,4 +584,4 @@ return written;
             }
         }
     }  // namespace core
-}  // namespace render
+}  // namespace Render

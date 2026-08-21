@@ -1,16 +1,17 @@
-#include "batch_queue.h"
-#include "command_encoder.h"
-#include "render_world.h"
+#include "batchQueue.h"
+#include "commandEncoder.h"
+#include "renderWorld.h"
+
 #include <cstring>
 #include <algorithm>
 #include <cmath>
 #include "Log/SyLogger.h"
 
-namespace render
+namespace Render
 {
     namespace core
     {
-        bool BatchQueue::initialize(rhi::IDevice* device)
+        bool BatchQueue::initialize(RHI::IDevice* device)
         {
             if (!device)
             {
@@ -23,13 +24,13 @@ namespace render
             m_dirtyRanges.reserve(64);
             // pipeline 由 CommandEncoder 统一管理，BatchQueue 不再创建
 
-            rhi::BufferDesc vbDesc;
+            RHI::BufferDesc vbDesc;
             vbDesc.size = 1024 * 1024 * sizeof(VertexP3C3);
-            vbDesc.usage = rhi::BufferUsage::Vertex;
-            vbDesc.memory = rhi::MemoryType::GPU_CPU_Coherent;
+            vbDesc.usage = RHI::BufferUsage::Vertex;
+            vbDesc.memory = RHI::MemoryType::GPU_CPU_Coherent;
             vbDesc.debugName = "BatchQueue_VertexBuffer";
             m_vertexBuffer = device->createBuffer(vbDesc);
-            if (m_vertexBuffer == rhi::NullHandle)
+            if (m_vertexBuffer == RHI::NullHandle)
             {
                 SY_ERROR("[BatchQueue] failed to create vertex buffer");
                 return false;
@@ -47,15 +48,15 @@ namespace render
             m_dirtyRanges.clear();
             m_lastVisibleIndices.clear();
 
-            if (m_indirectBuffer != rhi::NullHandle)
+            if (m_indirectBuffer != RHI::NullHandle)
             {
                 m_device->destroyBuffer(m_indirectBuffer);
-                m_indirectBuffer = rhi::NullHandle;
+                m_indirectBuffer = RHI::NullHandle;
             }
-            if (m_vertexBuffer != rhi::NullHandle)
+            if (m_vertexBuffer != RHI::NullHandle)
             {
                 m_device->destroyBuffer(m_vertexBuffer);
-                m_vertexBuffer = rhi::NullHandle;
+                m_vertexBuffer = RHI::NullHandle;
             }
 
             m_indirectBufferCapacity = 0;
@@ -266,7 +267,7 @@ namespace render
         }
 
         void BatchQueue::render(
-            rhi::IDevice* device, CommandEncoder* encoder, const float viewMatrix[9], const RenderWorld& world)
+            RHI::IDevice* device, CommandEncoder* encoder, const float viewMatrix[9], const RenderWorld& world)
         {
             (void)viewMatrix;
 
@@ -290,7 +291,7 @@ namespace render
                 SY_WARNF("BatchQueue::render: vertex buffer too small (%u < %u), expanding",
                     m_vertexBufferCapacity,
                     totalVertices);
-                if (m_vertexBuffer != rhi::NullHandle)
+                if (m_vertexBuffer != RHI::NullHandle)
                 {
                     device->destroyBuffer(m_vertexBuffer);
                 }
@@ -305,10 +306,10 @@ namespace render
                     newCap *= 2;
                 }
 
-                rhi::BufferDesc desc;
+                RHI::BufferDesc desc;
                 desc.size = newCap * sizeof(VertexP3C3);
-                desc.usage = rhi::BufferUsage::Vertex;
-                desc.memory = rhi::MemoryType::GPU_CPU_Coherent;
+                desc.usage = RHI::BufferUsage::Vertex;
+                desc.memory = RHI::MemoryType::GPU_CPU_Coherent;
                 desc.debugName = "BatchQueue_VertexBuffer";
 
                 m_vertexBuffer = device->createBuffer(desc);
@@ -383,15 +384,15 @@ namespace render
                 newCap *= 2;
             }
 
-            if (m_indirectBuffer != rhi::NullHandle)
+            if (m_indirectBuffer != RHI::NullHandle)
             {
                 m_device->destroyBuffer(m_indirectBuffer);
             }
 
-            rhi::BufferDesc desc;
+            RHI::BufferDesc desc;
             desc.size = newCap * sizeof(DrawIndirectCmd);
-            desc.usage = rhi::BufferUsage::Indirect;
-            desc.memory = rhi::MemoryType::GPU_CPU_Coherent;
+            desc.usage = RHI::BufferUsage::Indirect;
+            desc.memory = RHI::MemoryType::GPU_CPU_Coherent;
             desc.debugName = "BatchQueue_Indirect";
 
             m_indirectBuffer = m_device->createBuffer(desc);
@@ -428,4 +429,4 @@ namespace render
             m_dirtyRanges.swap(merged);
         }
     }  // namespace core
-}  // namespace render
+}  // namespace Render

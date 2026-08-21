@@ -1,5 +1,5 @@
-/**
- * @file screen_text_renderer.h
+﻿/**
+ * @file screenTextRenderer.h
  * @brief 屏幕空间文本渲染器
  *
  * 通用屏幕空间文本渲染组件，使用 stb_truetype 栅格化字体到纹理图集，
@@ -8,27 +8,27 @@
  */
 #pragma once
 
-#include "../rhi/rhi_device.h"
-#include "render/render_types.h"
+#include "../rhi/rhiDevice.h"
+#include "render/RenderTypes.h"
 #include <vector>
 #include <cstdint>
 #include <string>
 
-namespace render::core
+namespace Render::core
 {
 
     class ScreenTextRenderer
     {
     public:
         // 直接复用公共类型，避免重复定义
-        using ScreenTextItem = render::ScreenTextItem;
+        using ScreenTextItem = Render::ScreenTextItem;
 
-        bool initialize(rhi::IDevice* device);
+        bool initialize(RHI::IDevice* device);
         void shutdown();
         void loadFont(const void* fontData, size_t dataSize, float pixelHeight = 16.0f);
         void beginFrame();
         void submitText(const ScreenTextItem& item);
-        void render(rhi::IDevice* device, uint32_t viewportWidth, uint32_t viewportHeight);
+        void render(RHI::IDevice* device, uint32_t viewportWidth, uint32_t viewportHeight);
         void clear();
 
     private:
@@ -57,11 +57,11 @@ namespace render::core
 
         static_assert(sizeof(TextVertex) == 32, "TextVertex must be 32 bytes");
 
-        rhi::IDevice* m_device = nullptr;
-        rhi::TextureHandle m_atlasTexture = rhi::NullHandle;
-        rhi::BufferHandle m_vertexBuffer = rhi::NullHandle;
+        RHI::IDevice* m_device = nullptr;
+        RHI::TextureHandle m_atlasTexture = RHI::NullHandle;
+        RHI::BufferHandle m_vertexBuffer = RHI::NullHandle;
         uint32_t m_vertexBufferCapacity = 0;  // VB 当前分配容量（字节），用于增量上传判断
-        rhi::PipelineHandle m_pipeline = rhi::NullHandle;
+        RHI::PipelineHandle m_pipeline = RHI::NullHandle;
 
         std::vector<uint8_t> m_atlasData;
         std::vector<CachedGlyph> m_glyphCache;

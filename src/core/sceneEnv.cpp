@@ -1,43 +1,43 @@
-#include "scene_env.h"
+#include "sceneEnv.h"
 #include "shader/shaders.h"
 #include <cstring>
 #include <algorithm>
 #include "Log/SyLogger.h"
 
-namespace render::core
+namespace Render::core
 {
-    bool SceneEnv::initialize(rhi::IDevice* device)
+    bool SceneEnv::initialize(RHI::IDevice* device)
     {
         m_device = device;
 
         {
-            rhi::BufferDesc desc{};
+            RHI::BufferDesc desc{};
             desc.size = 1024 * 1024;
-            desc.usage = rhi::BufferUsage::Vertex;
-            desc.memory = rhi::MemoryType::GPU_CPU_Coherent;
+            desc.usage = RHI::BufferUsage::Vertex;
+            desc.memory = RHI::MemoryType::GPU_CPU_Coherent;
             desc.debugName = "SceneEnvVB";
             m_vertexBuffer = device->createBuffer(desc);
-            if (m_vertexBuffer == rhi::NullHandle)
+            if (m_vertexBuffer == RHI::NullHandle)
             {
                 return false;
             }
         }
 
         {
-            rhi::PipelineDesc desc{};
-            desc.topology = rhi::PrimitiveTopology::LineList;
+            RHI::PipelineDesc desc{};
+            desc.topology = RHI::PrimitiveTopology::LineList;
             desc.vertexShader = shader::SCENE_2D_VERT;
             desc.fragmentShader = shader::SCENE_2D_FRAG;
             desc.computeShader = nullptr;
-            desc.vertexFormat = rhi::VertexFormat::P3C3;
+            desc.vertexFormat = RHI::VertexFormat::P3C3;
             desc.depthTest = false;
             desc.depthWrite = false;
             desc.blendEnable = false;
-            desc.srcBlend = rhi::BlendFactor::Zero;
-            desc.dstBlend = rhi::BlendFactor::Zero;
-            desc.depthFunc = rhi::CompareFunc::Always;
+            desc.srcBlend = RHI::BlendFactor::Zero;
+            desc.dstBlend = RHI::BlendFactor::Zero;
+            desc.depthFunc = RHI::CompareFunc::Always;
             m_linePipeline = device->createPipeline(desc);
-            if (m_linePipeline == rhi::NullHandle)
+            if (m_linePipeline == RHI::NullHandle)
             {
                 SY_ERROR("SceneEnv::initialize: line pipeline creation failed");
                 return false;
@@ -46,20 +46,20 @@ namespace render::core
         }
 
         {
-            rhi::PipelineDesc desc{};
-            desc.topology = rhi::PrimitiveTopology::TriangleList;
+            RHI::PipelineDesc desc{};
+            desc.topology = RHI::PrimitiveTopology::TriangleList;
             desc.vertexShader = shader::SCENE_2D_VERT;
             desc.fragmentShader = shader::SCENE_2D_FRAG;
             desc.computeShader = nullptr;
-            desc.vertexFormat = rhi::VertexFormat::P3C3;
+            desc.vertexFormat = RHI::VertexFormat::P3C3;
             desc.depthTest = false;
             desc.depthWrite = false;
             desc.blendEnable = true;
-            desc.srcBlend = rhi::BlendFactor::SrcAlpha;
-            desc.dstBlend = rhi::BlendFactor::OneMinusSrcAlpha;
-            desc.depthFunc = rhi::CompareFunc::Always;
+            desc.srcBlend = RHI::BlendFactor::SrcAlpha;
+            desc.dstBlend = RHI::BlendFactor::OneMinusSrcAlpha;
+            desc.depthFunc = RHI::CompareFunc::Always;
             m_trianglePipeline = device->createPipeline(desc);
-            if (m_trianglePipeline == rhi::NullHandle)
+            if (m_trianglePipeline == RHI::NullHandle)
             {
                 SY_ERROR("SceneEnv::initialize: triangle pipeline creation failed");
                 return false;
@@ -75,20 +75,20 @@ namespace render::core
     {
         if (m_device)
         {
-            if (m_vertexBuffer != rhi::NullHandle)
+            if (m_vertexBuffer != RHI::NullHandle)
             {
                 m_device->destroyBuffer(m_vertexBuffer);
-                m_vertexBuffer = rhi::NullHandle;
+                m_vertexBuffer = RHI::NullHandle;
             }
-            if (m_linePipeline != rhi::NullHandle)
+            if (m_linePipeline != RHI::NullHandle)
             {
                 m_device->destroyPipeline(m_linePipeline);
-                m_linePipeline = rhi::NullHandle;
+                m_linePipeline = RHI::NullHandle;
             }
-            if (m_trianglePipeline != rhi::NullHandle)
+            if (m_trianglePipeline != RHI::NullHandle)
             {
                 m_device->destroyPipeline(m_trianglePipeline);
-                m_trianglePipeline = rhi::NullHandle;
+                m_trianglePipeline = RHI::NullHandle;
             }
         }
 
@@ -188,13 +188,13 @@ namespace render::core
         m_dirty = true;
     }
 
-    void SceneEnv::render(rhi::IDevice* device, const float viewMatrix[9])
+    void SceneEnv::render(RHI::IDevice* device, const float viewMatrix[9])
     {
         render(device, viewMatrix, 0, 0);
     }
 
     void SceneEnv::render(
-        rhi::IDevice* device, const float viewMatrix[9], uint32_t viewportWidth, uint32_t viewportHeight)
+        RHI::IDevice* device, const float viewMatrix[9], uint32_t viewportWidth, uint32_t viewportHeight)
     {
         // Check if initialized (m_device is set in initialize())
         if (!m_device)
@@ -244,15 +244,15 @@ namespace render::core
                 continue;
             }
 
-            rhi::PipelineHandle pipe = layer.asTriangles ? m_trianglePipeline : m_linePipeline;
+            RHI::PipelineHandle pipe = layer.asTriangles ? m_trianglePipeline : m_linePipeline;
 
-            if (pipe == rhi::NullHandle)
+            if (pipe == RHI::NullHandle)
             {
                 SY_ERRORF("SceneEnv::render: layer[%zu] pipeline is NullHandle!", idx);
                 continue;
             }
 
-            if (m_vertexBuffer == rhi::NullHandle)
+            if (m_vertexBuffer == RHI::NullHandle)
             {
                 SY_ERROR("SceneEnv::render: vertex buffer is NullHandle!");
                 continue;
@@ -275,4 +275,4 @@ namespace render::core
             device->draw(layer.vertexCount, 1, 0, 0);
         }
     }
-}  // namespace render::core
+}  // namespace Render::core

@@ -1,5 +1,5 @@
-/**
- * @file draw_batcher.h
+﻿/**
+ * @file drawBatcher.h
  * @brief 绘制合批器
  *
  * Phase 8 新增。对统一提交后的命令做排序、分组和合批，
@@ -11,12 +11,12 @@
  */
 #pragma once
 
-#include "render/render_types.h"
-#include "../rhi/rhi_device.h"
+#include "render/RenderTypes.h"
+#include "../rhi/rhiDevice.h"
 #include <vector>
 #include <cstdint>
 
-namespace render
+namespace Render
 {
     namespace core
     {
@@ -28,11 +28,11 @@ namespace render
          */
         struct BatchGroup
         {
-            rhi::PipelineHandle pipeline;    ///< 要绑定的管线
+            RHI::PipelineHandle pipeline;    ///< 要绑定的管线
             uint32_t indirectOffset;         ///< indirect buffer 中的字节偏移
             uint32_t drawCount;              ///< 间接命令数量
             DrawSpace space;                 ///< 绘制空间（用于区分 buffer 绑定）
-            rhi::BufferHandle vertexBuffer;  ///< 该组使用的顶点缓冲
+            RHI::BufferHandle vertexBuffer;  ///< 该组使用的顶点缓冲
         };
 
         /**
@@ -62,7 +62,7 @@ namespace render
              * @param device RHI 设备指针
              * @return true 初始化成功，false 初始化失败
              */
-            bool initialize(rhi::IDevice* device);
+            bool initialize(RHI::IDevice* device);
 
             /**
              * @brief 关闭并释放资源
@@ -81,7 +81,7 @@ namespace render
              * @param vertexOffset 顶点缓冲偏移
              * @param vertexCount  顶点数量
              */
-            void appendOverlayCmd(rhi::PipelineHandle pipeline, uint32_t vertexOffset, uint32_t vertexCount);
+            void appendOverlayCmd(RHI::PipelineHandle pipeline, uint32_t vertexOffset, uint32_t vertexCount);
 
             /**
              * @brief 构建合批结果
@@ -96,7 +96,7 @@ namespace render
             /**
              * @brief 获取 indirect buffer 句柄
              */
-            rhi::BufferHandle getIndirectBuffer() const
+            RHI::BufferHandle getIndirectBuffer() const
             {
                 return m_indirectBuffer;
             }
@@ -118,17 +118,17 @@ namespace render
             }
 
         private:
-            rhi::IDevice* m_device = nullptr;
+            RHI::IDevice* m_device = nullptr;
             bool m_initialized = false;
 
             /// 原始 indirect 命令数组
             std::vector<DrawIndirectCmd> m_indirectCmds;
             /// 每个命令对应的 pipeline（用于分组）
-            std::vector<rhi::PipelineHandle> m_cmdPipelines;
+            std::vector<RHI::PipelineHandle> m_cmdPipelines;
             /// 合批后的绘制组
             std::vector<BatchGroup> m_groups;
             /// indirect GPU buffer
-            rhi::BufferHandle m_indirectBuffer = rhi::NullHandle;
+            RHI::BufferHandle m_indirectBuffer = RHI::NullHandle;
             /// buffer 容量（命令数）
             uint32_t m_bufferCapacity = 0;
             /// 原始命令计数

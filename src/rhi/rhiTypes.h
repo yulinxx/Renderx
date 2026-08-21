@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file rhi_types.h
  * @brief Render Hardware Interface (RHI) 的类型定义
  *
@@ -19,9 +19,9 @@
 
 // 复用公开层定义的离屏渲染目标类型（RenderTargetHandle / RenderTargetDesc），
 // 使 RHI 接口与 C API 共用同一套类型，避免类型分裂。
-#include "../../include/render/render_types.h"
+#include "../../include/render/RenderTypes.h"
 
-namespace render::rhi
+namespace Render::RHI
 {
 
     /// 纹理和缓冲区数据格式枚举
@@ -237,4 +237,4 @@ namespace render::rhi
         bool normalized;    ///< 是否需要归一化
     };
 
-}  // namespace render::rhi
+}  // namespace Render::RHI

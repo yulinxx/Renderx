@@ -1,12 +1,12 @@
 /**
- * @file render_runtime.cpp
+ * @file RenderRuntime.cpp
  * @brief RenderRuntime 实现
  */
-#include "render_runtime.h"
+#include "renderRuntime.h"
 
 #include <mutex>
 
-namespace render
+namespace Render
 {
     // 静态实例 + 互斥锁用于线程安全的单例访问
     static std::once_flag g_onceFlag;
@@ -35,7 +35,7 @@ namespace render
 
         // 加载 shader 源码到全局缓存
         // NOTE: 当前仍调用 shader::initialize()，后续将完全迁移到 RenderRuntime 管理
-        shader::initialize(dir);
+        Render::shader::initialize(dir);
 
         m_initialized = true;
         return true;
@@ -53,4 +53,4 @@ namespace render
         m_initialized = false;
         shaderDir.clear();
     }
-}  // namespace render
+}  // namespace Render

@@ -10,11 +10,11 @@ if(DEFINED VCPKG_DIR AND EXISTS "${VCPKG_DIR}")
 endif()
 
 # 项目配置
-# - 项目名称: SanYiRender
+# - 项目名称: RenderX
 # - 版本: 2.0.0
 # - 描述: 工业级2D/3D渲染库
 # - 语言: C++
-project(SanYiRender
+project(RenderX
     VERSION 2.0.0
     DESCRIPTION "SanYi CAD Render Library (Industrial-Grade 2D/3D Rendering)"
     LANGUAGES CXX
@@ -61,8 +61,8 @@ option(BUILD_SHARED_LIBS "Build shared libraries" ON)
 # 公开头文件列表（对外暴露的API头文件）
 set(RENDER_PUBLIC_HEADERS
     include/render/render.h
-    include/render/render_types.h
-    include/render/tess_params.h
+    include/render/RenderTypes.h
+    include/render/TessParams.h
 )
 
 # 源文件列表
@@ -71,7 +71,7 @@ file(GLOB_RECURSE RENDER_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
 )
 # 排除条件编译的后端（Vulkan/Metal 在后续条件中添加）
-list(FILTER RENDER_SOURCES EXCLUDE REGEX ".*/rhi_vulkan\.cpp$")
+list(FILTER RENDER_SOURCES EXCLUDE REGEX ".*/rhiVulkan\.cpp$")
 
 # Phase 3: Vulkan backend (optional, requires Vulkan SDK)
 option(RENDERX_ENABLE_VULKAN "Enable Vulkan backend" ON)
@@ -79,7 +79,7 @@ if(RENDERX_ENABLE_VULKAN)
     find_package(Vulkan QUIET)
     if(Vulkan_FOUND)
         list(APPEND RENDER_SOURCES
-            src/rhi/rhi_vulkan.cpp
+            src/rhi/rhivulkan.cpp
         )
         list(APPEND RENDER_INCLUDE_DIRS ${Vulkan_INCLUDE_DIR})
         list(APPEND RENDER_LINK_LIBS ${Vulkan_LIBRARY})
@@ -183,11 +183,12 @@ sanyi_add_shared_library(${PROJECT_NAME}
     COMPILE_OPTIONS
         $<$<CXX_COMPILER_ID:MSVC>:/W4>
         $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wno-conversion;-Wno-float-conversion>
-    LINK_LIBRARIES
-        PRIVATE
-            ${OPENGL_LIBRARIES}
-            Log
-            ${RENDER_LINK_LIBS}
+        LINK_LIBRARIES
+            PRIVATE
+                ${OPENGL_LIBRARIES}
+                opengl32
+                Log
+                ${RENDER_LINK_LIBS}
 )
 
 # stb库头文件配置（用于文本渲染）

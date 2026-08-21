@@ -9,7 +9,7 @@
 
 #include <string>
 
-namespace render::shader
+namespace Render::shader
 {
 
     /// 2D场景渲染顶点着色器
@@ -58,4 +58,4 @@ namespace render::shader
      */
     void initialize(const std::string& shaderDir);
 
-}  // namespace render::shader
+}  // namespace Render::shader

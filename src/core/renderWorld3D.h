@@ -1,13 +1,13 @@
 #pragma once
 
-#include "render/render_types.h"
+#include "render/RenderTypes.h"
 
 #include <vector>
 #include <cstdint>
 #include <memory>
 #include <unordered_map>
 
-namespace render
+namespace Render
 {
     struct EntityEntry3D
     {

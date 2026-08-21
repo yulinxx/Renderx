@@ -2,10 +2,10 @@
  * @file pipeline_state_manager.cpp
  * @brief 管线状态管理器实现
  */
-#include "pipeline_state_manager.h"
+#include "pipelineStateManager.h"
 #include "Log/SyLogger.h"
 
-namespace render
+namespace Render
 {
     namespace core
     {
@@ -26,7 +26,7 @@ namespace render
             return h;
         }
 
-        bool PipelineStateManager::initialize(rhi::IDevice* device)
+        bool PipelineStateManager::initialize(RHI::IDevice* device)
         {
             if (!device)
             {
@@ -34,7 +34,7 @@ namespace render
                 return false;
             }
             m_device = device;
-            m_currentPipeline = rhi::NullHandle;
+            m_currentPipeline = RHI::NullHandle;
             SY_DEBUG("[PipelineStateManager] initialized");
             return true;
         }
@@ -43,16 +43,16 @@ namespace render
         {
             clearCache();
             m_device = nullptr;
-            m_currentPipeline = rhi::NullHandle;
+            m_currentPipeline = RHI::NullHandle;
             SY_DEBUG("[PipelineStateManager] shutdown");
         }
 
-        rhi::PipelineHandle PipelineStateManager::getOrCreatePipeline(const rhi::PipelineDesc& desc)
+        RHI::PipelineHandle PipelineStateManager::getOrCreatePipeline(const RHI::PipelineDesc& desc)
         {
             if (!m_device)
             {
                 SY_ERROR("[PipelineStateManager] getOrCreatePipeline: device is null");
-                return rhi::NullHandle;
+                return RHI::NullHandle;
             }
 
             // 从 desc 构建状态键
@@ -77,11 +77,11 @@ namespace render
             }
 
             // 缓存未命中，创建新管线
-            rhi::PipelineHandle handle = m_device->createPipeline(desc);
-            if (handle == rhi::NullHandle)
+            RHI::PipelineHandle handle = m_device->createPipeline(desc);
+            if (handle == RHI::NullHandle)
             {
                 SY_ERROR("[PipelineStateManager] failed to create pipeline");
-                return rhi::NullHandle;
+                return RHI::NullHandle;
             }
 
             m_cache[key] = handle;
@@ -91,14 +91,14 @@ namespace render
             return handle;
         }
 
-        void PipelineStateManager::bindPipeline(rhi::PipelineHandle pipeline)
+        void PipelineStateManager::bindPipeline(RHI::PipelineHandle pipeline)
         {
             if (!m_device)
             {
                 return;
             }
 
-            if (pipeline == rhi::NullHandle)
+            if (pipeline == RHI::NullHandle)
             {
                 return;
             }
@@ -124,7 +124,7 @@ namespace render
 
             for (const auto& entry : m_entries)
             {
-                if (entry.handle != rhi::NullHandle)
+                if (entry.handle != RHI::NullHandle)
                 {
                     m_device->destroyPipeline(entry.handle);
                 }
@@ -132,7 +132,7 @@ namespace render
 
             m_cache.clear();
             m_entries.clear();
-            m_currentPipeline = rhi::NullHandle;
+            m_currentPipeline = RHI::NullHandle;
         }
     }  // namespace core
-}  // namespace render
+}  // namespace Render

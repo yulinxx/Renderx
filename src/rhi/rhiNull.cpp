@@ -1,5 +1,5 @@
 /**
- * @file rhi_null.cpp
+ * @file rhinull.cpp
  * @brief Null render device implementation (no GPU operations)
  *
  * All methods are no-ops or return default values.
@@ -8,10 +8,10 @@
  * NOTE: This backend does NOT perform any actual GPU operations.
  * Resource management uses virtual handle allocation for testing.
  */
-#include "rhi_null.h"
+#include "rhiNull.h"
 #include "Log/SyLogger.h"
 
-namespace render::rhi
+namespace Render::RHI
 {
     // ==================== Lifecycle ====================
 
@@ -279,7 +279,7 @@ namespace render::rhi
     }
 
     int NullDevice::readPixels(
-        uint32_t /*x*/, uint32_t /*y*/, uint32_t width, uint32_t height, void* /*outPixels*/, uint32_t* outRowPitch)
+        uint32_t /*x*/, uint32_t /*y*/, uint32_t width, uint32_t /*height*/, void* /*outPixels*/, uint32_t* outRowPitch)
     {
         if (outRowPitch)
         {
@@ -298,6 +298,11 @@ namespace render::rhi
         return nullptr;
     }
 
+    bool NullDevice::checkFence(uint64_t /*fenceValue*/) const
+    {
+        return true;  // Null backend: 无 GPU 异步回读，fence 总是视为已触发
+    }
+
     // 离屏渲染目标：Null 后端无任何 GPU 资源，均返回无效 / 空操作
     RenderTargetHandle NullDevice::createRenderTarget(const RenderTargetDesc&)
     {
@@ -311,11 +316,11 @@ namespace render::rhi
     void NullDevice::bindDefaultTarget() {}
 
     void NullDevice::readRenderTarget(RenderTargetHandle, void*, uint32_t) {}
-}  // namespace render::rhi
+}  // namespace Render::RHI
 
 // ==================== Factory Function ====================
 
-namespace render::rhi
+namespace Render::RHI
 {
     /**
      * @brief 创建Null渲染设备实例
@@ -327,4 +332,4 @@ namespace render::rhi
     {
         return new NullDevice();
     }
-}  // namespace render::rhi
+}  // namespace Render::RHI

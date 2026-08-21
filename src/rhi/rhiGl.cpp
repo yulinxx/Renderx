@@ -1,5 +1,5 @@
-#include "rhi_gl.h"
-#include "platform/gl_loader.h"
+#include "rhiGl.h"
+#include "platform/glLoader.h"
 #include "../shader/shaders.h"
 #include "Log/SyLogger.h"
 
@@ -14,7 +14,7 @@
     #include <GL/glx.h>
 #endif
 
-namespace render::rhi
+namespace Render::RHI
 {
     GLDevice::~GLDevice()
     {
@@ -32,7 +32,7 @@ namespace render::rhi
 
         if (!gl_loader_init(nullptr))
         {
-            std::fprintf(stderr, "[RHI_GL] gl_loader_init failed\n");
+            std::fprintf(stderr, "[rhiGl] gl_loader_init failed\n");
             return false;
         }
 
@@ -336,7 +336,7 @@ namespace render::rhi
                 {
                     char* log = new char[logLen];
                     g->GetProgramInfoLog(prog, logLen, nullptr, log);
-                    SY_ERRORF("[RHI_GL] Compute pipeline link error:\n%s", log);
+                    SY_ERRORF("[rhiGl] Compute pipeline link error:\n%s", log);
                     delete[] log;
                 }
                 g->DeleteProgram(prog);
@@ -346,7 +346,7 @@ namespace render::rhi
             }
 
             entry.program = prog;
-            entry.topology = rhi::PrimitiveTopology::PointList;  // compute pipeline 不使用
+            entry.topology = RHI::PrimitiveTopology::PointList;  // compute pipeline 不使用
             entry.depthTest = false;
             entry.depthWrite = false;
             entry.blendEnable = false;
@@ -362,7 +362,7 @@ namespace render::rhi
                 }
             }
 
-            SY_DEBUGF("[RHI_GL] compute pipeline created: program=%u", prog);
+            SY_DEBUGF("[rhiGl] compute pipeline created: program=%u", prog);
             return handle;
         }
 
@@ -816,9 +816,15 @@ namespace render::rhi
     {
         auto* g = gl();
         g->Flush();
+        m_completedFence++;
     }
 
     void GLDevice::present() {}
+
+    bool GLDevice::checkFence(uint64_t fenceValue) const
+    {
+        return fenceValue <= m_completedFence;
+    }
 
     void GLDevice::bindPipeline(PipelineHandle handle)
     {
@@ -1158,7 +1164,7 @@ namespace render::rhi
     {
         if (!m_initialized)
         {
-            SY_ERROR("[RHI_GL] dispatchCompute called before initialization");
+            SY_ERROR("[rhiGl] dispatchCompute called before initialization");
             return;
         }
         auto* g = gl();
@@ -1168,7 +1174,7 @@ namespace render::rhi
         }
         else
         {
-            SY_WARN("[RHI_GL] DispatchCompute not available (requires OpenGL 4.3+)");
+            SY_WARN("[rhiGl] DispatchCompute not available (requires OpenGL 4.3+)");
         }
     }
 
@@ -1176,7 +1182,7 @@ namespace render::rhi
     {
         if (!m_initialized)
         {
-            SY_ERROR("[RHI_GL] memoryBarrier called before initialization");
+            SY_ERROR("[rhiGl] memoryBarrier called before initialization");
             return;
         }
         auto* g = gl();
@@ -1186,7 +1192,7 @@ namespace render::rhi
         }
         else
         {
-            SY_WARN("[RHI_GL] MemoryBarrier not available (requires OpenGL 4.2+)");
+            SY_WARN("[rhiGl] MemoryBarrier not available (requires OpenGL 4.2+)");
         }
     }
 
@@ -1502,13 +1508,13 @@ namespace render::rhi
 
     namespace
     {
-        GLuint depthInternalFormatToGL(render::DepthFormat fmt)
+        GLuint depthInternalFormatToGL(Render::DepthFormat fmt)
         {
             switch (fmt)
             {
-            case render::DepthFormat::D32F:
+            case Render::DepthFormat::D32F:
                 return GL_DEPTH_COMPONENT32F;
-            case render::DepthFormat::D24S8:
+            case Render::DepthFormat::D24S8:
             default:
                 return GL_DEPTH24_STENCIL8;
             }
@@ -1748,7 +1754,7 @@ namespace render::rhi
             {
                 char* log = new char[logLen];
                 g->GetShaderInfoLog(shader, logLen, nullptr, log);
-                SY_ERRORF("[RHI_GL] Shader compile error:\n%s", log);
+                SY_ERRORF("[rhiGl] Shader compile error:\n%s", log);
                 delete[] log;
             }
             g->DeleteShader(shader);
@@ -1768,7 +1774,7 @@ namespace render::rhi
         auto* g = gl();
         if (!g->ShaderBinary || !g->SpecializeShader)
         {
-            SY_ERROR("[RHI_GL] SPIR-V not supported by current OpenGL context");
+            SY_ERROR("[rhiGl] SPIR-V not supported by current OpenGL context");
             return 0;
         }
 
@@ -1776,7 +1782,7 @@ namespace render::rhi
         uint32_t shader = g->CreateShader(glType);
         if (!shader)
         {
-            SY_ERROR("[RHI_GL] Failed to create shader object for SPIR-V");
+            SY_ERROR("[rhiGl] Failed to create shader object for SPIR-V");
             return 0;
         }
 
@@ -1795,7 +1801,7 @@ namespace render::rhi
             {
                 char* log = new char[logLen];
                 g->GetShaderInfoLog(shader, logLen, nullptr, log);
-                SY_ERRORF("[RHI_GL] SPIR-V specialization error:\n%s", log);
+                SY_ERRORF("[rhiGl] SPIR-V specialization error:\n%s", log);
                 delete[] log;
             }
             g->DeleteShader(shader);
@@ -1822,7 +1828,7 @@ namespace render::rhi
         }
         if (!csModule)
         {
-            SY_ERROR("[RHI_GL] No compute shader module found");
+            SY_ERROR("[rhiGl] No compute shader module found");
             return 0;
         }
 
@@ -1858,7 +1864,7 @@ namespace render::rhi
             {
                 char* log = new char[logLen];
                 g->GetProgramInfoLog(prog, logLen, nullptr, log);
-                SY_ERRORF("[RHI_GL] Compute program link error:\n%s", log);
+                SY_ERRORF("[rhiGl] Compute program link error:\n%s", log);
                 delete[] log;
             }
             g->DeleteProgram(prog);
@@ -1885,7 +1891,7 @@ namespace render::rhi
             {
                 char* log = new char[logLen];
                 g->GetProgramInfoLog(prog, logLen, nullptr, log);
-                SY_ERRORF("[RHI_GL] Program link error:\n%s", log);
+                SY_ERRORF("[rhiGl] Program link error:\n%s", log);
                 delete[] log;
             }
             g->DeleteProgram(prog);
@@ -2225,4 +2231,4 @@ namespace render::rhi
     {
         return new GLDevice();
     }
-}  // namespace render::rhi
+}  // namespace Render::RHI

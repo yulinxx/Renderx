@@ -1,4 +1,4 @@
-#include "screen_text_renderer.h"
+#include "screenTextRenderer.h"
 #include "shader/shaders.h"
 #include <stb_truetype.h>
 #include <cstring>
@@ -6,23 +6,23 @@
 #include <cmath>
 #include "Log/SyLogger.h"
 
-namespace render::core
+namespace Render::core
 {
-    bool ScreenTextRenderer::initialize(rhi::IDevice* device)
+    bool ScreenTextRenderer::initialize(RHI::IDevice* device)
     {
         m_device = device;
         m_atlasData.resize(m_atlasWidth * m_atlasHeight * 4, 0);
 
         // 图集纹理
         {
-            rhi::TextureDesc desc{};
+            RHI::TextureDesc desc{};
             desc.width = m_atlasWidth;
             desc.height = m_atlasHeight;
-            desc.format = rhi::Format::RGBA8;
+            desc.format = RHI::Format::RGBA8;
             desc.mipLevels = 1;
             desc.debugName = "ScreenTextAtlas";
             m_atlasTexture = device->createTexture(desc);
-            if (m_atlasTexture == rhi::NullHandle)
+            if (m_atlasTexture == RHI::NullHandle)
             {
                 return false;
             }
@@ -31,13 +31,13 @@ namespace render::core
 
         // 顶点缓冲
         {
-            rhi::BufferDesc desc{};
+            RHI::BufferDesc desc{};
             desc.size = 64 * 1024;
-            desc.usage = rhi::BufferUsage::Vertex;
-            desc.memory = rhi::MemoryType::GPU_CPU_Coherent;
+            desc.usage = RHI::BufferUsage::Vertex;
+            desc.memory = RHI::MemoryType::GPU_CPU_Coherent;
             desc.debugName = "ScreenTextVB";
             m_vertexBuffer = device->createBuffer(desc);
-            if (m_vertexBuffer == rhi::NullHandle)
+            if (m_vertexBuffer == RHI::NullHandle)
             {
                 return false;
             }
@@ -45,20 +45,20 @@ namespace render::core
 
         // 屏幕空间文本管线（P2T2C4 顶点格式）
         {
-            rhi::PipelineDesc desc{};
-            desc.topology = rhi::PrimitiveTopology::TriangleList;
+            RHI::PipelineDesc desc{};
+            desc.topology = RHI::PrimitiveTopology::TriangleList;
             desc.vertexShader = shader::TEXT_SCREEN_VERT;
             desc.fragmentShader = shader::TEXT_SCREEN_FRAG;
             desc.computeShader = nullptr;
-            desc.vertexFormat = rhi::VertexFormat::P2T2C4;
+            desc.vertexFormat = RHI::VertexFormat::P2T2C4;
             desc.depthTest = false;
             desc.depthWrite = false;
             desc.blendEnable = true;
-            desc.srcBlend = rhi::BlendFactor::SrcAlpha;
-            desc.dstBlend = rhi::BlendFactor::OneMinusSrcAlpha;
-            desc.depthFunc = rhi::CompareFunc::Always;
+            desc.srcBlend = RHI::BlendFactor::SrcAlpha;
+            desc.dstBlend = RHI::BlendFactor::OneMinusSrcAlpha;
+            desc.depthFunc = RHI::CompareFunc::Always;
             m_pipeline = device->createPipeline(desc);
-            if (m_pipeline == rhi::NullHandle)
+            if (m_pipeline == RHI::NullHandle)
             {
                 SY_ERROR("ScreenTextRenderer::initialize: pipeline creation failed");
                 return false;
@@ -73,20 +73,20 @@ namespace render::core
     {
         if (m_device)
         {
-            if (m_atlasTexture != rhi::NullHandle)
+            if (m_atlasTexture != RHI::NullHandle)
             {
                 m_device->destroyTexture(m_atlasTexture);
-                m_atlasTexture = rhi::NullHandle;
+                m_atlasTexture = RHI::NullHandle;
             }
-            if (m_vertexBuffer != rhi::NullHandle)
+            if (m_vertexBuffer != RHI::NullHandle)
             {
                 m_device->destroyBuffer(m_vertexBuffer);
-                m_vertexBuffer = rhi::NullHandle;
+                m_vertexBuffer = RHI::NullHandle;
             }
-            if (m_pipeline != rhi::NullHandle)
+            if (m_pipeline != RHI::NullHandle)
             {
                 m_device->destroyPipeline(m_pipeline);
-                m_pipeline = rhi::NullHandle;
+                m_pipeline = RHI::NullHandle;
             }
         }
         m_atlasData.clear();
@@ -171,7 +171,7 @@ namespace render::core
         }
     }
 
-    void ScreenTextRenderer::render(rhi::IDevice* device, uint32_t viewportWidth, uint32_t viewportHeight)
+    void ScreenTextRenderer::render(RHI::IDevice* device, uint32_t viewportWidth, uint32_t viewportHeight)
     {
         if (m_frameVerts.empty())
         {
@@ -180,17 +180,17 @@ namespace render::core
 
         // 屏幕文字 VB 增量上传：仅在容量不足时重建，避免每帧 destroy+create。
         uint32_t vertBytes = static_cast<uint32_t>(m_frameVerts.size() * sizeof(TextVertex));
-        if (m_vertexBuffer == rhi::NullHandle || vertBytes > m_vertexBufferCapacity)
+        if (m_vertexBuffer == RHI::NullHandle || vertBytes > m_vertexBufferCapacity)
         {
             // 容量不足或首次创建：分配 2x 扩容以减少重建频率
-            if (m_vertexBuffer != rhi::NullHandle)
+            if (m_vertexBuffer != RHI::NullHandle)
             {
                 device->destroyBuffer(m_vertexBuffer);
             }
-            rhi::BufferDesc vbDesc{};
+            RHI::BufferDesc vbDesc{};
             vbDesc.size = vertBytes * 2;  // 2x 扩容
-            vbDesc.usage = rhi::BufferUsage::Vertex;
-            vbDesc.memory = rhi::MemoryType::GPU_CPU_Coherent;
+            vbDesc.usage = RHI::BufferUsage::Vertex;
+            vbDesc.memory = RHI::MemoryType::GPU_CPU_Coherent;
             vbDesc.debugName = "ScreenTextVB_dyn";
             m_vertexBuffer = device->createBuffer(vbDesc);
             m_vertexBufferCapacity = vertBytes * 2;
@@ -321,4 +321,4 @@ namespace render::core
         m_atlasDirty = true;
         return true;
     }
-}  // namespace render::core
+}  // namespace Render::core

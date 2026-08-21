@@ -12,13 +12,13 @@
  * SY_INFOF 级别的冗余信息已移除以减少性能开销。
  * 警告和错误仍通过 SY_WARNF/SY_ERRORF 输出。
  */
-#include "render_c_api_internal.h"
+#include "rendercapiinternal.h"
 
 #if defined(__APPLE__)
     #include <mach-o/dyld.h>
 #endif
 
-using namespace render;
+using namespace Render;
 
 extern "C"
 {
@@ -157,16 +157,16 @@ extern "C"
         switch (desc->backend)
         {
         case BackendType::OpenGL:
-            dev->rhiDevice = rhi::createGLDevice();
+            dev->rhiDevice = RHI::createGLDevice();
             break;
         case BackendType::Null:
             // Null backend: no GPU operations, for testing only
-            dev->rhiDevice = rhi::createNullDevice();
+            dev->rhiDevice = RHI::createNullDevice();
             break;
         case BackendType::Vulkan:
 #ifdef RENDERX_HAS_VULKAN
             // Vulkan backend: cross-platform GPU backend
-            dev->rhiDevice = rhi::createVulkanDevice();
+            dev->rhiDevice = RHI::createVulkanDevice();
 #else
             delete dev;
             SY_ERRORF("renderCreateDevice: Vulkan backend not compiled (RENDERX_HAS_VULKAN not defined)");
@@ -175,7 +175,7 @@ extern "C"
             break;
         case BackendType::Metal:
 #ifdef RENDERX_HAS_METAL
-            dev->rhiDevice = rhi::createMetalDevice();
+            dev->rhiDevice = RHI::createMetalDevice();
 #else
             delete dev;
             SY_ERRORF("renderCreateDevice: Metal backend not compiled (RENDERX_HAS_METAL not defined)");

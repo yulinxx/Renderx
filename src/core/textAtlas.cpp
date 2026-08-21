@@ -1,4 +1,4 @@
-#include "text_atlas.h"
+#include "textAtlas.h"
 #include "shader/shaders.h"
 
 #include <stb_truetype.h>
@@ -6,23 +6,23 @@
 #include <algorithm>
 #include <cmath>
 
-namespace render::core
+namespace Render::core
 {
-    bool TextAtlas::initialize(rhi::IDevice* device)
+    bool TextAtlas::initialize(RHI::IDevice* device)
     {
         m_device = device;
 
         m_atlasData.resize(m_atlasWidth * m_atlasHeight * 4, 0);
 
         {
-            rhi::TextureDesc desc{};
+            RHI::TextureDesc desc{};
             desc.width = m_atlasWidth;
             desc.height = m_atlasHeight;
-            desc.format = rhi::Format::RGBA8;
+            desc.format = RHI::Format::RGBA8;
             desc.mipLevels = 1;
             desc.debugName = "TextAtlas";
             m_atlasTexture = device->createTexture(desc);
-            if (m_atlasTexture == rhi::NullHandle)
+            if (m_atlasTexture == RHI::NullHandle)
             {
                 return false;
             }
@@ -31,33 +31,33 @@ namespace render::core
         }
 
         {
-            rhi::BufferDesc desc{};
+            RHI::BufferDesc desc{};
             desc.size = 64 * 1024;
-            desc.usage = rhi::BufferUsage::Vertex;
-            desc.memory = rhi::MemoryType::GPU_CPU_Coherent;
+            desc.usage = RHI::BufferUsage::Vertex;
+            desc.memory = RHI::MemoryType::GPU_CPU_Coherent;
             desc.debugName = "TextAtlasVB";
             m_vertexBuffer = device->createBuffer(desc);
-            if (m_vertexBuffer == rhi::NullHandle)
+            if (m_vertexBuffer == RHI::NullHandle)
             {
                 return false;
             }
         }
 
         {
-            rhi::PipelineDesc desc{};
-            desc.topology = rhi::PrimitiveTopology::TriangleList;
+            RHI::PipelineDesc desc{};
+            desc.topology = RHI::PrimitiveTopology::TriangleList;
             desc.vertexShader = shader::TEXT_SDF_VERT;
             desc.fragmentShader = shader::TEXT_SDF_FRAG;
             desc.computeShader = nullptr;
-            desc.vertexFormat = rhi::VertexFormat::P3T2C4;
+            desc.vertexFormat = RHI::VertexFormat::P3T2C4;
             desc.depthTest = false;
             desc.depthWrite = false;
             desc.blendEnable = true;
-            desc.srcBlend = rhi::BlendFactor::SrcAlpha;
-            desc.dstBlend = rhi::BlendFactor::OneMinusSrcAlpha;
-            desc.depthFunc = rhi::CompareFunc::Always;
+            desc.srcBlend = RHI::BlendFactor::SrcAlpha;
+            desc.dstBlend = RHI::BlendFactor::OneMinusSrcAlpha;
+            desc.depthFunc = RHI::CompareFunc::Always;
             m_textPipeline = device->createPipeline(desc);
-            if (m_textPipeline == rhi::NullHandle)
+            if (m_textPipeline == RHI::NullHandle)
             {
                 return false;
             }
@@ -70,20 +70,20 @@ namespace render::core
     {
         if (m_device)
         {
-            if (m_atlasTexture != rhi::NullHandle)
+            if (m_atlasTexture != RHI::NullHandle)
             {
                 m_device->destroyTexture(m_atlasTexture);
-                m_atlasTexture = rhi::NullHandle;
+                m_atlasTexture = RHI::NullHandle;
             }
-            if (m_vertexBuffer != rhi::NullHandle)
+            if (m_vertexBuffer != RHI::NullHandle)
             {
                 m_device->destroyBuffer(m_vertexBuffer);
-                m_vertexBuffer = rhi::NullHandle;
+                m_vertexBuffer = RHI::NullHandle;
             }
-            if (m_textPipeline != rhi::NullHandle)
+            if (m_textPipeline != RHI::NullHandle)
             {
                 m_device->destroyPipeline(m_textPipeline);
-                m_textPipeline = rhi::NullHandle;
+                m_textPipeline = RHI::NullHandle;
             }
         }
 
@@ -114,7 +114,7 @@ namespace render::core
     }
 
     void TextAtlas::renderText(
-        const TextItemList* texts, const float viewMatrix[9], uint32_t viewportW, uint32_t viewportH, rhi::IDevice* device)
+        const TextItemList* texts, const float viewMatrix[9], uint32_t viewportW, uint32_t viewportH, RHI::IDevice* device)
     {
         if (!texts || !texts->items || texts->count == 0 || !m_fontLoaded)
         {
@@ -145,12 +145,12 @@ namespace render::core
 
         uint32_t vertBytes = static_cast<uint32_t>(allQuads.size() * sizeof(TextVertex));
         // 扩容
-        rhi::BufferDesc vbDesc;
+        RHI::BufferDesc vbDesc;
         vbDesc.size = vertBytes;
-        vbDesc.usage = rhi::BufferUsage::Vertex;
-        vbDesc.memory = rhi::MemoryType::GPU_CPU_Coherent;
+        vbDesc.usage = RHI::BufferUsage::Vertex;
+        vbDesc.memory = RHI::MemoryType::GPU_CPU_Coherent;
         vbDesc.debugName = "TextAtlasVB_Resize";
-        if (m_vertexBuffer != rhi::NullHandle)
+        if (m_vertexBuffer != RHI::NullHandle)
         {
             device->destroyBuffer(m_vertexBuffer);
         }
@@ -432,4 +432,4 @@ namespace render::core
             cursorX += gi.xAdvance;
         }
     }
-}  // namespace render::core
+}  // namespace Render::core

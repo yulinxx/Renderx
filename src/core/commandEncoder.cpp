@@ -1,18 +1,18 @@
 /**
- * @file command_encoder.cpp
+ * @file commandEncoder.cpp
  * @brief 统一命令编码器实现
  *
  * Phase 3 核心实现，统一收集 overlay / world 绘制命令并按 batch key 排序执行。
  */
-#include "command_encoder.h"
-#include "pipeline_state_manager.h"
-#include "draw_batcher.h"
+#include "commandEncoder.h"
+#include "pipelineStateManager.h"
+#include "drawBatcher.h"
 #include "Log/SyLogger.h"
 #include <algorithm>
 #include <cmath>
 #include <cstring>
 
-namespace render
+namespace Render
 {
     namespace core
     {
@@ -31,7 +31,7 @@ namespace render
         // 生命周期
         // ============================================================================
 
-        bool CommandEncoder::initialize(rhi::IDevice* device)
+        bool CommandEncoder::initialize(RHI::IDevice* device)
         {
             if (m_initialized || !device)
             {
@@ -44,29 +44,29 @@ namespace render
             // 创建 overlay pipeline
             // ------------------------------------------------------------------------
             {
-                rhi::PipelineDesc lineDesc;
-                lineDesc.topology = rhi::PrimitiveTopology::LineList;
+                RHI::PipelineDesc lineDesc;
+                lineDesc.topology = RHI::PrimitiveTopology::LineList;
                 lineDesc.vertexShader = "overlay_vert";
                 lineDesc.fragmentShader = "overlay_frag";
                 lineDesc.computeShader = nullptr;
-                lineDesc.vertexFormat = rhi::VertexFormat::P3C4;
+                lineDesc.vertexFormat = RHI::VertexFormat::P3C4;
                 lineDesc.depthTest = false;
                 lineDesc.depthWrite = false;
                 lineDesc.blendEnable = true;
-                lineDesc.srcBlend = rhi::BlendFactor::SrcAlpha;
-                lineDesc.dstBlend = rhi::BlendFactor::OneMinusSrcAlpha;
-                lineDesc.depthFunc = rhi::CompareFunc::Always;
+                lineDesc.srcBlend = RHI::BlendFactor::SrcAlpha;
+                lineDesc.dstBlend = RHI::BlendFactor::OneMinusSrcAlpha;
+                lineDesc.depthFunc = RHI::CompareFunc::Always;
                 m_overlayLinePipeline = m_psm ? m_psm->getOrCreatePipeline(lineDesc) : device->createPipeline(lineDesc);
-                if (m_overlayLinePipeline == rhi::NullHandle)
+                if (m_overlayLinePipeline == RHI::NullHandle)
                 {
                     SY_ERROR("[CommandEncoder] failed to create overlay line pipeline");
                     return false;
                 }
 
-                rhi::PipelineDesc triDesc = lineDesc;
-                triDesc.topology = rhi::PrimitiveTopology::TriangleList;
+                RHI::PipelineDesc triDesc = lineDesc;
+                triDesc.topology = RHI::PrimitiveTopology::TriangleList;
                 m_overlayTriPipeline = m_psm ? m_psm->getOrCreatePipeline(triDesc) : device->createPipeline(triDesc);
-                if (m_overlayTriPipeline == rhi::NullHandle)
+                if (m_overlayTriPipeline == RHI::NullHandle)
                 {
                     SY_ERROR("[CommandEncoder] failed to create overlay triangle pipeline");
                     return false;
@@ -79,32 +79,32 @@ namespace render
             static const char* kWorldVert = "passthrough_vert";
             static const char* kWorldFrag = "passthrough_frag";
 
-            static const rhi::PrimitiveTopology kTopoMap[PRIMITIVE_TYPE_COUNT] = {
-                rhi::PrimitiveTopology::PointList,
-                rhi::PrimitiveTopology::LineList,
-                rhi::PrimitiveTopology::LineStrip,
-                rhi::PrimitiveTopology::LineLoop,
-                rhi::PrimitiveTopology::TriangleList,
-                rhi::PrimitiveTopology::TriangleStrip,
-                rhi::PrimitiveTopology::TriangleFan,
+            static const RHI::PrimitiveTopology kTopoMap[PRIMITIVE_TYPE_COUNT] = {
+                RHI::PrimitiveTopology::PointList,
+                RHI::PrimitiveTopology::LineList,
+                RHI::PrimitiveTopology::LineStrip,
+                RHI::PrimitiveTopology::LineLoop,
+                RHI::PrimitiveTopology::TriangleList,
+                RHI::PrimitiveTopology::TriangleStrip,
+                RHI::PrimitiveTopology::TriangleFan,
             };
 
             for (uint32_t i = 0; i < PRIMITIVE_TYPE_COUNT; ++i)
             {
-                rhi::PipelineDesc desc;
+                RHI::PipelineDesc desc;
                 desc.topology = kTopoMap[i];
                 desc.vertexShader = kWorldVert;
                 desc.fragmentShader = kWorldFrag;
                 desc.computeShader = nullptr;
-                desc.vertexFormat = rhi::VertexFormat::P3C3;
+                desc.vertexFormat = RHI::VertexFormat::P3C3;
                 desc.depthTest = false;
                 desc.depthWrite = false;
                 desc.blendEnable = true;
-                desc.srcBlend = rhi::BlendFactor::SrcAlpha;
-                desc.dstBlend = rhi::BlendFactor::OneMinusSrcAlpha;
-                desc.depthFunc = rhi::CompareFunc::Always;
+                desc.srcBlend = RHI::BlendFactor::SrcAlpha;
+                desc.dstBlend = RHI::BlendFactor::OneMinusSrcAlpha;
+                desc.depthFunc = RHI::CompareFunc::Always;
                 m_worldPipelines[i] = m_psm ? m_psm->getOrCreatePipeline(desc) : device->createPipeline(desc);
-                if (m_worldPipelines[i] == rhi::NullHandle)
+                if (m_worldPipelines[i] == RHI::NullHandle)
                 {
                     SY_ERRORF("[CommandEncoder] failed to create world pipeline index=%u", i);
                     return false;
@@ -137,12 +137,12 @@ namespace render
                 return;
             }
 
-            if (m_overlayLinePipeline != rhi::NullHandle)
+            if (m_overlayLinePipeline != RHI::NullHandle)
             {
                 m_device->destroyPipeline(m_overlayLinePipeline);
                 m_overlayLinePipeline = {};
             }
-            if (m_overlayTriPipeline != rhi::NullHandle)
+            if (m_overlayTriPipeline != RHI::NullHandle)
             {
                 m_device->destroyPipeline(m_overlayTriPipeline);
                 m_overlayTriPipeline = {};
@@ -150,7 +150,7 @@ namespace render
 
             for (uint32_t i = 0; i < PRIMITIVE_TYPE_COUNT; ++i)
             {
-                if (m_worldPipelines[i] != rhi::NullHandle)
+                if (m_worldPipelines[i] != RHI::NullHandle)
                 {
                     m_device->destroyPipeline(m_worldPipelines[i]);
                     m_worldPipelines[i] = {};
@@ -239,7 +239,7 @@ namespace render
         // Pipeline 获取
         // ============================================================================
 
-        rhi::PipelineHandle CommandEncoder::getOverlayPipeline(PrimitiveType topology) const
+        RHI::PipelineHandle CommandEncoder::getOverlayPipeline(PrimitiveType topology) const
         {
             // overlay 只区分三角形和线段两类
             switch (topology)
@@ -253,7 +253,7 @@ namespace render
             }
         }
 
-        rhi::PipelineHandle CommandEncoder::getWorldPipeline(PrimitiveType topology) const
+        RHI::PipelineHandle CommandEncoder::getWorldPipeline(PrimitiveType topology) const
         {
             uint32_t idx = static_cast<uint32_t>(topology);
             if (idx < PRIMITIVE_TYPE_COUNT)
@@ -267,10 +267,10 @@ namespace render
         // 命令执行
         // ============================================================================
 
-        void CommandEncoder::execute(rhi::IDevice* device,
-            rhi::BufferHandle worldVB,
-            rhi::BufferHandle overlayVB,
-            rhi::BufferHandle indirectBuf,
+        void CommandEncoder::execute(RHI::IDevice* device,
+            RHI::BufferHandle worldVB,
+            RHI::BufferHandle overlayVB,
+            RHI::BufferHandle indirectBuf,
             const float viewMatrix[9],
             const float cameraCenter[2])
         {
@@ -306,8 +306,8 @@ namespace render
             }
 
             // 当前绑定的状态，用于避免重复绑定
-            rhi::PipelineHandle boundPipeline = {};
-            rhi::BufferHandle boundVB = rhi::NullHandle;
+            RHI::PipelineHandle boundPipeline = {};
+            RHI::BufferHandle boundVB = RHI::NullHandle;
             DrawSpace boundSpace = DrawSpace::World2D;
             PrimitiveType boundTopology = PrimitiveType::PointList;
             uint16_t boundMaterial = 0;
@@ -345,7 +345,7 @@ namespace render
                 if (spaceChanged || topologyChanged)
                 {
                     // 选择 pipeline
-                    rhi::PipelineHandle pipeline = (cmd.space == DrawSpace::Overlay) ? getOverlayPipeline(cmd.topology)
+                    RHI::PipelineHandle pipeline = (cmd.space == DrawSpace::Overlay) ? getOverlayPipeline(cmd.topology)
                                                                                      : getWorldPipeline(cmd.topology);
 
                     if (pipeline != boundPipeline)
@@ -394,7 +394,7 @@ namespace render
                 }
 
                 // 绑定顶点 buffer（仅在空间变化时，因为 world 和 overlay 用不同 buffer）
-                if (spaceChanged || boundVB == rhi::NullHandle)
+                if (spaceChanged || boundVB == RHI::NullHandle)
                 {
                     if (cmd.space == DrawSpace::Overlay)
                     {
@@ -455,7 +455,7 @@ namespace render
 
                     // 确保 overlay 顶点缓冲已绑定
                     device->bindVertexBuffer(0, overlayVB, 0);
-                    rhi::BufferHandle mdiBuf = m_drawBatcher->getIndirectBuffer();
+                    RHI::BufferHandle mdiBuf = m_drawBatcher->getIndirectBuffer();
 
                     for (const auto& group : groups)
                     {
@@ -487,4 +487,4 @@ namespace render
             return static_cast<uint32_t>(m_commands.size());
         }
     }  // namespace core
-}  // namespace render
+}  // namespace Render

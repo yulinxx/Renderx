@@ -1,11 +1,11 @@
-#include "overlay_queue.h"
-#include "command_encoder.h"
-#include "render/render_types.h"
+#include "overlayQueue.h"
+#include "commandEncoder.h"
+#include "render/RenderTypes.h"
 #include "Log/SyLogger.h"
 #include <cstring>
 #include <cmath>
 
-namespace render
+namespace Render
 {
     namespace core
     {
@@ -30,7 +30,7 @@ namespace render
             return v;
         }
 
-        bool OverlayQueue::initialize(rhi::IDevice* device)
+        bool OverlayQueue::initialize(RHI::IDevice* device)
         {
             if (!device)
             {
@@ -40,13 +40,13 @@ namespace render
             m_device = device;
 
             // pipeline 由 CommandEncoder 统一管理，OverlayQueue 不再创建
-            rhi::BufferDesc vbDesc;
+            RHI::BufferDesc vbDesc;
             vbDesc.size = 4096 * sizeof(OverlayVertex);
-            vbDesc.usage = rhi::BufferUsage::Vertex;
-            vbDesc.memory = rhi::MemoryType::GPU_CPU_Coherent;
+            vbDesc.usage = RHI::BufferUsage::Vertex;
+            vbDesc.memory = RHI::MemoryType::GPU_CPU_Coherent;
             vbDesc.debugName = "OverlayQueue_VB";
             m_vertexBuffer = device->createBuffer(vbDesc);
-            if (m_vertexBuffer == rhi::NullHandle)
+            if (m_vertexBuffer == RHI::NullHandle)
             {
                 SY_ERROR("[OverlayQueue] failed to create vertex buffer");
                 return false;
@@ -59,10 +59,10 @@ namespace render
 
         void OverlayQueue::shutdown()
         {
-            if (m_vertexBuffer != rhi::NullHandle)
+            if (m_vertexBuffer != RHI::NullHandle)
             {
                 m_device->destroyBuffer(m_vertexBuffer);
-                m_vertexBuffer = rhi::NullHandle;
+                m_vertexBuffer = RHI::NullHandle;
             }
 
             m_crosshairVerts.clear();
@@ -579,7 +579,7 @@ namespace render
             m_dirty = true;
         }
 
-        void OverlayQueue::render(rhi::IDevice* device, CommandEncoder* encoder, const float /*viewMatrix*/[9])
+        void OverlayQueue::render(RHI::IDevice* device, CommandEncoder* encoder, const float /*viewMatrix*/[9])
         {
             // viewMatrix 由 CommandEncoder::execute() 统一设置
 
@@ -610,7 +610,7 @@ namespace render
             {
                 if (totalVerts > m_vbCapacity)
                 {
-                    if (m_vertexBuffer != rhi::NullHandle)
+                    if (m_vertexBuffer != RHI::NullHandle)
                     {
                         device->destroyBuffer(m_vertexBuffer);
                     }
@@ -625,10 +625,10 @@ namespace render
                         newCap *= 2;
                     }
 
-                    rhi::BufferDesc desc;
+                    RHI::BufferDesc desc;
                     desc.size = newCap * sizeof(OverlayVertex);
-                    desc.usage = rhi::BufferUsage::Vertex;
-                    desc.memory = rhi::MemoryType::GPU_CPU_Coherent;
+                    desc.usage = RHI::BufferUsage::Vertex;
+                    desc.memory = RHI::MemoryType::GPU_CPU_Coherent;
                     desc.debugName = "OverlayQueue_VB";
                     m_vertexBuffer = device->createBuffer(desc);
                     m_vbCapacity = newCap;
@@ -847,4 +847,4 @@ namespace render
             out[7] = makeVert(x0, y0, z, r, g, b, a);
         }
     }  // namespace core
-}  // namespace render
+}  // namespace Render

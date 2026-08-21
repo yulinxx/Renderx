@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file rhi_null.h
  * @brief Null render device implementation (no GPU operations)
  *
@@ -14,11 +14,11 @@
  * All draw calls are no-ops.
  */
 #pragma once
-#include "rhi_device.h"
+#include "rhiDevice.h"
 
 #include <cstdint>
 
-namespace render::rhi
+namespace Render::RHI
 {
 
     class NullDevice : public IDevice
@@ -27,6 +27,7 @@ namespace render::rhi
         NullDevice() = default;
         ~NullDevice() override = default;
 
+    public:
         bool initialize(void* nativeWindow, uint32_t width, uint32_t height) override;
         void shutdown() override;
 
@@ -89,6 +90,7 @@ namespace render::rhi
             void* outPixels, uint32_t* outRowPitch) override;
         uint64_t getGPUMemoryUsage() const override;
         void* getNativeContext() override;
+        bool checkFence(uint64_t fenceValue) const override;
 
         // 离屏渲染目标（Null 后端为空实现，返回无效句柄 / 不操作）
         RenderTargetHandle createRenderTarget(const RenderTargetDesc&) override;
@@ -139,4 +141,4 @@ namespace render::rhi
         float m_lineWidth = 1.0f;
     };
 
-}  // namespace render::rhi
+}  // namespace Render::RHI

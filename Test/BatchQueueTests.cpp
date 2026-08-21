@@ -10,8 +10,8 @@
  */
 
 #include <gtest/gtest.h>
-#include "../src/core/batch_queue.h"
-#include "render/render_types.h"
+#include "../src/core/batchqueue.h"
+#include "render/RenderTypes.h"
 
 #include <vector>
 #include <algorithm>

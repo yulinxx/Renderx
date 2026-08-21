@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file command_encoder.h
  * @brief 统一命令编码器类定义
  *
@@ -12,13 +12,13 @@
  */
 #pragma once
 
-#include "render/render_types.h"
-#include "../rhi/rhi_device.h"
+#include "render/RenderTypes.h"
+#include "../rhi/rhiDevice.h"
 #include <vector>
 #include <cstdint>
 #include <functional>
 
-namespace render
+namespace Render
 {
     namespace core
     {
@@ -54,7 +54,7 @@ namespace render
              * @param device RHI 设备指针
              * @return true 初始化成功，false 初始化失败
              */
-            bool initialize(rhi::IDevice* device);
+            bool initialize(RHI::IDevice* device);
 
             /**
              * @brief 设置管线状态管理器
@@ -133,10 +133,10 @@ namespace render
              * @param viewMatrix  3x3 视图矩阵
              * @param cameraCenter 相机中心（世界坐标），用于 World2D 相机相对渲染
              */
-            void execute(rhi::IDevice* device,
-                rhi::BufferHandle worldVB,
-                rhi::BufferHandle overlayVB,
-                rhi::BufferHandle indirectBuf,
+            void execute(RHI::IDevice* device,
+                RHI::BufferHandle worldVB,
+                RHI::BufferHandle overlayVB,
+                RHI::BufferHandle indirectBuf,
                 const float viewMatrix[9],
                 const float cameraCenter[2]);
 
@@ -155,7 +155,7 @@ namespace render
 
         private:
             std::vector<DrawCommand> m_commands;
-            rhi::IDevice* m_device = nullptr;
+            RHI::IDevice* m_device = nullptr;
             bool m_initialized = false;
 
             // Phase 7: 管线状态管理器（可选，用于缓存和冗余过滤）
@@ -165,9 +165,9 @@ namespace render
             class DrawBatcher* m_drawBatcher = nullptr;
 
             // pipeline 缓存
-            rhi::PipelineHandle m_overlayLinePipeline = {};                   ///< overlay 线段管线
-            rhi::PipelineHandle m_overlayTriPipeline = {};                    ///< overlay 三角形管线
-            rhi::PipelineHandle m_worldPipelines[PRIMITIVE_TYPE_COUNT] = {};  ///< world 管线
+            RHI::PipelineHandle m_overlayLinePipeline = {};                   ///< overlay 线段管线
+            RHI::PipelineHandle m_overlayTriPipeline = {};                    ///< overlay 三角形管线
+            RHI::PipelineHandle m_worldPipelines[PRIMITIVE_TYPE_COUNT] = {};  ///< world 管线
 
             // 统计
             uint32_t m_lastBatchCount = 0;
@@ -188,21 +188,21 @@ namespace render
             /**
              * @brief 获取 overlay 对应的 pipeline
              */
-            rhi::PipelineHandle getOverlayPipeline(PrimitiveType topology) const;
+            RHI::PipelineHandle getOverlayPipeline(PrimitiveType topology) const;
 
             /**
              * @brief 获取 world 对应的 pipeline
              */
-            rhi::PipelineHandle getWorldPipeline(PrimitiveType topology) const;
+            RHI::PipelineHandle getWorldPipeline(PrimitiveType topology) const;
 
             /**
              * @brief 绑定并执行单个命令
              */
-            void dispatchCommand(rhi::IDevice* device,
+            void dispatchCommand(RHI::IDevice* device,
                 const DrawCommand& cmd,
-                rhi::BufferHandle worldVB,
-                rhi::BufferHandle overlayVB,
-                rhi::BufferHandle indirectBuf,
+                RHI::BufferHandle worldVB,
+                RHI::BufferHandle overlayVB,
+                RHI::BufferHandle indirectBuf,
                 const float viewMatrix[9]);
         };
 

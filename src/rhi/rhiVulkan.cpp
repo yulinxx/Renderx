@@ -1,5 +1,5 @@
 /**
- * @file rhi_vulkan.cpp
+ * @file rhivulkan.cpp
  * @brief Vulkan render device implementation — [D1-P1] EXPERIMENTAL / FROZEN
  *
  * [D1-P1 状态说明] 此 Vulkan 后端为结构残缺的实验性实现，当前不可渲染。
@@ -20,8 +20,8 @@
  * - State setting is immediate (no deferred command recording at RHI level)
  */
 
-#include "rhi_vulkan.h"
-#include "rhi_types.h"
+#include "rhiVulkan.h"
+#include "rhiTypes.h"
 
 #ifdef _WIN32
     #ifndef VK_USE_PLATFORM_WIN32_KHR
@@ -44,7 +44,7 @@
 
 #include "Log/SyLogger.h"
 
-namespace render::rhi
+namespace Render::RHI
 {
     // ---------------------------------------------------------------------------
     // Handle encoding scheme
@@ -303,9 +303,9 @@ namespace render::rhi
         // --- Create Vulkan instance ---
         VkApplicationInfo appInfo{};
         appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-        appInfo.pApplicationName = "SanYiRender";
+        appInfo.pApplicationName = "RenderX";
         appInfo.applicationVersion = VK_MAKE_VERSION(2, 0, 0);
-        appInfo.pEngineName = "SanYiRender";
+        appInfo.pEngineName = "RenderX";
         appInfo.engineVersion = VK_MAKE_VERSION(2, 0, 0);
         appInfo.apiVersion = VK_API_VERSION_1_2;
 
@@ -1660,11 +1660,18 @@ namespace render::rhi
 
         m_currentFrame = (m_currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
         m_commandBufferIndex = m_currentFrame;
+
+        m_completedFence++;
     }
 
     void VulkanDevice::present()
     {
         // Presentation is handled in endFrame() for triple buffering
+    }
+
+    bool VulkanDevice::checkFence(uint64_t fenceValue) const
+    {
+        return fenceValue <= m_completedFence;
     }
 
     void VulkanDevice::bindPipeline(PipelineHandle handle)
@@ -2084,4 +2091,4 @@ namespace render::rhi
     {
         return new VulkanDevice();
     }
-}  // namespace render::rhi
+}  // namespace Render::RHI

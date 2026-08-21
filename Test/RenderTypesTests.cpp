@@ -3,13 +3,13 @@
  * @brief 渲染核心类型单元测试
  *
  * 测试目标：
- * - 验证 render_types.h 中定义的核心数据结构大小和布局
+ * - 验证 RenderTypes.h 中定义的核心数据结构大小和布局
  * - 验证枚举类型的值定义
  * - 验证常量定义的正确性
  */
 
 #include <gtest/gtest.h>
-#include "render/render_types.h"
+#include "render/RenderTypes.h"
 
 // 测试顶点结构体大小
 TEST(RenderTypesTest, VertexP3C3_SizeIs24Bytes)

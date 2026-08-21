@@ -15,11 +15,11 @@ set(RENDERX_NULL_TEST_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/NullBackendTests.cpp"
 )
 
-# Null backend 仅需要 rhi_null.cpp，不依赖 OpenGL
-# M1: 添加 render_runtime.cpp 和 shaders.cpp 以支持 RenderRuntime 初始化
+# Null backend 仅需要 rhinull.cpp，不依赖 OpenGL
+# M1: 添加 renderruntime.cpp 和 shaders.cpp 以支持 RenderRuntime 初始化
 set(RENDERX_NULL_INTERNAL_SOURCES
-    "${CMAKE_CURRENT_SOURCE_DIR}/../src/rhi/rhi_null.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/../src/c_api/render_runtime.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../src/rhi/rhinull.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../src/c_api/renderruntime.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/../src/shader/shaders.cpp"
 )
 
@@ -60,9 +60,9 @@ set(RENDERX_GL_TEST_SOURCES
 
 # OpenGL tests 需要完整的 GL 栈
 set(RENDERX_GL_INTERNAL_SOURCES
-    "${CMAKE_CURRENT_SOURCE_DIR}/../src/core/transient_buffer_pool.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/../src/rhi/rhi_gl.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/../src/platform/gl_loader.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../src/core/transientbufferpool.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../src/rhi/rhigl.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../src/platform/glloader.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/../src/shader/shaders.cpp"
 )
 

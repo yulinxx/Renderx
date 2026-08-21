@@ -1,5 +1,5 @@
-/**
- * @file bitmap_renderer.h
+﻿/**
+ * @file bitmapRenderer.h
  * @brief 位图渲染器类定义
  *
  * 负责把多张 RGBA 位图上传为 GPU 纹理，并以带纹理的四边形绘制到
@@ -15,12 +15,12 @@
  */
 #pragma once
 
-#include "render/render_types.h"
-#include "../rhi/rhi_device.h"
+#include "render/RenderTypes.h"
+#include "../rhi/rhiDevice.h"
 #include <vector>
 #include <cstdint>
 
-namespace render::core
+namespace Render::core
 {
 
     /**
@@ -39,7 +39,7 @@ namespace render::core
          * @param device RHI 设备指针
          * @return 初始化是否成功
          */
-        bool initialize(rhi::IDevice* device);
+        bool initialize(RHI::IDevice* device);
 
         /**
          * @brief 关闭并释放所有资源
@@ -97,7 +97,7 @@ namespace render::core
          * @param viewMatrix   3x3 视图矩阵（世界→NDC）
          * @param cameraCenter 相机中心（世界坐标 double[2]）
          */
-        void render(rhi::IDevice* device, const float viewMatrix[9], const double cameraCenter[2]);
+        void render(RHI::IDevice* device, const float viewMatrix[9], const double cameraCenter[2]);
 
     private:
         /// 位图顶点结构：位置(3) + 纹理坐标(2)，对应 P3T2
@@ -111,7 +111,7 @@ namespace render::core
         struct BitmapEntry
         {
             uint64_t entityId = 0;
-            rhi::TextureHandle texture = rhi::NullHandle;
+            RHI::TextureHandle texture = RHI::NullHandle;
             int32_t width = 0;
             int32_t height = 0;
             float corners[8] = {};
@@ -121,11 +121,11 @@ namespace render::core
         size_t findIndex(uint64_t entityId) const;
 
         /// RHI 设备指针
-        rhi::IDevice* m_device = nullptr;
+        RHI::IDevice* m_device = nullptr;
         /// 顶点缓冲（单四边形 6 顶点，逐张位图复用）
-        rhi::BufferHandle m_vertexBuffer = rhi::NullHandle;
+        RHI::BufferHandle m_vertexBuffer = RHI::NullHandle;
         /// 位图渲染管线
-        rhi::PipelineHandle m_pipeline = rhi::NullHandle;
+        RHI::PipelineHandle m_pipeline = RHI::NullHandle;
         /// 位图条目集合（保持插入顺序，保证绘制顺序稳定）
         std::vector<BitmapEntry> m_bitmaps;
     };

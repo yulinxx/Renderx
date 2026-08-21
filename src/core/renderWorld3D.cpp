@@ -1,9 +1,9 @@
-#include "render_world_3d.h"
+#include "renderWorld3D.h"
 
 #include <algorithm>
 #include <cstring>
 
-namespace render
+namespace Render
 {
     struct RenderWorld3D::Impl
     {
@@ -183,4 +183,4 @@ namespace render
             e.dirty = false;
         }
     }
-}  // namespace render
+}  // namespace Render

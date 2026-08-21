@@ -11,8 +11,8 @@
  */
 
 #include <gtest/gtest.h>
-#include "../src/core/transient_buffer_pool.h"
-#include "../src/rhi/rhi_device.h"
+#include "../src/core/transientBufferPool.h"
+#include "../src/rhi/rhiDevice.h"
 
 #ifdef _WIN32
     #ifndef WIN32_LEAN_AND_MEAN
@@ -128,8 +128,8 @@ class TransientBufferPoolTest : public ::testing::Test
 {
 protected:
     MinimalGLContext m_glCtx;
-    render::rhi::IDevice* m_device = nullptr;
-    render::core::TransientBufferPool m_pool;
+    Render::RHI::IDevice* m_device = nullptr;
+    Render::core::TransientBufferPool m_pool;
 
     void SetUp() override
     {
@@ -138,7 +138,7 @@ protected:
             GTEST_SKIP() << "Failed to create minimal GL context";
         }
 
-        m_device = render::rhi::createGLDevice();
+        m_device = Render::RHI::createGLDevice();
         if (!m_device)
         {
             GTEST_SKIP() << "Failed to create GL device";
@@ -193,7 +193,7 @@ TEST_F(TransientBufferPoolTest, Allocate_ReturnsValidPointer)
     ASSERT_TRUE(m_pool.initialize(m_device, kBufferSize, 3));
 
     auto alloc = m_pool.allocate(256);
-    ASSERT_NE(alloc.buffer, render::rhi::NullHandle);
+    ASSERT_NE(alloc.buffer, Render::RHI::NullHandle);
     ASSERT_NE(alloc.cpuPtr, nullptr);
     EXPECT_EQ(alloc.offset, 0u);
     EXPECT_EQ(alloc.size, 256u);
@@ -308,19 +308,19 @@ TEST_F(TransientBufferPoolTest, Allocate_ZeroSize_ReturnsEmpty)
     ASSERT_TRUE(m_pool.initialize(m_device, kBufferSize, 3));
 
     auto alloc = m_pool.allocate(0);
-    EXPECT_EQ(alloc.buffer, render::rhi::NullHandle);
+    EXPECT_EQ(alloc.buffer, Render::RHI::NullHandle);
     EXPECT_EQ(alloc.cpuPtr, nullptr);
 }
 
 // 验证未初始化时调用接口不会崩溃
 TEST(TransientBufferPoolLogicTest, Uninitialized_SafeNoop)
 {
-    render::core::TransientBufferPool pool;
+    Render::core::TransientBufferPool pool;
 
     // Should not crash
     pool.beginFrame();
     auto alloc = pool.allocate(1024);
-    EXPECT_EQ(alloc.buffer, render::rhi::NullHandle);
+    EXPECT_EQ(alloc.buffer, Render::RHI::NullHandle);
     EXPECT_EQ(pool.usedSize(), 0u);
     pool.shutdown();  // safe to call multiple times
 }
@@ -328,7 +328,7 @@ TEST(TransientBufferPoolLogicTest, Uninitialized_SafeNoop)
 // 验证无效初始化参数返回 false
 TEST(TransientBufferPoolLogicTest, Initialize_InvalidArgs_Fails)
 {
-    render::core::TransientBufferPool pool;
+    Render::core::TransientBufferPool pool;
     EXPECT_FALSE(pool.initialize(nullptr, 1024, 3));
     EXPECT_FALSE(pool.initialize(nullptr, 0, 3));
     EXPECT_FALSE(pool.initialize(nullptr, 1024, 0));

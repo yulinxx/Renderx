@@ -1,5 +1,5 @@
-/**
- * @file pipeline_state_manager.h
+﻿/**
+ * @file pipelineStateManager.h
  * @brief 管线状态管理器
  *
  * Phase 7 新增。负责缓存和复用 RHI 管线对象，减少重复创建开销。
@@ -7,15 +7,16 @@
  */
 #pragma once
 
-#include "../rhi/rhi_device.h"
-#include "../rhi/rhi_types.h"
+#include "../rhi/rhiDevice.h"
+#include "../rhi/rhiTypes.h"
+
 #include <cstdint>
 #include <cstring>
 #include <functional>
 #include <unordered_map>
 #include <vector>
 
-namespace render
+namespace Render
 {
     namespace core
     {
@@ -54,9 +55,9 @@ namespace std
 {
 
     template<>
-    struct hash<render::core::PipelineStateKey>
+    struct hash<Render::core::PipelineStateKey>
     {
-        size_t operator()(const render::core::PipelineStateKey& k) const noexcept
+        size_t operator()(const Render::core::PipelineStateKey& k) const noexcept
         {
             // FNV-1a 风格：把 key 当字节流整体哈希
             size_t h = 14695981039346656037ull;
@@ -72,7 +73,7 @@ namespace std
 
 }  // namespace std
 
-namespace render
+namespace Render
 {
     namespace core
     {
@@ -85,7 +86,7 @@ namespace render
         struct PipelineCacheEntry
         {
             PipelineStateKey key;
-            rhi::PipelineHandle handle;
+            RHI::PipelineHandle handle;
         };
 
         /**
@@ -103,13 +104,14 @@ namespace render
             PipelineStateManager() = default;
             ~PipelineStateManager() = default;
 
+        public:
             /**
              * @brief 初始化管理器
              *
              * @param device RHI 设备指针
              * @return true 初始化成功，false 初始化失败
              */
-            bool initialize(rhi::IDevice* device);
+            bool initialize(RHI::IDevice* device);
 
             /**
              * @brief 关闭并释放所有缓存的管线
@@ -125,7 +127,7 @@ namespace render
              * @param desc 管线状态描述
              * @return RHI 管线句柄
              */
-            rhi::PipelineHandle getOrCreatePipeline(const rhi::PipelineDesc& desc);
+            RHI::PipelineHandle getOrCreatePipeline(const RHI::PipelineDesc& desc);
 
             /**
              * @brief 绑定管线（带冗余过滤）
@@ -134,12 +136,12 @@ namespace render
              *
              * @param pipeline 要绑定的管线句柄
              */
-            void bindPipeline(rhi::PipelineHandle pipeline);
+            void bindPipeline(RHI::PipelineHandle pipeline);
 
             /**
              * @brief 获取当前已绑定的管线
              */
-            rhi::PipelineHandle currentPipeline() const
+            RHI::PipelineHandle currentPipeline() const
             {
                 return m_currentPipeline;
             }
@@ -149,7 +151,7 @@ namespace render
              *
              * @param pipeline 外部已绑定的管线句柄
              */
-            void forceSetCurrentPipeline(rhi::PipelineHandle pipeline)
+            void forceSetCurrentPipeline(RHI::PipelineHandle pipeline)
             {
                 m_currentPipeline = pipeline;
             }
@@ -165,7 +167,7 @@ namespace render
              */
             void resetCurrentPipeline()
             {
-                m_currentPipeline = rhi::NullHandle;
+                m_currentPipeline = RHI::NullHandle;
             }
 
             /**
@@ -184,10 +186,10 @@ namespace render
             void clearCache();
 
         private:
-            rhi::IDevice* m_device = nullptr;
-            rhi::PipelineHandle m_currentPipeline = rhi::NullHandle;
+            RHI::IDevice* m_device = nullptr;
+            RHI::PipelineHandle m_currentPipeline = RHI::NullHandle;
 
-            std::unordered_map<PipelineStateKey, rhi::PipelineHandle> m_cache;
+            std::unordered_map<PipelineStateKey, RHI::PipelineHandle> m_cache;
             std::vector<PipelineCacheEntry> m_entries;  // 用于有序遍历和日志输出
 
             static uint32_t hashString(const char* str);

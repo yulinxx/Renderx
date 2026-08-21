@@ -1,5 +1,5 @@
-/**
- * @file text_atlas.h
+﻿/**
+ * @file textAtlas.h
  * @brief 文本贴图管理器类定义
  *
  * TextAtlas 负责文本渲染，包括：
@@ -12,13 +12,13 @@
  */
 #pragma once
 
-#include "render/render_types.h"
-#include "../rhi/rhi_device.h"
+#include "render/RenderTypes.h"
+#include "../rhi/rhiDevice.h"
 #include <vector>
 #include <cstdint>
 #include <string>
 
-namespace render::core
+namespace Render::core
 {
 
     /**
@@ -35,7 +35,7 @@ namespace render::core
          * @param device RHI设备指针
          * @return 初始化是否成功
          */
-        bool initialize(rhi::IDevice* device);
+        bool initialize(RHI::IDevice* device);
 
         /**
          * @brief 关闭并释放所有资源
@@ -64,7 +64,7 @@ namespace render::core
             const float viewMatrix[9],
             uint32_t viewportW,
             uint32_t viewportH,
-            rhi::IDevice* device);
+            RHI::IDevice* device);
 
     private:
         /**
@@ -108,13 +108,13 @@ namespace render::core
         static_assert(sizeof(TextVertex) == 36, "TextVertex must be 36 bytes");
 
         /// RHI设备指针
-        rhi::IDevice* m_device = nullptr;
+        RHI::IDevice* m_device = nullptr;
         /// 图集纹理
-        rhi::TextureHandle m_atlasTexture = rhi::NullHandle;
+        RHI::TextureHandle m_atlasTexture = RHI::NullHandle;
         /// 顶点缓冲区
-        rhi::BufferHandle m_vertexBuffer = rhi::NullHandle;
+        RHI::BufferHandle m_vertexBuffer = RHI::NullHandle;
         /// 文本渲染管线
-        rhi::PipelineHandle m_textPipeline = rhi::NullHandle;
+        RHI::PipelineHandle m_textPipeline = RHI::NullHandle;
 
         /// 图集像素数据
         std::vector<uint8_t> m_atlasData;

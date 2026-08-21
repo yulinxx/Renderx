@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file rhi_vulkan.h
  * @brief Vulkan render device implementation declaration
  *
@@ -9,7 +9,7 @@
  * This implementation requires the Vulkan SDK and supports Windows/Linux platforms.
  */
 #pragma once
-#include "rhi_device.h"
+#include "rhiDevice.h"
 
 #include <cstdint>
 #include <memory>
@@ -33,7 +33,7 @@
 #endif
 #include <vulkan/vulkan.h>
 
-namespace render::rhi
+namespace Render::RHI
 {
 
     /**
@@ -45,12 +45,12 @@ namespace render::rhi
     class VulkanDevice : public IDevice
     {
     public:
-        // Constants
         static constexpr uint32_t MAX_FRAMES_IN_FLIGHT = 2;
 
         VulkanDevice();
         ~VulkanDevice() override;
 
+    public:
         // IDevice interface implementation
         bool initialize(void* nativeWindow, uint32_t width, uint32_t height) override;
         void shutdown() override;
@@ -121,6 +121,7 @@ namespace render::rhi
             void* outPixels, uint32_t* outRowPitch) override;
         uint64_t getGPUMemoryUsage() const override;
         void* getNativeContext() override;
+        bool checkFence(uint64_t fenceValue) const override;
 
     private:
         // Vulkan object handles
@@ -152,6 +153,9 @@ namespace render::rhi
         VkFence m_inFlightFences[MAX_FRAMES_IN_FLIGHT]{};
         uint32_t m_currentFrame = 0;
         uint32_t m_commandBufferIndex = 0;
+
+        /// 已完成（GPU 已处理）的最大 fence 值，每帧 present 后递增
+        uint64_t m_completedFence = 0;
         uint32_t m_currentImageIndex = 0;
 
         // Descriptor pool
@@ -220,4 +224,4 @@ namespace render::rhi
      */
     IDevice* createVulkanDevice();
 
-}  // namespace render::rhi
+}  // namespace Render::RHI

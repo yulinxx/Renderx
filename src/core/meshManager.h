@@ -1,5 +1,5 @@
-/**
- * @file mesh_manager.h
+﻿/**
+ * @file meshManager.h
  * @brief 网格管理器类定义
  *
  * MeshManager 负责管理网格资源和实例渲染，支持：
@@ -13,13 +13,13 @@
  */
 #pragma once
 
-#include "render/render_types.h"
-#include "../rhi/rhi_device.h"
-#include "../core/slot_map.h"
+#include "render/RenderTypes.h"
+#include "../rhi/rhiDevice.h"
+#include "../core/slotMap.h"
 #include <vector>
 #include <cstdint>
 
-namespace render::core
+namespace Render::core
 {
 
     /**
@@ -41,7 +41,7 @@ namespace render::core
          * @param device RHI设备指针
          * @return 初始化是否成功
          */
-        bool initialize(rhi::IDevice* device);
+        bool initialize(RHI::IDevice* device);
 
         /**
          * @brief 关闭并释放所有资源
@@ -132,7 +132,7 @@ namespace render::core
          * @param viewMatrix 4x4视图矩阵
          * @param projMatrix 4x4投影矩阵
          */
-        void render(rhi::IDevice* device, const float viewMatrix[16], const float projMatrix[16]);
+        void render(RHI::IDevice* device, const float viewMatrix[16], const float projMatrix[16]);
 
         /**
          * @brief 获取实例数量
@@ -190,19 +190,19 @@ namespace render::core
         std::vector<uint32_t> m_freeInstances;
 
         /// RHI设备指针
-        rhi::IDevice* m_device = nullptr;
+        RHI::IDevice* m_device = nullptr;
         /// 顶点位置缓冲区
-        rhi::BufferHandle m_positionBuffer = rhi::NullHandle;
+        RHI::BufferHandle m_positionBuffer = RHI::NullHandle;
         /// 索引缓冲区
-        rhi::BufferHandle m_indexBuffer = rhi::NullHandle;
+        RHI::BufferHandle m_indexBuffer = RHI::NullHandle;
         /// 实例缓冲区（存储实例变换矩阵）
-        rhi::BufferHandle m_instanceBuffer = rhi::NullHandle;
+        RHI::BufferHandle m_instanceBuffer = RHI::NullHandle;
         /// 图元渲染管线
-        rhi::PipelineHandle m_meshPipeline = rhi::NullHandle;
+        RHI::PipelineHandle m_meshPipeline = RHI::NullHandle;
         /// 线框渲染管线
-        rhi::PipelineHandle m_wireframePipeline = rhi::NullHandle;
+        RHI::PipelineHandle m_wireframePipeline = RHI::NullHandle;
         /// 高亮渲染管线
-        rhi::PipelineHandle m_highlightPipeline = rhi::NullHandle;
+        RHI::PipelineHandle m_highlightPipeline = RHI::NullHandle;
         /// 网格缓冲区是否需要上传
         bool m_meshBufferDirty = false;
         /// 实例缓冲区是否需要上传
@@ -218,21 +218,21 @@ namespace render::core
          *
          * @param device RHI设备指针
          */
-        void buildPipelines(rhi::IDevice* device);
+        void buildPipelines(RHI::IDevice* device);
 
         /**
          * @brief 上传网格缓冲区
          *
          * @param device RHI设备指针
          */
-        void uploadMeshBuffers(rhi::IDevice* device);
+        void uploadMeshBuffers(RHI::IDevice* device);
 
         /**
          * @brief 上传实例缓冲区
          *
          * @param device RHI设备指针
          */
-        void uploadInstanceBuffer(rhi::IDevice* device);
+        void uploadInstanceBuffer(RHI::IDevice* device);
     };
 
 }  // namespace render::core

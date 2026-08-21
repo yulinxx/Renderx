@@ -1,5 +1,5 @@
-/**
- * @file batch_queue.h
+﻿/**
+ * @file batchqueue.h
  * @brief 批量绘制队列类定义
  *
  * BatchQueue 负责将可见图元按图元类型和材质分组，使用间接绘制（glDrawArraysIndirect）
@@ -10,14 +10,15 @@
  */
 #pragma once
 
-#include "render/render_types.h"
-#include "rhi/rhi_device.h"
-#include "render_world.h"
+#include "render/RenderTypes.h"
+#include "rhi/rhiDevice.h"
+#include "renderWorld.h"
+
 #include <vector>
 #include <cstdint>
 #include <algorithm>
 
-namespace render
+namespace Render
 {
     namespace core
     {
@@ -43,7 +44,7 @@ namespace render
              * @param device RHI设备指针
              * @return true 初始化成功，false 初始化失败
              */
-            bool initialize(rhi::IDevice* device);
+            bool initialize(RHI::IDevice* device);
 
             /**
              * @brief 关闭并释放所有资源
@@ -73,12 +74,12 @@ namespace render
              * @param world      渲染世界引用（用于获取顶点数据）
              */
             void render(
-                rhi::IDevice* device, CommandEncoder* encoder, const float viewMatrix[9], const RenderWorld& world);
+                RHI::IDevice* device, CommandEncoder* encoder, const float viewMatrix[9], const RenderWorld& world);
 
             /**
              * @brief 获取 world2D 顶点缓冲区句柄
              */
-            rhi::BufferHandle getVertexBuffer() const
+            RHI::BufferHandle getVertexBuffer() const
             {
                 return m_vertexBuffer;
             }
@@ -86,7 +87,7 @@ namespace render
             /**
              * @brief 获取间接命令缓冲区句柄
              */
-            rhi::BufferHandle getIndirectBuffer() const
+            RHI::BufferHandle getIndirectBuffer() const
             {
                 return m_indirectBuffer;
             }
@@ -125,11 +126,11 @@ namespace render
             std::vector<DirtyRange> m_dirtyRanges;
 
             /// RHI设备指针
-            rhi::IDevice* m_device = nullptr;
+            RHI::IDevice* m_device = nullptr;
             /// 间接命令缓冲区
-            rhi::BufferHandle m_indirectBuffer = rhi::NullHandle;
+            RHI::BufferHandle m_indirectBuffer = RHI::NullHandle;
             /// 顶点缓冲区（存储2D图元顶点数据）
-            rhi::BufferHandle m_vertexBuffer = rhi::NullHandle;
+            RHI::BufferHandle m_vertexBuffer = RHI::NullHandle;
             /// 顶点缓冲区容量
             uint32_t m_vertexBufferCapacity = 0;
             /// 间接缓冲区容量

@@ -1,5 +1,5 @@
 /**
- * @file tess_params.h
+ * @file TessParams.h
  * @brief 共享的 tessellation（离散化）参数与算法
  *
  * 全量提交路径（render_c_api_frame.cpp 的 tessellate* 函数）与
@@ -13,7 +13,7 @@
  */
 #pragma once
 
-namespace render
+namespace Render
 {
     namespace tess
     {
@@ -74,4 +74,4 @@ namespace render
             return segs;
         }
     }  // namespace tess
-}  // namespace render
+}  // namespace Render

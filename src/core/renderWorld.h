@@ -13,15 +13,15 @@
  */
 #pragma once
 
-#include "render/render_types.h"
-#include "../core/slot_map.h"
+#include "render/RenderTypes.h"
+#include "../core/slotMap.h"
 #include "../core/arena.h"
 #include <vector>
 #include <unordered_map>
 #include <cstdint>
 #include <cmath>
 
-namespace render
+namespace Render
 {
     namespace core
     {

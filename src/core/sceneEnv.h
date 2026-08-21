@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file scene_env.h
  * @brief 场景环境渲染类定义
  *
@@ -12,12 +12,12 @@
  */
 #pragma once
 
-#include "render/render_types.h"
-#include "../rhi/rhi_device.h"
+#include "render/RenderTypes.h"
+#include "../rhi/rhiDevice.h"
 #include <vector>
 #include <cstdint>
 
-namespace render::core
+namespace Render::core
 {
 
     /**
@@ -34,7 +34,7 @@ namespace render::core
          * @param device RHI设备指针
          * @return 初始化是否成功
          */
-        bool initialize(rhi::IDevice* device);
+        bool initialize(RHI::IDevice* device);
 
         /**
          * @brief 关闭并释放所有资源
@@ -81,7 +81,7 @@ namespace render::core
          * @param device RHI设备指针
          * @param viewMatrix 3x3视图矩阵
          */
-        void render(rhi::IDevice* device, const float viewMatrix[9]);
+        void render(RHI::IDevice* device, const float viewMatrix[9]);
 
         /**
          * @brief 渲染场景环境（完整版本，支持像素坐标）
@@ -91,7 +91,7 @@ namespace render::core
          * @param viewportWidth 视口宽度（像素）
          * @param viewportHeight 视口高度（像素）
          */
-        void render(rhi::IDevice* device, const float viewMatrix[9], uint32_t viewportWidth, uint32_t viewportHeight);
+        void render(RHI::IDevice* device, const float viewMatrix[9], uint32_t viewportWidth, uint32_t viewportHeight);
 
     private:
         /**
@@ -116,13 +116,13 @@ namespace render::core
         std::vector<EnvLayer> m_layers;
 
         /// RHI设备指针
-        rhi::IDevice* m_device = nullptr;
+        RHI::IDevice* m_device = nullptr;
         /// 顶点缓冲区
-        rhi::BufferHandle m_vertexBuffer = rhi::NullHandle;
+        RHI::BufferHandle m_vertexBuffer = RHI::NullHandle;
         /// 线渲染管线
-        rhi::PipelineHandle m_linePipeline = rhi::NullHandle;
+        RHI::PipelineHandle m_linePipeline = RHI::NullHandle;
         /// 三角形渲染管线
-        rhi::PipelineHandle m_trianglePipeline = rhi::NullHandle;
+        RHI::PipelineHandle m_trianglePipeline = RHI::NullHandle;
 
         /// 是否有脏数据需要上传
         bool m_dirty = true;

@@ -1,4 +1,4 @@
-# SanYiRender Library (SanYiRender.dll)
+# RenderX Library (RenderX.dll)
 
 工业级 2D/3D 渲染库，为 SanYi CAD 项目提供高性能的渲染解决方案。
 
@@ -14,7 +14,7 @@
 
 ## 功能描述
 
-SanYiRender 是一个面向 CAD 应用的专业渲染库，核心功能包括：
+RenderX 是一个面向 CAD 应用的专业渲染库，核心功能包括：
 
 - **2D 渲染管线**：支持点、线、折线、多边形等基本图元的高效渲染，采用间接绘制（Indirect Draw）减少 CPU-GPU 通信开销
 - **3D 网格渲染**：支持 3D 网格注册、实例化渲染、GPU 视锥剔除，适用于 CAD 模型可视化
@@ -31,7 +31,7 @@ SanYiRender 是一个面向 CAD 应用的专业渲染库，核心功能包括：
 
 ```c
 #include "render/render.h"
-#include "render/render_types.h"
+#include "render/RenderTypes.h"
 
 // 1. 准备设备描述
 DeviceDesc desc;
@@ -179,12 +179,12 @@ renderUpdateMaterial(dev, matIdx, &newMatDesc);
 
 ## 设计框架
 
-SanYiRender 采用分层架构设计，各模块职责清晰、松耦合：
+RenderX 采用分层架构设计，各模块职责清晰、松耦合：
 
 ```
 ┌─────────────────────────────────────────────────────────┐
 │                    C API Facade                          │
-│            (render.h / render_types.h)                  │
+│            (render.h / RenderTypes.h)                  │
 ├─────────────────────────────────────────────────────────┤
 │                    RenderDevice                          │
 ├──────────────┬──────────────┬───────────────────────────┤
@@ -205,7 +205,7 @@ SanYiRender 采用分层架构设计，各模块职责清晰、松耦合：
 
 ### C API Facade
 
-**文件**：`include/render/render.h`、`include/render/render_types.h`
+**文件**：`include/render/render.h`、`include/render/RenderTypes.h`
 
 对外暴露的 C 接口层，所有接口使用 C 语言调用约定（`extern "C"`），便于跨语言绑定和动态库调用。API 导出宏 `RENDER_API` 支持 Windows（`__declspec(dllexport/dllimport)`）和 Linux/macOS（`__attribute__((visibility))`）。
 
@@ -246,7 +246,7 @@ Phase 3 引入的统一命令收集与排序组件：
 
 ### 批量队列 (BatchQueue)
 
-**文件**：`src/core/batch_queue.h` / `src/core/batch_queue.cpp`
+**文件**：`src/core/batchqueue.h` / `src/core/batch_queue.cpp`
 
 2D 图元的批量绘制管理：
 
@@ -380,16 +380,16 @@ void main()
 
 | 文件 | 修改内容 |
 |------|----------|
-| `src/c_api/render_c_api_internal.h` | 添加 `double cameraCenter[2]` 到 RenderDevice |
+| `src/c_api/rendercapiinternal.h` | 添加 `double cameraCenter[2]` 到 RenderDevice |
 | `include/render/render.h` | 声明 `renderSetCameraCenter()` API |
 | `src/c_api/render_c_api_frame.cpp` | 实现 `renderSetCameraCenter()`；`tessellatePolyline`/`tessellateCircle`/`tessellateArc`/`tessellateEllipse` 增加 `cameraCenter` 参数，double 精度减法后再转 float |
 | `src/shader/scene_2d.vert` | 添加 `uCameraCenter` uniform，相机相对变换 |
 | `src/core/command_encoder.h/.cpp` | `execute()` 增加相机中心参数，World2D 使用纯缩放矩阵 |
 | `src/core/scene_env.cpp` | 设置 `uCameraCenter = (0,0)`；修复 `asTriangles` 自动推断逻辑（`triangleFlags=null` 时默认 `false`，不再按 `vertexCount%3==0` 误判） |
-| `src/rhi/rhi_gl.cpp` | 移除全局 `GL_LINE_SMOOTH`（与 MSAA 冲突导致线条消失）；`setLineWidth()` 增加范围钳制（查询 `GL_LINE_WIDTH_RANGE`） |
+| `src/rhi/rhigl.cpp` | 移除全局 `GL_LINE_SMOOTH`（与 MSAA 冲突导致线条消失）；`setLineWidth()` 增加范围钳制（查询 `GL_LINE_WIDTH_RANGE`） |
 | `src/rhi/rhi_gl.h` | 添加 `m_minLineWidth`/`m_maxLineWidth` 成员 |
 | `src/platform/gl_loader.h` | 添加 `GetFloatv`/`Hint` 函数指针；添加 `GL_LINE_WIDTH_RANGE`/`GL_ALIASED_LINE_WIDTH_RANGE`/`GL_NICEST`/`GL_LINE_SMOOTH_HINT` 常量 |
-| `src/platform/gl_loader.cpp` | 初始化 `GetFloatv`/`Hint` 函数指针 |
+| `src/platform/glloader.cpp` | 初始化 `GetFloatv`/`Hint` 函数指针 |
 | `UI/.../RenderWidget.cpp` | `setViewMatrix()` 和 `initializeGL()` 中调用 `renderSetCameraCenter()`；macOS 显式请求 GL 4.1 CoreProfile（原先请求 4.6 被静默降级）；`setSceneCommands()` 使用 `RenderCommand::primitiveType` 替代硬编码 `LineList` |
 | `UI/Common/Include/Render/RenderTypes.h` | 添加 `RenderPrimitiveType` 枚举和 `RenderCommand::primitiveType` 字段（默认 `LineStrip`） |
 
@@ -606,7 +606,7 @@ find_package(OpenGL REQUIRED)
 
 ```cmake
 cmake_minimum_required(VERSION 4.3)
-project(SanYiRender VERSION 2.0.0 LANGUAGES CXX)
+project(RenderX VERSION 2.0.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -633,7 +633,7 @@ option(BUILD_SHARED_LIBS "Build shared libraries" ON)
 
 ### Shader 文件复制
 
-构建完成后，CMake 自动将所有 Shader 文件复制到输出目录（`$<TARGET_FILE_DIR:SanYiRender>/`），共 15 个文件：
+构建完成后，CMake 自动将所有 Shader 文件复制到输出目录（`$<TARGET_FILE_DIR:RenderX>/`），共 15 个文件：
 
 | 类别 | 文件名 |
 |------|--------|

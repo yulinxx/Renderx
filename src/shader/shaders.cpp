@@ -14,7 +14,7 @@
 #include <sstream>
 #include "Log/SyLogger.h"
 
-namespace render
+namespace Render
 {
     namespace shader
     {
@@ -117,4 +117,4 @@ namespace render
             CULLING_COMP = cullingCompSource.empty() ? "" : cullingCompSource.c_str();
         }
     }  // namespace shader
-}  // namespace render
+}  // namespace Render

@@ -1,5 +1,5 @@
-/**
- * @file render_graph.h
+﻿/**
+ * @file RenderGraph.h
  * @brief 显式 Pass 调度层定义
  *
  * Phase 4 引入的核心组件，负责将渲染流程从"隐式调用顺序"升级为
@@ -23,13 +23,13 @@
  */
 #pragma once
 
-#include "rhi/rhi_device.h"
+#include "rhi/rhiDevice.h"
 #include <vector>
 #include <string>
 #include <functional>
 #include <cstdint>
 
-namespace render
+namespace Render
 {
     namespace core
     {
@@ -97,10 +97,10 @@ namespace render
             bool enabled = true;         // 是否启用
 
             // 状态设置回调（可选）：设置清屏颜色、深度测试、混合等
-            std::function<void(rhi::IDevice*)> onSetup;
+            std::function<void(RHI::IDevice*)> onSetup;
 
             // 执行回调（必须）：实际渲染逻辑
-            std::function<void(rhi::IDevice*)> onExecute;
+            std::function<void(RHI::IDevice*)> onExecute;
 
             // 输入资源声明（读访问）
             std::vector<PassResourceSlot> inputs;
@@ -139,7 +139,7 @@ namespace render
              * @param device RHI 设备指针
              * @return true 初始化成功，false 初始化失败
              */
-            bool initialize(rhi::IDevice* device);
+            bool initialize(RHI::IDevice* device);
 
             /**
              * @brief 关闭并释放资源
@@ -165,7 +165,7 @@ namespace render
              *   3. 再调用 onExecute
              *   4. 记录执行统计
              */
-            void execute(rhi::IDevice* device);
+            void execute(RHI::IDevice* device);
 
             /**
              * @brief 获取 Pass 数量
@@ -211,7 +211,7 @@ namespace render
             };
 
             std::vector<PassEntry> m_passes;
-            rhi::IDevice* m_device = nullptr;
+            RHI::IDevice* m_device = nullptr;
             bool m_initialized = false;
             uint32_t m_lastExecutedCount = 0;
         };

@@ -1,5 +1,5 @@
 /**
- * @file render_graph.cpp
+ * @file renderGraph.cpp
  * @brief 显式 Pass 顺序执行器实现
  *
  * Phase 4 引入的核心组件，负责将渲染流程从"隐式调用顺序"升级为
@@ -8,17 +8,17 @@
  * 当前定位（Phase 4）：线性顺序执行器（Linear Pass Scheduler）
  * 不执行依赖分析、拓扑排序或自动屏障插入。
  */
-#include "render_graph.h"
+#include "renderGraph.h"
 #include "Log/SyLogger.h"
 
-namespace render
+namespace Render
 {
     namespace core
     {
         RenderGraph::RenderGraph() = default;
         RenderGraph::~RenderGraph() = default;
 
-        bool RenderGraph::initialize(rhi::IDevice* device)
+        bool RenderGraph::initialize(RHI::IDevice* device)
         {
             if (m_initialized)
             {
@@ -73,7 +73,7 @@ namespace render
             // SY_DEBUGF("RenderGraph::clear: all passes removed");
         }
 
-        void RenderGraph::execute(rhi::IDevice* device)
+        void RenderGraph::execute(RHI::IDevice* device)
         {
             if (!m_initialized || !device)
             {
@@ -185,4 +185,4 @@ namespace render
             }
         }
     }  // namespace core
-}  // namespace render
+}  // namespace Render

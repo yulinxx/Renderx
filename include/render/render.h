@@ -16,7 +16,7 @@
  */
 #pragma once
 
-#include "render_types.h"
+#include "RenderTypes.h"
 #include <cstdint>
 
 /// API 导出宏定义，支持 Windows 和 Linux/macOS 平台
@@ -38,7 +38,7 @@
     #endif
 #endif
 
-namespace render
+namespace Render
 {
     /**
      * @brief 渲染统计信息结构
@@ -687,4 +687,4 @@ namespace render
         RENDER_API bool renderCaptureFrame(
             RenderDevice* dev, uint32_t width, uint32_t height, void* rgba8, uint32_t* outRowPitch);
     }
-}  // namespace render
+}  // namespace Render

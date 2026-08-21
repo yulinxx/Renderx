@@ -13,12 +13,12 @@
  * SY_INFOF 级别的冗余信息已移除以减少每帧性能开销。
  * 警告和错误仍通过 SY_WARNF/SY_ERRORF 输出。
  */
-#include "render_c_api_internal.h"
-#include "rhi/rhi_gl.h"
+#include "rendercapiinternal.h"
+#include "rhi/rhiGl.h"
 
-#include <render/tess_params.h>
+#include "render/TessParams.h"
 
-using namespace render;
+using namespace Render;
 
 // ============================================================================
 // GPU 剔除辅助函数
@@ -48,7 +48,7 @@ static void syncWorldToPersistentManager(RenderDevice* dev)
             continue;
         }
 
-        render::core::PersistentEntity pe{};
+        Render::core::PersistentEntity pe{};
         pe.id = static_cast<uint32_t>(e.entityId);
         pe.bboxMin[0] = e.bbox[0];
         pe.bboxMin[1] = e.bbox[1];
@@ -191,7 +191,7 @@ static uint32_t readBackGpuVisibility(RenderDevice* dev, uint32_t* outIndices, u
  * @param cameraCenter 相机中心（世界坐标 double[2]），用于精度优化
  */
 static void tessellatePolyline(
-    const GeometryPolyline* polyline, std::vector<render::VertexP3C3>& outVertices, const double cameraCenter[2])
+    const GeometryPolyline* polyline, std::vector<Render::VertexP3C3>& outVertices, const double cameraCenter[2])
 {
     if (!polyline || !polyline->points || polyline->pointCount < 2)
     {
@@ -230,7 +230,7 @@ static void tessellatePolyline(
  * @param cameraCenter 相机中心（世界坐标 double[2]），用于精度优化
  */
 static void tessellateCircle(
-    const GeometryCircle* circle, std::vector<render::VertexP3C3>& outVertices, const double cameraCenter[2])
+    const GeometryCircle* circle, std::vector<Render::VertexP3C3>& outVertices, const double cameraCenter[2])
 {
     if (!circle || circle->radius <= 0)
     {
@@ -238,7 +238,7 @@ static void tessellateCircle(
     }
 
     float cr = circle->color[0], cg = circle->color[1], cb = circle->color[2];
-    const int segments = render::tess::kCircleSegments;
+    const int segments = Render::tess::kCircleSegments;
     outVertices.reserve(segments);
     const double camX = cameraCenter[0];
     const double camY = cameraCenter[1];
@@ -249,7 +249,7 @@ static void tessellateCircle(
 
     for (int i = 0; i < segments; ++i)
     {
-        double angle = (2.0 * render::tess::kPi * i) / segments;
+        double angle = (2.0 * Render::tess::kPi * i) / segments;
         outVertices.push_back({ static_cast<float>(centerX + radius * std::cos(angle)),
             static_cast<float>(centerY + radius * std::sin(angle)),
             0.0f,
@@ -269,7 +269,7 @@ static void tessellateCircle(
  * @param cameraCenter 相机中心（世界坐标 double[2]），用于精度优化
  */
 static void tessellateArc(
-    const GeometryArc* arc, std::vector<render::VertexP3C3>& outVertices, const double cameraCenter[2])
+    const GeometryArc* arc, std::vector<Render::VertexP3C3>& outVertices, const double cameraCenter[2])
 {
     if (!arc || arc->radius <= 0)
     {
@@ -281,11 +281,11 @@ static void tessellateArc(
     double end = arc->endAngle;
     if (end < start)
     {
-        end += 2.0 * render::tess::kPi;
+        end += 2.0 * Render::tess::kPi;
     }
 
     double angleRange = end - start;
-    int segments = render::tess::arcSegments(angleRange);
+    int segments = Render::tess::arcSegments(angleRange);
 
     outVertices.reserve(segments);
     const double camX = cameraCenter[0];
@@ -318,7 +318,7 @@ static void tessellateArc(
  * @param cameraCenter 相机中心（世界坐标 double[2]），用于精度优化
  */
 static void tessellateEllipse(
-    const GeometryEllipse* ellipse, std::vector<render::VertexP3C3>& outVertices, const double cameraCenter[2])
+    const GeometryEllipse* ellipse, std::vector<Render::VertexP3C3>& outVertices, const double cameraCenter[2])
 {
     if (!ellipse || ellipse->radiusX <= 0 || ellipse->radiusY <= 0)
     {
@@ -326,7 +326,7 @@ static void tessellateEllipse(
     }
 
     // 统一离散化基准段数：64（完整椭圆）
-    const int segments = render::tess::kCircleSegments;
+    const int segments = Render::tess::kCircleSegments;
     outVertices.reserve(segments);
 
     double start = ellipse->startAngle;
@@ -334,17 +334,17 @@ static void tessellateEllipse(
     if (ellipse->fullEllipse || (start == 0.0 && end == 0.0))
     {
         start = 0.0;
-        end = 2.0 * render::tess::kPi;
+        end = 2.0 * Render::tess::kPi;
     }
     // 椭圆弧角度归一化：end < start 时跨 2π，与增量路径一致
     if (end < start)
     {
-        end += 2.0 * render::tess::kPi;
+        end += 2.0 * Render::tess::kPi;
     }
 
     double angleRange = end - start;
     // 统一离散化段数：完整椭圆 64，椭圆弧按角度比例缩放
-    int actualSegments = render::tess::ellipseSegments(angleRange);
+    int actualSegments = Render::tess::ellipseSegments(angleRange);
 
     const double camX = cameraCenter[0];
     const double camY = cameraCenter[1];
@@ -410,12 +410,12 @@ static void renderSubmitGeometryImpl(RenderDevice* dev, const GeometryPrimitive*
         {
             return;
         }
-        std::vector<render::VertexP3C3> vertices;
+        std::vector<Render::VertexP3C3> vertices;
         tessellatePolyline(primitive->desc.polyline, vertices, dev->cameraCenter);
         if (!vertices.empty())
         {
-            render::PrimitiveType type =
-                primitive->desc.polyline->closed ? render::PrimitiveType::LineLoop : render::PrimitiveType::LineStrip;
+            Render::PrimitiveType type =
+                primitive->desc.polyline->closed ? Render::PrimitiveType::LineLoop : Render::PrimitiveType::LineStrip;
             EntityId eid = resolveEntityId(dev, primitive->entityId);
             dev->world2D.addEntity(eid, vertices.data(), static_cast<uint32_t>(vertices.size()), type, 0);
         }
@@ -427,13 +427,13 @@ static void renderSubmitGeometryImpl(RenderDevice* dev, const GeometryPrimitive*
         {
             return;
         }
-        std::vector<render::VertexP3C3> vertices;
+        std::vector<Render::VertexP3C3> vertices;
         tessellateCircle(primitive->desc.circle, vertices, dev->cameraCenter);
         if (!vertices.empty())
         {
             EntityId eid = resolveEntityId(dev, primitive->entityId);
             dev->world2D.addEntity(
-                eid, vertices.data(), static_cast<uint32_t>(vertices.size()), render::PrimitiveType::LineLoop, 0);
+                eid, vertices.data(), static_cast<uint32_t>(vertices.size()), Render::PrimitiveType::LineLoop, 0);
         }
         break;
     }
@@ -443,13 +443,13 @@ static void renderSubmitGeometryImpl(RenderDevice* dev, const GeometryPrimitive*
         {
             return;
         }
-        std::vector<render::VertexP3C3> vertices;
+        std::vector<Render::VertexP3C3> vertices;
         tessellateArc(primitive->desc.arc, vertices, dev->cameraCenter);
         if (!vertices.empty())
         {
             EntityId eid = resolveEntityId(dev, primitive->entityId);
             dev->world2D.addEntity(
-                eid, vertices.data(), static_cast<uint32_t>(vertices.size()), render::PrimitiveType::LineStrip, 0);
+                eid, vertices.data(), static_cast<uint32_t>(vertices.size()), Render::PrimitiveType::LineStrip, 0);
         }
         break;
     }
@@ -459,12 +459,12 @@ static void renderSubmitGeometryImpl(RenderDevice* dev, const GeometryPrimitive*
         {
             return;
         }
-        std::vector<render::VertexP3C3> vertices;
+        std::vector<Render::VertexP3C3> vertices;
         tessellateEllipse(primitive->desc.ellipse, vertices, dev->cameraCenter);
         if (!vertices.empty())
         {
-            render::PrimitiveType type = primitive->desc.ellipse->fullEllipse ? render::PrimitiveType::LineLoop
-                                                                              : render::PrimitiveType::LineStrip;
+            Render::PrimitiveType type = primitive->desc.ellipse->fullEllipse ? Render::PrimitiveType::LineLoop
+                                                                              : Render::PrimitiveType::LineStrip;
             EntityId eid = resolveEntityId(dev, primitive->entityId);
             dev->world2D.addEntity(eid, vertices.data(), static_cast<uint32_t>(vertices.size()), type, 0);
         }
@@ -477,9 +477,9 @@ static void renderSubmitGeometryImpl(RenderDevice* dev, const GeometryPrimitive*
             return;
         }
         const GeometryImage* image = primitive->desc.image;
-        std::vector<render::VertexP3C3> vertices;
+        std::vector<Render::VertexP3C3> vertices;
         vertices.reserve(5);
-        render::VertexP3C3 v;
+        Render::VertexP3C3 v;
         v.cr = image->color[0];
         v.cg = image->color[1];
         v.cb = image->color[2];
@@ -501,7 +501,7 @@ static void renderSubmitGeometryImpl(RenderDevice* dev, const GeometryPrimitive*
         vertices.push_back(v);
         EntityId eid = resolveEntityId(dev, primitive->entityId);
         dev->world2D.addEntity(
-            eid, vertices.data(), static_cast<uint32_t>(vertices.size()), render::PrimitiveType::LineStrip, 0);
+            eid, vertices.data(), static_cast<uint32_t>(vertices.size()), Render::PrimitiveType::LineStrip, 0);
         break;
     }
     // ---- 文本缓存路径 ----
@@ -683,7 +683,7 @@ extern "C"
                 core::PassDesc pass;
                 pass.name = "FrameSetup";
                 pass.enabled = true;
-                pass.onSetup = [dev](rhi::IDevice* d) {
+                pass.onSetup = [dev](RHI::IDevice* d) {
                     d->setClearColor(dev->clearColor[0], dev->clearColor[1], dev->clearColor[2], dev->clearColor[3]);
                     d->enableDepthTest(false);
                     d->enableBlend(true);
@@ -700,7 +700,7 @@ extern "C"
                 core::PassDesc pass;
                 pass.name = "SceneEnv";
                 pass.enabled = true;
-                pass.onExecute = [dev](rhi::IDevice* d) {
+                pass.onExecute = [dev](RHI::IDevice* d) {
                     dev->sceneEnv.render(d,
                         dev->view2D.viewMatrix,
                         static_cast<uint32_t>(dev->view2D.viewWidth),
@@ -719,7 +719,7 @@ extern "C"
                 core::PassDesc pass;
                 pass.name = "Bitmap";
                 pass.enabled = true;
-                pass.onExecute = [dev](rhi::IDevice* d) {
+                pass.onExecute = [dev](RHI::IDevice* d) {
                     if (!dev->bitmapRenderer.hasBitmap())
                     {
                         return;
@@ -741,7 +741,7 @@ extern "C"
                 core::PassDesc pass;
                 pass.name = "World2DCollect";
                 pass.enabled = true;
-                pass.onExecute = [dev](rhi::IDevice* d) {
+                pass.onExecute = [dev](RHI::IDevice* d) {
                     dev->batchQueue.render(d, &dev->commandEncoder, dev->view2D.viewMatrix, dev->world2D);
                 };
                 pass.inputs.push_back(
@@ -757,7 +757,7 @@ extern "C"
                 core::PassDesc pass;
                 pass.name = "OverlayCollect";
                 pass.enabled = true;
-                pass.onExecute = [dev](rhi::IDevice* d) {
+                pass.onExecute = [dev](RHI::IDevice* d) {
                     dev->overlayQueue.render(d, &dev->commandEncoder, dev->view2D.viewMatrix);
                 };
                 pass.inputs.push_back(
@@ -771,7 +771,7 @@ extern "C"
                 core::PassDesc pass;
                 pass.name = "CommandExecute";
                 pass.enabled = true;
-                pass.onExecute = [dev](rhi::IDevice* d) {
+                pass.onExecute = [dev](RHI::IDevice* d) {
                     const float camCenterF[2] = { static_cast<float>(dev->cameraCenter[0]),
                         static_cast<float>(dev->cameraCenter[1]) };
                     dev->commandEncoder.execute(d,
@@ -801,7 +801,7 @@ extern "C"
                 core::PassDesc pass;
                 pass.name = "Text";
                 pass.enabled = true;
-                pass.onExecute = [dev](rhi::IDevice* d) {
+                pass.onExecute = [dev](RHI::IDevice* d) {
                     if (dev->pendingTextItems.empty())
                     {
                         return;
@@ -836,7 +836,7 @@ extern "C"
                 core::PassDesc pass;
                 pass.name = "FrameSetup3D";
                 pass.enabled = true;
-                pass.onSetup = [](rhi::IDevice* d) {
+                pass.onSetup = [](RHI::IDevice* d) {
                     d->setClearColor(0.12f, 0.14f, 0.20f, 1.0f);
                     d->enableDepthTest(true);
                     d->enableBlend(true);
@@ -854,7 +854,7 @@ extern "C"
                 core::PassDesc pass;
                 pass.name = "Mesh3D";
                 pass.enabled = true;
-                pass.onExecute = [dev](rhi::IDevice* d) {
+                pass.onExecute = [dev](RHI::IDevice* d) {
                     if (dev->meshManager.getInstanceCount() == 0)
                     {
                         return;

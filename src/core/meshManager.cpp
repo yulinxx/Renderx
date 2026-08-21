@@ -1,10 +1,10 @@
-#include "mesh_manager.h"
+#include "meshManager.h"
 #include "shader/shaders.h"
 #include <cstring>
 #include <algorithm>
 #include <cmath>
 
-namespace render
+namespace Render
 {
     namespace core
     {
@@ -30,7 +30,7 @@ namespace render
             }
         }  // namespace
 
-        bool MeshManager::initialize(rhi::IDevice* device)
+        bool MeshManager::initialize(RHI::IDevice* device)
         {
             if (!device)
             {
@@ -51,123 +51,123 @@ namespace render
             m_visibleInstances.clear();
             m_meshes.clear();
 
-            if (m_positionBuffer != rhi::NullHandle)
+            if (m_positionBuffer != RHI::NullHandle)
             {
                 m_device->destroyBuffer(m_positionBuffer);
-                m_positionBuffer = rhi::NullHandle;
+                m_positionBuffer = RHI::NullHandle;
             }
-            if (m_indexBuffer != rhi::NullHandle)
+            if (m_indexBuffer != RHI::NullHandle)
             {
                 m_device->destroyBuffer(m_indexBuffer);
-                m_indexBuffer = rhi::NullHandle;
+                m_indexBuffer = RHI::NullHandle;
             }
-            if (m_instanceBuffer != rhi::NullHandle)
+            if (m_instanceBuffer != RHI::NullHandle)
             {
                 m_device->destroyBuffer(m_instanceBuffer);
-                m_instanceBuffer = rhi::NullHandle;
+                m_instanceBuffer = RHI::NullHandle;
             }
-            if (m_meshPipeline != rhi::NullHandle)
+            if (m_meshPipeline != RHI::NullHandle)
             {
                 m_device->destroyPipeline(m_meshPipeline);
-                m_meshPipeline = rhi::NullHandle;
+                m_meshPipeline = RHI::NullHandle;
             }
-            if (m_wireframePipeline != rhi::NullHandle)
+            if (m_wireframePipeline != RHI::NullHandle)
             {
                 m_device->destroyPipeline(m_wireframePipeline);
-                m_wireframePipeline = rhi::NullHandle;
+                m_wireframePipeline = RHI::NullHandle;
             }
-            if (m_highlightPipeline != rhi::NullHandle)
+            if (m_highlightPipeline != RHI::NullHandle)
             {
                 m_device->destroyPipeline(m_highlightPipeline);
-                m_highlightPipeline = rhi::NullHandle;
+                m_highlightPipeline = RHI::NullHandle;
             }
 
             m_device = nullptr;
             m_instanceBufferCapacity = 0;
         }
 
-        void MeshManager::buildPipelines(rhi::IDevice* device)
+        void MeshManager::buildPipelines(RHI::IDevice* device)
         {
             {
-                rhi::PipelineDesc desc;
-                desc.topology = rhi::PrimitiveTopology::TriangleList;
+                RHI::PipelineDesc desc;
+                desc.topology = RHI::PrimitiveTopology::TriangleList;
                 desc.vertexShader = shader::MESH_3D_INSTANCED_VERT;
                 desc.fragmentShader = shader::MESH_3D_FRAG;
                 desc.computeShader = nullptr;
-                desc.vertexFormat = rhi::VertexFormat::P3N3;
+                desc.vertexFormat = RHI::VertexFormat::P3N3;
                 desc.depthTest = true;
                 desc.depthWrite = true;
                 desc.blendEnable = false;
-                desc.srcBlend = rhi::BlendFactor::One;
-                desc.dstBlend = rhi::BlendFactor::Zero;
-                desc.depthFunc = rhi::CompareFunc::LessEqual;
+                desc.srcBlend = RHI::BlendFactor::One;
+                desc.dstBlend = RHI::BlendFactor::Zero;
+                desc.depthFunc = RHI::CompareFunc::LessEqual;
                 m_meshPipeline = device->createPipeline(desc);
             }
 
             {
-                rhi::PipelineDesc desc;
-                desc.topology = rhi::PrimitiveTopology::TriangleList;
+                RHI::PipelineDesc desc;
+                desc.topology = RHI::PrimitiveTopology::TriangleList;
                 desc.vertexShader = shader::MESH_3D_INSTANCED_VERT;
                 desc.fragmentShader = shader::MESH_3D_FRAG;
                 desc.computeShader = nullptr;
-                desc.vertexFormat = rhi::VertexFormat::P3N3;
+                desc.vertexFormat = RHI::VertexFormat::P3N3;
                 desc.depthTest = true;
                 desc.depthWrite = true;
                 desc.blendEnable = false;
-                desc.srcBlend = rhi::BlendFactor::One;
-                desc.dstBlend = rhi::BlendFactor::Zero;
-                desc.depthFunc = rhi::CompareFunc::LessEqual;
+                desc.srcBlend = RHI::BlendFactor::One;
+                desc.dstBlend = RHI::BlendFactor::Zero;
+                desc.depthFunc = RHI::CompareFunc::LessEqual;
                 m_wireframePipeline = device->createPipeline(desc);
             }
 
             {
-                rhi::PipelineDesc desc;
-                desc.topology = rhi::PrimitiveTopology::TriangleList;
+                RHI::PipelineDesc desc;
+                desc.topology = RHI::PrimitiveTopology::TriangleList;
                 desc.vertexShader = shader::HIGHLIGHT_3D_VERT;
                 desc.fragmentShader = shader::HIGHLIGHT_3D_FRAG;
                 desc.computeShader = nullptr;
-                desc.vertexFormat = rhi::VertexFormat::P3N3;
+                desc.vertexFormat = RHI::VertexFormat::P3N3;
                 desc.depthTest = true;
                 desc.depthWrite = false;
                 desc.blendEnable = true;
-                desc.srcBlend = rhi::BlendFactor::SrcAlpha;
-                desc.dstBlend = rhi::BlendFactor::OneMinusSrcAlpha;
-                desc.depthFunc = rhi::CompareFunc::LessEqual;
+                desc.srcBlend = RHI::BlendFactor::SrcAlpha;
+                desc.dstBlend = RHI::BlendFactor::OneMinusSrcAlpha;
+                desc.depthFunc = RHI::CompareFunc::LessEqual;
                 m_highlightPipeline = device->createPipeline(desc);
             }
         }
 
-        void MeshManager::uploadMeshBuffers(rhi::IDevice* device)
+        void MeshManager::uploadMeshBuffers(RHI::IDevice* device)
         {
             if (m_positions.empty() && m_indices.empty())
             {
                 return;
             }
 
-            if (m_positionBuffer != rhi::NullHandle)
+            if (m_positionBuffer != RHI::NullHandle)
             {
                 device->destroyBuffer(m_positionBuffer);
             }
-            if (m_indexBuffer != rhi::NullHandle)
+            if (m_indexBuffer != RHI::NullHandle)
             {
                 device->destroyBuffer(m_indexBuffer);
             }
 
             {
-                rhi::BufferDesc desc;
+                RHI::BufferDesc desc;
                 desc.size = m_positions.size() * sizeof(VertexP3N3);
-                desc.usage = rhi::BufferUsage::Vertex;
-                desc.memory = rhi::MemoryType::GPU_Only;
+                desc.usage = RHI::BufferUsage::Vertex;
+                desc.memory = RHI::MemoryType::GPU_Only;
                 desc.debugName = "MeshManager_PositionBuffer";
                 m_positionBuffer = device->createBuffer(desc);
                 device->uploadBuffer(m_positionBuffer, 0, m_positions.size() * sizeof(VertexP3N3), m_positions.data());
             }
 
             {
-                rhi::BufferDesc desc;
+                RHI::BufferDesc desc;
                 desc.size = m_indices.size() * sizeof(uint32_t);
-                desc.usage = rhi::BufferUsage::Index;
-                desc.memory = rhi::MemoryType::GPU_Only;
+                desc.usage = RHI::BufferUsage::Index;
+                desc.memory = RHI::MemoryType::GPU_Only;
                 desc.debugName = "MeshManager_IndexBuffer";
                 m_indexBuffer = device->createBuffer(desc);
                 device->uploadBuffer(m_indexBuffer, 0, m_indices.size() * sizeof(uint32_t), m_indices.data());
@@ -176,7 +176,7 @@ namespace render
             m_meshBufferDirty = false;
         }
 
-        void MeshManager::uploadInstanceBuffer(rhi::IDevice* device)
+        void MeshManager::uploadInstanceBuffer(RHI::IDevice* device)
         {
             if (m_instances.empty())
             {
@@ -184,16 +184,16 @@ namespace render
             }
 
             uint64_t requiredSize = m_instances.size() * sizeof(InstanceDesc);
-            if (m_instanceBuffer != rhi::NullHandle)
+            if (m_instanceBuffer != RHI::NullHandle)
             {
                 device->destroyBuffer(m_instanceBuffer);
-                m_instanceBuffer = rhi::NullHandle;
+                m_instanceBuffer = RHI::NullHandle;
             }
 
-            rhi::BufferDesc desc;
+            RHI::BufferDesc desc;
             desc.size = requiredSize;
-            desc.usage = rhi::BufferUsage::ShaderVisible;
-            desc.memory = rhi::MemoryType::GPU_Only;
+            desc.usage = RHI::BufferUsage::ShaderVisible;
+            desc.memory = RHI::MemoryType::GPU_Only;
             desc.debugName = "MeshManager_InstanceBuffer";
             m_instanceBuffer = device->createBuffer(desc);
 
@@ -482,7 +482,7 @@ namespace render
             }
         }
 
-        void MeshManager::render(rhi::IDevice* device, const float viewMatrix[16], const float projMatrix[16])
+        void MeshManager::render(RHI::IDevice* device, const float viewMatrix[16], const float projMatrix[16])
         {
             if (m_meshBufferDirty)
             {
@@ -548,9 +548,9 @@ namespace render
             {
                 uint32_t requiredSize = static_cast<uint32_t>(packedInstances.size() * sizeof(InstanceDesc));
 
-                if (m_instanceBuffer == rhi::NullHandle || m_instanceBufferCapacity < requiredSize)
+                if (m_instanceBuffer == RHI::NullHandle || m_instanceBufferCapacity < requiredSize)
                 {
-                    if (m_instanceBuffer != rhi::NullHandle)
+                    if (m_instanceBuffer != RHI::NullHandle)
                     {
                         device->destroyBuffer(m_instanceBuffer);
                     }
@@ -565,10 +565,10 @@ namespace render
                         m_instanceBufferCapacity *= 2;
                     }
 
-                    rhi::BufferDesc desc;
+                    RHI::BufferDesc desc;
                     desc.size = m_instanceBufferCapacity;
-                    desc.usage = rhi::BufferUsage::ShaderVisible;
-                    desc.memory = rhi::MemoryType::GPU_CPU_Coherent;
+                    desc.usage = RHI::BufferUsage::ShaderVisible;
+                    desc.memory = RHI::MemoryType::GPU_CPU_Coherent;
                     desc.debugName = "MeshManager_InstanceBuffer";
                     m_instanceBuffer = device->createBuffer(desc);
                 }
@@ -588,7 +588,7 @@ namespace render
             device->bindVertexBuffer(0, m_positionBuffer, 0);
             device->bindIndexBuffer(m_indexBuffer, 0);
 
-            if (m_instanceBuffer != rhi::NullHandle)
+            if (m_instanceBuffer != RHI::NullHandle)
             {
                 device->bindUniformBuffer(0, 0, m_instanceBuffer, 0, packedInstances.size() * sizeof(InstanceDesc));
             }
@@ -628,4 +628,4 @@ namespace render
             m_instanceBufferDirty = false;
         }
     }  // namespace core
-}  // namespace render
+}  // namespace Render

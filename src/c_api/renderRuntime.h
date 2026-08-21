@@ -1,5 +1,5 @@
 /**
- * @file render_runtime.h
+ * @file renderruntime.h
  * @brief RenderX 运行时（进程级共享资源）
  *
  * RenderRuntime 持有跨会话共享的资源：
@@ -16,13 +16,13 @@
 #pragma once
 
 #include "shader/shaders.h"
-#include "render/render_types.h"  // BackendType 定义
+#include "render/RenderTypes.h"  // BackendType 定义
 
 #include <cstdint>
 #include <memory>
 #include <mutex>
 
-namespace render
+namespace Render
 {
 
     /**
@@ -46,7 +46,7 @@ namespace render
          * @param backend 当前使用的后端类型
          * @return 初始化是否成功
          */
-        bool initialize(const std::string& shaderDir, render::BackendType backend);
+        bool initialize(const std::string& shaderDir, Render::BackendType backend);
 
         /**
          * @brief 关闭运行时，释放共享资源
@@ -64,7 +64,7 @@ namespace render
         /**
          * @brief 获取当前后端类型
          */
-        render::BackendType getBackend() const
+        Render::BackendType getBackend() const
         {
             return m_backend;
         }
@@ -76,7 +76,7 @@ namespace render
          * 取代 shader::initialize() 的全局静态变量模式。
          */
         std::string shaderDir;                                        ///< shader 文件目录
-        render::BackendType m_backend = render::BackendType::OpenGL;  ///< 当前后端
+        Render::BackendType m_backend = Render::BackendType::OpenGL;  ///< 当前后端
         bool m_initialized = false;
 
         // M1: RenderRuntime 使用 singleton + std::unique_ptr，需要公有析构

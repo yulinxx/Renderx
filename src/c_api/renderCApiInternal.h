@@ -1,5 +1,5 @@
-/**
- * @file render_c_api_internal.h
+﻿/**
+ * @file rendercapiinternal.h
  * @brief C API 内部共享头文件
  *
  * 提供 RenderDevice 结构体定义和公共 include，供所有拆分后的子文件共享。
@@ -12,32 +12,34 @@
 #pragma once
 
 #include "render/render.h"
-#include "render/render_types.h"
-#include "core/render_world.h"
-#include "core/batch_queue.h"
-#include "core/overlay_queue.h"
-#include "core/command_encoder.h"
-#include "core/render_graph.h"
-#include "core/pipeline_state_manager.h"
-#include "core/draw_batcher.h"
-#include "core/persistent_entity_manager.h"
-#include "core/mesh_manager.h"
-#include "core/render_world_3d.h"
-#include "core/text_atlas.h"
-#include "core/screen_text_renderer.h"
-#include "core/scene_env.h"
-#include "core/bitmap_renderer.h"
-#include "rhi/rhi_device.h"
-#include "rhi/rhi_gl.h"
-#include "rhi/rhi_null.h"
+#include "render/renderTypes.h"
+#include "core/renderWorld.h"
+#include "core/batchQueue.h"
+#include "core/overlayQueue.h"
+#include "core/commandEncoder.h"
+#include "core/renderGraph.h"
+#include "core/pipelineStateManager.h"
+#include "core/drawBatcher.h"
+#include "core/persistentEntityManager.h"
+#include "core/meshManager.h"
+#include "core/renderWorld3d.h"
+#include "core/textAtlas.h"
+#include "core/screenTextRenderer.h"
+#include "core/sceneEnv.h"
+#include "core/bitmapRenderer.h"
+#include "rhi/rhiDevice.h"
+#include "rhi/rhiGl.h"
+#include "rhi/rhiNull.h"
+
 #ifdef RENDERX_HAS_VULKAN
-    #include "rhi/rhi_vulkan.h"
+    #include "rhi/rhiVulkan.h"
 #endif
+
 #ifdef RENDERX_HAS_METAL
-    #include "rhi/rhi_metal.h"
+    #include "rhi/rhiMetal.h"
 #endif
 #include "shader/shaders.h"
-#include "render_runtime.h"
+#include "renderruntime.h"
 
 #include <cstring>
 #include <string>
@@ -50,7 +52,7 @@
 
 #include "Log/SyLogger.h"
 
-namespace render
+namespace Render
 {
     // 前向声明 RenderRuntime
     struct RenderRuntime;
@@ -68,7 +70,7 @@ namespace render
     struct RenderDevice
     {
         /// RHI 设备接口
-        rhi::IDevice* rhiDevice = nullptr;
+        RHI::IDevice* rhiDevice = nullptr;
 
         /// 2D 渲染世界（图元管理和可见性查询）
         core::RenderWorld world2D;
@@ -286,4 +288,4 @@ namespace render
     /// 当前阶段保持别名以维持 C API 兼容性
     /// 未来: RenderDevice 会被重命名为 RenderSession，RenderRuntime 管理共享资源
     using RenderSession = RenderDevice;
-}  // namespace render
+}  // namespace Render

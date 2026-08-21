@@ -11,14 +11,14 @@
  * - Render state tracking
  */
 #include <gtest/gtest.h>
-#include "rhi/rhi_null.h"
-#include "rhi/rhi_device.h"
-#include "rhi/rhi_types.h"
-#include "render/render_types.h"
-#include "c_api/render_runtime.h"
+#include "rhi/rhiNull.h"
+#include "rhi/rhiDevice.h"
+#include "rhi/rhiTypes.h"
+#include "render/RenderTypes.h"
+#include "c_api/renderruntime.h"
 
-using namespace render;
-using namespace render::rhi;
+using namespace Render;
+using namespace Render::RHI;
 
 TEST(NullDeviceTest, InitializeAndShutdown)
 {

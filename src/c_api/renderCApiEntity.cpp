@@ -7,9 +7,9 @@
  * - 3D 网格注册/注销/实例管理
  * - 材质管理
  */
-#include "render_c_api_internal.h"
+#include "rendercapiinternal.h"
 
-using namespace render;
+using namespace Render;
 
 extern "C"
 {

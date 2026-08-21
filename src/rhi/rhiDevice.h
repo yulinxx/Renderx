@@ -1,5 +1,5 @@
-/**
- * @file rhi_device.h
+﻿/**
+ * @file rhidevice.h
  * @brief Render Hardware Interface (RHI) 设备接口定义
  *
  * 本文件定义了 RHI 层的核心设备接口 IDevice，提供了跨平台的图形硬件抽象。
@@ -12,10 +12,10 @@
  * - 支持间接绘制和实例化渲染
  */
 #pragma once
-#include "rhi_types.h"
+#include "rhiTypes.h"
 #include <cstddef>
 
-namespace render::rhi
+namespace Render::RHI
 {
 
     /**
@@ -465,6 +465,17 @@ namespace render::rhi
          */
         virtual void* getNativeContext() = 0;
 
+        /**
+         * @brief 检查指定 fence 是否已触发（GPU 已完成对应工作）
+         *
+         * 用于 GPU 异步回读场景中，判断上一次提交的回读任务是否已就绪，
+         * 避免 CPU 阻塞等待。
+         *
+         * @param fenceValue 待检查的 fence 值
+         * @return true 已触发（数据可读），false 尚未触发
+         */
+        virtual bool checkFence(uint64_t fenceValue) const = 0;
+
         /// @name 离屏渲染目标（截图 / 离屏合成）
         /// @{
         ///
@@ -557,4 +568,4 @@ namespace render::rhi
      */
     IDevice* createMetalDevice();
 
-}  // namespace render::rhi
+}  // namespace Render::RHI

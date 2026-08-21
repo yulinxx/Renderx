@@ -1,14 +1,14 @@
 /**
- * @file transient_buffer_pool.cpp
+ * @file transientbufferpool.cpp
  * @brief TransientBufferPool implementation
  */
-#include "transient_buffer_pool.h"
-#include "platform/gl_loader.h"
+#include "transientBufferPool.h"
+#include "platform/glLoader.h"
 #include "Log/SyLogger.h"
 
 #include <cstdint>
 
-namespace render
+namespace Render
 {
     namespace core
     {
@@ -29,7 +29,7 @@ namespace render
             }
         }
 
-        bool TransientBufferPool::initialize(rhi::IDevice* device, uint64_t bufferSize, uint32_t frameCount)
+        bool TransientBufferPool::initialize(RHI::IDevice* device, uint64_t bufferSize, uint32_t frameCount)
         {
             if (!device || bufferSize == 0 || frameCount == 0)
             {
@@ -48,14 +48,14 @@ namespace render
             // 为每个帧槽创建持久映射缓冲区
             for (uint32_t i = 0; i < frameCount; ++i)
             {
-                rhi::BufferDesc desc;
+                RHI::BufferDesc desc;
                 desc.size = bufferSize;
-                desc.usage = rhi::BufferUsage::Vertex;
-                desc.memory = rhi::MemoryType::GPU_CPU_Coherent;
+                desc.usage = RHI::BufferUsage::Vertex;
+                desc.memory = RHI::MemoryType::GPU_CPU_Coherent;
                 desc.debugName = "TransientBufferPool_Frame";
 
                 m_frames[i].handle = device->createBuffer(desc);
-                if (m_frames[i].handle == rhi::NullHandle)
+                if (m_frames[i].handle == RHI::NullHandle)
                 {
                     SY_WARNF("[TransientBufferPool] Failed to create buffer for frame %u", i);
                     shutdown();
@@ -92,7 +92,7 @@ namespace render
             // 释放帧缓冲区及其 fallback
             for (auto& frame : m_frames)
             {
-                if (frame.handle != rhi::NullHandle)
+                if (frame.handle != RHI::NullHandle)
                 {
                     if (frame.mappedPtr)
                     {
@@ -100,12 +100,12 @@ namespace render
                         frame.mappedPtr = nullptr;
                     }
                     m_device->destroyBuffer(frame.handle);
-                    frame.handle = rhi::NullHandle;
+                    frame.handle = RHI::NullHandle;
                 }
 
                 for (auto& fb : frame.fallbacks)
                 {
-                    if (fb.handle != rhi::NullHandle)
+                    if (fb.handle != RHI::NullHandle)
                     {
                         if (fb.mappedPtr)
                         {
@@ -197,7 +197,7 @@ namespace render
             // 清理该帧槽之前积累的 fallback 缓冲区
             for (auto& fb : nextFrame.fallbacks)
             {
-                if (fb.handle != rhi::NullHandle)
+                if (fb.handle != RHI::NullHandle)
                 {
                     if (fb.mappedPtr)
                     {
@@ -264,14 +264,14 @@ namespace render
             uint64_t alignedSize = align_up(size, alignment);
 
             // 创建一个恰好容纳本次分配的临时缓冲区
-            rhi::BufferDesc desc;
+            RHI::BufferDesc desc;
             desc.size = alignedSize;
-            desc.usage = rhi::BufferUsage::Vertex;
-            desc.memory = rhi::MemoryType::GPU_CPU_Coherent;
+            desc.usage = RHI::BufferUsage::Vertex;
+            desc.memory = RHI::MemoryType::GPU_CPU_Coherent;
             desc.debugName = "TransientBufferPool_Fallback";
 
-            rhi::BufferHandle handle = m_device->createBuffer(desc);
-            if (handle == rhi::NullHandle)
+            RHI::BufferHandle handle = m_device->createBuffer(desc);
+            if (handle == RHI::NullHandle)
             {
                 SY_WARN("[TransientBufferPool] Failed to create fallback buffer");
                 return alloc;
@@ -316,4 +316,4 @@ namespace render
             return m_frames[m_currentFrame].used;
         }
     }  // namespace core
-}  // namespace render
+}  // namespace Render

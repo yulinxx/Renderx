@@ -1,5 +1,5 @@
 /**
- * @file bitmap_renderer.cpp
+ * @file bitmapRenderer.cpp
  * @brief 位图渲染器实现
  *
  * 对标 TextAtlas 的"纹理四边形"模式，但按 entityId 管理多张独立位图：
@@ -10,13 +10,14 @@
  * camera-relative：由顶点着色器统一减去相机中心，CPU 侧保留世界坐标，
  * 避免重复平移导致位图与视图移动不同步。
  */
-#include "bitmap_renderer.h"
+#include "bitmapRenderer.h"
 #include "shader/shaders.h"
-#include <cstring>
-#include <limits>
 #include "Log/SyLogger.h"
 
-namespace render::core
+#include <cstring>
+#include <limits>
+
+namespace Render::core
 {
     size_t BitmapRenderer::findIndex(uint64_t entityId) const
     {
@@ -30,18 +31,18 @@ namespace render::core
         return std::numeric_limits<size_t>::max();
     }
 
-    bool BitmapRenderer::initialize(rhi::IDevice* device)
+    bool BitmapRenderer::initialize(RHI::IDevice* device)
     {
         m_device = device;
 
         {
-            rhi::BufferDesc desc{};
+            RHI::BufferDesc desc{};
             desc.size = 6 * sizeof(BitmapVertex);  // 两个三角形
-            desc.usage = rhi::BufferUsage::Vertex;
-            desc.memory = rhi::MemoryType::GPU_CPU_Coherent;
+            desc.usage = RHI::BufferUsage::Vertex;
+            desc.memory = RHI::MemoryType::GPU_CPU_Coherent;
             desc.debugName = "BitmapVB";
             m_vertexBuffer = device->createBuffer(desc);
-            if (m_vertexBuffer == rhi::NullHandle)
+            if (m_vertexBuffer == RHI::NullHandle)
             {
                 SY_ERROR("BitmapRenderer::initialize: vertex buffer creation failed");
                 return false;
@@ -49,20 +50,20 @@ namespace render::core
         }
 
         {
-            rhi::PipelineDesc desc{};
-            desc.topology = rhi::PrimitiveTopology::TriangleList;
+            RHI::PipelineDesc desc{};
+            desc.topology = RHI::PrimitiveTopology::TriangleList;
             desc.vertexShader = shader::BITMAP_VERT;
             desc.fragmentShader = shader::BITMAP_FRAG;
             desc.computeShader = nullptr;
-            desc.vertexFormat = rhi::VertexFormat::P3T2;
+            desc.vertexFormat = RHI::VertexFormat::P3T2;
             desc.depthTest = false;
             desc.depthWrite = false;
             desc.blendEnable = true;
-            desc.srcBlend = rhi::BlendFactor::SrcAlpha;
-            desc.dstBlend = rhi::BlendFactor::OneMinusSrcAlpha;
-            desc.depthFunc = rhi::CompareFunc::Always;
+            desc.srcBlend = RHI::BlendFactor::SrcAlpha;
+            desc.dstBlend = RHI::BlendFactor::OneMinusSrcAlpha;
+            desc.depthFunc = RHI::CompareFunc::Always;
             m_pipeline = device->createPipeline(desc);
-            if (m_pipeline == rhi::NullHandle)
+            if (m_pipeline == RHI::NullHandle)
             {
                 SY_ERROR("BitmapRenderer::initialize: pipeline creation failed");
                 return false;
@@ -79,21 +80,21 @@ namespace render::core
         {
             for (auto& entry : m_bitmaps)
             {
-                if (entry.texture != rhi::NullHandle)
+                if (entry.texture != RHI::NullHandle)
                 {
                     m_device->destroyTexture(entry.texture);
-                    entry.texture = rhi::NullHandle;
+                    entry.texture = RHI::NullHandle;
                 }
             }
-            if (m_vertexBuffer != rhi::NullHandle)
+            if (m_vertexBuffer != RHI::NullHandle)
             {
                 m_device->destroyBuffer(m_vertexBuffer);
-                m_vertexBuffer = rhi::NullHandle;
+                m_vertexBuffer = RHI::NullHandle;
             }
-            if (m_pipeline != rhi::NullHandle)
+            if (m_pipeline != RHI::NullHandle)
             {
                 m_device->destroyPipeline(m_pipeline);
-                m_pipeline = rhi::NullHandle;
+                m_pipeline = RHI::NullHandle;
             }
         }
 
@@ -124,22 +125,22 @@ namespace render::core
         BitmapEntry& entry = m_bitmaps[idx];
 
         // 像素尺寸或纹理句柄变化时重建纹理
-        if (w != entry.width || h != entry.height || entry.texture == rhi::NullHandle)
+        if (w != entry.width || h != entry.height || entry.texture == RHI::NullHandle)
         {
-            if (entry.texture != rhi::NullHandle)
+            if (entry.texture != RHI::NullHandle)
             {
                 m_device->destroyTexture(entry.texture);
-                entry.texture = rhi::NullHandle;
+                entry.texture = RHI::NullHandle;
             }
 
-            rhi::TextureDesc desc{};
+            RHI::TextureDesc desc{};
             desc.width = static_cast<uint32_t>(w);
             desc.height = static_cast<uint32_t>(h);
-            desc.format = rhi::Format::RGBA8;
+            desc.format = RHI::Format::RGBA8;
             desc.mipLevels = 1;
             desc.debugName = "BitmapTex";
             entry.texture = m_device->createTexture(desc);
-            if (entry.texture == rhi::NullHandle)
+            if (entry.texture == RHI::NullHandle)
             {
                 SY_ERRORF("BitmapRenderer::set: texture creation failed for entity %llu",
                     static_cast<unsigned long long>(entityId));
@@ -166,10 +167,10 @@ namespace render::core
         }
 
         BitmapEntry& entry = m_bitmaps[idx];
-        if (m_device && entry.texture != rhi::NullHandle)
+        if (m_device && entry.texture != RHI::NullHandle)
         {
             m_device->destroyTexture(entry.texture);
-            entry.texture = rhi::NullHandle;
+            entry.texture = RHI::NullHandle;
         }
         m_bitmaps.erase(m_bitmaps.begin() + static_cast<ptrdiff_t>(idx));
     }
@@ -180,19 +181,19 @@ namespace render::core
         {
             for (auto& entry : m_bitmaps)
             {
-                if (entry.texture != rhi::NullHandle)
+                if (entry.texture != RHI::NullHandle)
                 {
                     m_device->destroyTexture(entry.texture);
-                    entry.texture = rhi::NullHandle;
+                    entry.texture = RHI::NullHandle;
                 }
             }
         }
         m_bitmaps.clear();
     }
 
-    void BitmapRenderer::render(rhi::IDevice* device, const float viewMatrix[9], const double cameraCenter[2])
+    void BitmapRenderer::render(RHI::IDevice* device, const float viewMatrix[9], const double cameraCenter[2])
     {
-        if (!device || m_bitmaps.empty() || m_pipeline == rhi::NullHandle)
+        if (!device || m_bitmaps.empty() || m_pipeline == RHI::NullHandle)
         {
             return;
         }
@@ -212,7 +213,7 @@ namespace render::core
         // 逐张位图绘制（位图数量通常较少，逐张 draw 简单且正确）
         for (const BitmapEntry& entry : m_bitmaps)
         {
-            if (entry.texture == rhi::NullHandle || entry.width <= 0 || entry.height <= 0)
+            if (entry.texture == RHI::NullHandle || entry.width <= 0 || entry.height <= 0)
             {
                 continue;
             }
@@ -249,4 +250,4 @@ namespace render::core
             device->draw(6, 1, 0, 0);
         }
     }
-}  // namespace render::core
+}  // namespace Render::core

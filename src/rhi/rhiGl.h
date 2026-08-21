@@ -1,5 +1,5 @@
 /**
- * @file rhi_gl.h
+ * @file rhiGl.h
  * @brief OpenGL 渲染设备实现
  *
  * GLDevice 是 IDevice 接口的 OpenGL 实现，提供了基于 OpenGL 4.6 的图形渲染能力。
@@ -12,15 +12,16 @@
  *
  * 使用 gl_loader 动态加载 OpenGL 函数指针，确保跨平台兼容性。
  */
+
 #pragma once
-#include "rhi_device.h"
-#include "../platform/gl_loader.h"
+#include "rhiDevice.h"
+#include "../platform/glLoader.h"
 
 #include <vector>
 #include <unordered_map>
 #include <string>
 
-namespace render::rhi
+namespace Render::RHI
 {
 
     struct GLBufferEntry
@@ -56,12 +57,14 @@ namespace render::rhi
         uint32_t mipLevels = 1;
     };
 
+    ////////////////////////////////////////////////////////////////////////////////
     class GLDevice : public IDevice
     {
     public:
         GLDevice() = default;
         ~GLDevice() override;
 
+    public:
         bool initialize(void* nativeWindow, uint32_t width, uint32_t height) override;
         void shutdown() override;
 
@@ -123,11 +126,12 @@ namespace render::rhi
         void enableBlend(bool enable) override;
 
         void resize(uint32_t width, uint32_t height) override;
-        int readPixels(uint32_t x, uint32_t y, uint32_t width, uint32_t height,
-            void* outPixels, uint32_t* outRowPitch) override;
+        int readPixels(
+            uint32_t x, uint32_t y, uint32_t width, uint32_t height, void* outPixels, uint32_t* outRowPitch) override;
 
         uint64_t getGPUMemoryUsage() const override;
         void* getNativeContext() override;
+        bool checkFence(uint64_t fenceValue) const override;
 
         // ---- 离屏渲染目标（截图 / 离屏合成）----
         RenderTargetHandle createRenderTarget(const RenderTargetDesc& desc) override;
@@ -187,8 +191,10 @@ namespace render::rhi
             uint32_t width = 0;
             uint32_t height = 0;
         };
+
         std::vector<GLRenderTargetEntry> m_renderTargets;
         std::vector<uint32_t> m_renderTargetFreeList;
+
         // bindRenderTarget 之前绑定的帧缓冲与视口尺寸（用于 bindDefaultTarget 还原）
         GLuint m_savedFramebuffer = 0;
         int32_t m_savedWidth = 0;
@@ -202,6 +208,9 @@ namespace render::rhi
         uint64_t m_currentIBOOffset = 0;
         bool m_depthTestEnabled = false;
         bool m_blendEnabled = false;
+
+        /// 已完成（GPU 已处理）的最大 fence 值，每帧 endFrame 后递增
+        uint64_t m_completedFence = 0;
     };
 
-}  // namespace render::rhi
+}  // namespace Render::RHI

@@ -1,29 +1,29 @@
-/**
+﻿/**
  * @file rhi_metal.h
- * @brief Metal render device implementation declaration
+ * @brief Metal 渲染设备实现声明
  *
- * Implements the IDevice interface using Apple's Metal API.
- * Provides cross-platform GPU rendering on macOS/iOS with native performance.
+ * 使用 Apple 的 Metal API 实现 IDevice 接口。
+ * 在 macOS/iOS 上提供跨平台 GPU 渲染，具有原生性能。
  *
- * This backend requires macOS 10.11+ or iOS 8+ and uses Objective-C++ (.mm)
- * for Metal API interop. The header itself is pure C++ for ABI compatibility.
+ * 此后端需要 macOS 10.11+ 或 iOS 8+，使用 Objective-C++ (.mm)
+ * 进行 Metal API 互操作。头文件本身是纯 C++，以保证 ABI 兼容性。
  */
 #pragma once
-#include "rhi_device.h"
+#include "rhiDevice.h"
 
 #include <cstdint>
 #include <memory>
 #include <unordered_map>
 #include <vector>
 
-namespace render::rhi
+namespace Render::RHI
 {
 
     /**
-     * @brief Metal render device implementation
+     * @brief Metal 渲染设备实现
      *
-     * Wraps Metal API (MTLDevice, MTLCommandQueue, etc.) to implement
-     * the IDevice interface. Uses Objective-C++ internally for Metal interop.
+     * 封装 Metal API（MTLDevice、MTLCommandQueue 等）以实现
+     * IDevice 接口。内部使用 Objective-C++ 进行 Metal 互操作。
      */
     class MetalDevice : public IDevice
     {
@@ -31,7 +31,7 @@ namespace render::rhi
         MetalDevice();
         ~MetalDevice() override;
 
-        // IDevice interface implementation
+        // IDevice 接口实现
         bool initialize(void* nativeWindow, uint32_t width, uint32_t height) override;
         void shutdown() override;
 
@@ -103,7 +103,7 @@ namespace render::rhi
         void* getNativeContext() override;
 
     private:
-        // Metal object handles (stored as opaque pointers, managed in .mm file)
+        // Metal 对象句柄（存储为不透明指针，在 .mm 文件中管理）
         void* m_device = nullptr;                // MTLDevice*
         void* m_commandQueue = nullptr;          // MTLCommandQueue*
         void* m_renderPassDescriptor = nullptr;  // MTLRenderPassDescriptor*
@@ -112,11 +112,11 @@ namespace render::rhi
         void* m_depthStencilState = nullptr;     // MTLDepthStencilState*
         void* m_defaultLibrary = nullptr;        // MTLLibrary*
 
-        // Synchronization
+        // 同步
         void* m_framebufferOnly = nullptr;
         uint32_t m_frameIndex = 0;
 
-        // State tracking
+        // 状态跟踪
         bool m_initialized = false;
         uint32_t m_width = 0;
         uint32_t m_height = 0;
@@ -125,27 +125,27 @@ namespace render::rhi
         bool m_depthTestEnabled = false;
         bool m_blendEnabled = false;
 
-        // Handle counters (same scheme as Vulkan backend)
+        // 句柄计数器（与 Vulkan 后端相同的方案）
         uint64_t m_nextBufferId = 1;
         uint64_t m_nextTextureId = 1;
         uint64_t m_nextPipelineId = 1;
         uint32_t m_drawCallCount = 0;
 
-        // Internal resource tracking (forward declared types in impl)
+        // 内部资源跟踪（前向声明类型在实现中）
         struct BufferResource;
         struct TextureResource;
         struct PipelineResource;
 
-        // Resource maps
+        // 资源映射
         std::unordered_map<uint64_t, std::unique_ptr<BufferResource>> m_buffers;
         std::unordered_map<uint64_t, std::unique_ptr<TextureResource>> m_textures;
         std::unordered_map<uint64_t, std::unique_ptr<PipelineResource>> m_pipelines;
 
-        // Uniform/stage value cache
+        // Uniform/阶段值缓存
         std::vector<float> m_uniformCache;
 
     private:
-        // Internal helpers (implemented in .mm)
+        // 内部辅助函数（在 .mm 中实现）
         void createRenderPass();
         void destroyRenderPass();
         void createDepthBuffer();
@@ -154,7 +154,7 @@ namespace render::rhi
         void setupRenderEncoder();
         void endRenderEncoder();
 
-        // Handle encoding (same scheme as Vulkan)
+        // 句柄编码（与 Vulkan 相同的方案）
         static constexpr uint64_t kTypeMask = 0xF000000000000000ULL;
         static constexpr uint64_t kIndexMask = 0x0FFFFFFFFFFFFFFFULL;
         static constexpr uint64_t kTypeShift = 60;
@@ -177,4 +177,4 @@ namespace render::rhi
      */
     IDevice* createMetalDevice();
 
-}  // namespace render::rhi
+}  // namespace Render::RHI

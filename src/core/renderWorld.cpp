@@ -1,9 +1,9 @@
-#include "render_world.h"
+#include "renderWorld.h"
+#include "Log/SyLogger.h"
 #include <cfloat>
 #include <algorithm>
-#include "Log/SyLogger.h"
 
-namespace render
+namespace Render
 {
     namespace core
     {
@@ -447,7 +447,7 @@ void RenderWorld::update()
     // 计算本帧变化比例，用于自适应调整四叉树重建阈值
     // m_dirtyList 包含本帧所有变化的图元索引
     uint32_t dirtyCount = 0;
-    if (m_entityCount > 0)
+    if (m_entities.size() > 0)
     {
         // 统计实际脏图元数量（通过 entry.dirty 检查）
         for (uint32_t denseIdx : m_dirtyList)
@@ -480,7 +480,7 @@ void RenderWorld::update()
     uint32_t sampleCnt = (m_changeRatioSampleCount < 8) ? m_changeRatioSampleCount : 8;
     for (uint32_t i = 0; i < sampleCnt; ++i)
     {
-        totalRatio += static_cast<float>(m_changeRatioSamples[i]) / static_cast<float>(m_entityCount + 1);  // +1 避免除0
+        totalRatio += static_cast<float>(m_changeRatioSamples[i]) / static_cast<float>(getEntityCount() + 1);  // +1 避免除0
     }
     m_adaptiveRebuildRatio = totalRatio / static_cast<float>(sampleCnt);
 
@@ -880,4 +880,4 @@ void RenderWorld::update()
             }
         }
     }  // namespace core
-}  // namespace render
+}  // namespace Render

@@ -1,5 +1,5 @@
 /**
- * @file render_types.h
+ * @file RenderTypes.h
  * @brief Render 模块的公共类型定义
  *
  * 本文件定义了渲染系统的核心数据结构和枚举类型，包括：
@@ -12,11 +12,257 @@
  */
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
 #include <cstddef>
+#include <limits>
+#include <type_traits>
+#include <vector>
 
-namespace render
+namespace Render
 {
+    template<typename T, size_t N>
+    struct RenderVec
+    {
+        T data[N]{};
+
+        RenderVec() = default;
+
+        template<size_t M = N, typename = std::enable_if_t<M == 2>>
+        RenderVec(T x, T y)
+            : data{ x, y }
+        {
+        }
+
+        template<size_t M = N, typename = std::enable_if_t<M == 3>>
+        RenderVec(T x, T y, T z)
+            : data{ x, y, z }
+        {
+        }
+
+        T& x() { return data[0]; }
+        const T& x() const { return data[0]; }
+        template<size_t M = N, typename = std::enable_if_t<(M >= 2)>>
+        T& y() { return data[1]; }
+        template<size_t M = N, typename = std::enable_if_t<(M >= 2)>>
+        const T& y() const { return data[1]; }
+        template<size_t M = N, typename = std::enable_if_t<(M >= 3)>>
+        T& z() { return data[2]; }
+        template<size_t M = N, typename = std::enable_if_t<(M >= 3)>>
+        const T& z() const { return data[2]; }
+        T& operator[](size_t index) { return data[index]; }
+        const T& operator[](size_t index) const { return data[index]; }
+
+        static RenderVec min(const RenderVec& a, const RenderVec& b)
+        {
+            RenderVec result;
+            for (size_t i = 0; i < N; ++i)
+            {
+                result.data[i] = std::min(a.data[i], b.data[i]);
+            }
+            return result;
+        }
+
+        static RenderVec max(const RenderVec& a, const RenderVec& b)
+        {
+            RenderVec result;
+            for (size_t i = 0; i < N; ++i)
+            {
+                result.data[i] = std::max(a.data[i], b.data[i]);
+            }
+            return result;
+        }
+    };
+
+    using Vec2f = RenderVec<float, 2>;
+    using LegacyVec2d = RenderVec<double, 2>;
+    using Vec3f = RenderVec<float, 3>;
+
+    template<typename Vec2Like>
+    inline Vec2f toVec2f(const Vec2Like& value)
+    {
+        return Vec2f(static_cast<float>(value.x()), static_cast<float>(value.y()));
+    }
+
+    template<typename Vec2Like>
+    inline std::vector<Vec2f> toVec2fVector(const std::vector<Vec2Like>& points)
+    {
+        std::vector<Vec2f> result;
+        result.reserve(points.size());
+        for (const auto& point : points)
+        {
+            result.push_back(toVec2f(point));
+        }
+        return result;
+    }
+
+    struct Mat3f
+    {
+        float data[9]{};
+
+        Mat3f()
+            : data{ 1, 0, 0, 0, 1, 0, 0, 0, 1 }
+        {
+        }
+
+        static Mat3f identity() { return Mat3f(); }
+
+        float& at(size_t row, size_t column) { return data[column * 3 + row]; }
+        const float& at(size_t row, size_t column) const { return data[column * 3 + row]; }
+    };
+
+    struct BBox2d
+    {
+        LegacyVec2d minPt, maxPt;
+
+        BBox2d() { reset(); }
+        BBox2d(double minX, double minY, double maxX, double maxY)
+            : minPt(std::min(minX, maxX), std::min(minY, maxY))
+            , maxPt(std::max(minX, maxX), std::max(minY, maxY))
+        {
+        }
+
+        void reset()
+        {
+            constexpr double maxValue = std::numeric_limits<double>::max();
+            constexpr double minValue = std::numeric_limits<double>::lowest();
+            minPt = LegacyVec2d(maxValue, maxValue);
+            maxPt = LegacyVec2d(minValue, minValue);
+        }
+
+        bool isValid() const { return minPt.x() <= maxPt.x() && minPt.y() <= maxPt.y(); }
+    };
+
+    struct Color
+    {
+        float data[4]{ 0, 0, 0, 1 };
+        Color() = default;
+        Color(float red, float green, float blue, float alpha = 1)
+            : data{ red, green, blue, alpha }
+        {
+        }
+
+        static Color fromRGB255(int red, int green, int blue, int alpha = 255)
+        {
+            auto clamp = [](int value) { return std::max(0, std::min(value, 255)); };
+            return Color(static_cast<float>(clamp(red)) / 255.0f,
+                static_cast<float>(clamp(green)) / 255.0f,
+                static_cast<float>(clamp(blue)) / 255.0f,
+                static_cast<float>(clamp(alpha)) / 255.0f);
+        }
+
+        float r() const { return data[0]; }
+        float g() const { return data[1]; }
+        float b() const { return data[2]; }
+        float a() const { return data[3]; }
+    };
+
+    struct SelectionOutlineVertex
+    {
+        Vec2f position;
+        float arcLength = 0;
+    };
+
+    struct SelectionOutlinePath
+    {
+        std::vector<SelectionOutlineVertex> vertices;
+        Color color{ 1, 0.55f, 0, 0.86f };
+    };
+
+    struct SelectionDashStyle
+    {
+        bool enabled{ true };
+        bool animated{ true };
+        float dashLengthPx{ 10.0f };
+        float gapLengthPx{ 8.0f };
+        float speedPxPerSec{ 48.0f };
+        Color color{ 1, 0.55f, 0, 0.86f };
+    };
+
+    struct RenderVertex
+    {
+        Vec3f position;
+        Vec3f color;
+    };
+
+    enum class RenderPrimitiveType
+    {
+        Lines = 0,
+        LineStrip = 1,
+        LineLoop = 2,
+        Points = 3,
+        Triangles = 4
+    };
+
+    struct RenderCommand
+    {
+        std::vector<RenderVertex> vertices;
+        float lineWidth = 1;
+        float pointSize = 1;
+        RenderPrimitiveType primitiveType = RenderPrimitiveType::LineStrip;
+        bool isEmpty() const { return vertices.empty(); }
+    };
+
+    struct RenderCommandList
+    {
+        std::vector<RenderVertex> vertices;
+        std::vector<RenderCommand> commands;
+        bool empty() const { return vertices.empty() && commands.empty(); }
+        void clear() { vertices.clear(); commands.clear(); }
+    };
+
+    struct RenderBitmapQuad
+    {
+        int64_t entityId = 0;
+        int width = 0, height = 0;
+        const uint8_t* rgba = nullptr;
+        size_t rgbaBytes = 0;
+        float topLeftX = 0, topLeftY = 0, topRightX = 0, topRightY = 0;
+        float bottomLeftX = 0, bottomLeftY = 0, bottomRightX = 0, bottomRightY = 0;
+        std::vector<uint8_t> storedPixels;
+    };
+
+    struct RenderFrame
+    {
+        Mat3f viewMatrix = Mat3f::identity();
+        RenderCommandList sceneCommands;
+        std::vector<RenderBitmapQuad> bitmaps;
+        bool hasSceneContent() const { return !sceneCommands.empty() || !bitmaps.empty(); }
+    };
+
+    struct RenderFrameUpdate
+    {
+        bool hasViewMatrix{ false }, hasSceneCommands{ false }, hasBitmaps{ false };
+        Mat3f viewMatrix = Mat3f::identity();
+        RenderCommandList sceneCommands;
+        std::vector<RenderBitmapQuad> bitmaps;
+    };
+
+    struct RenderOverlayUpdate
+    {
+        bool clearAll{ false };
+        bool hasDrawingColor{ false }, hasPreviewPoints{ false }, hasControlLines{ false };
+        bool hasPointMarkers{ false }, hasSelectionBox{ false }, hasSelectionHandles{ false };
+        bool hasSelectionOutlines{ false }, hasSnapIndicator{ false }, hasUiTexts{ false };
+        Color drawingColor{ 0, 0, 0, 1 };
+        std::vector<Vec2f> previewPoints;
+        std::vector<Vec2f> controlLines;
+        std::vector<Vec2f> pointMarkers;
+        float pointMarkerSize{ 6 };
+        Color pointMarkerFill{ 1, 1, 1, 1 };
+        Color pointMarkerBorder{ 0, 0, 0.8f, 1 };
+        BBox2d selectionBox;
+        Color selectionBoxColor{ 1, 0.55f, 0, 0.86f };
+        std::vector<Vec2f> selectionHandles;
+        float selectionHandleSize{ 6 };
+        Color selectionHandleFill{ 1, 1, 1, 1 };
+        Color selectionHandleBorder{ 0, 0, 0.8f, 1 };
+        std::vector<SelectionOutlinePath> selectionOutlines;
+        Vec2f snapWorldPos{ 0, 0 };
+        bool snapVisible{ false };
+        Color snapIndicatorColor{ 0, 1, 0, 1 };
+    };
+
     /// 图元唯一标识符类型
     using EntityId = uint64_t;
     /// 网格唯一标识符类型
@@ -680,4 +926,4 @@ namespace render
     };
 
     static_assert(sizeof(SceneEnvGeometryDesc) == 16, "SceneEnvGeometryDesc must be 16 bytes");
-}  // namespace render
+}  // namespace Render

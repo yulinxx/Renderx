@@ -13,9 +13,9 @@
  * renderSetSelectionRect / renderSetSelectionHandles）已移除，
  * 所有调用方已迁移到统一 API。
  */
-#include "render_c_api_internal.h"
+#include "rendercapiinternal.h"
 
-using namespace render;
+using namespace Render;
 
 extern "C"
 {
