@@ -186,7 +186,6 @@ sanyi_add_shared_library(${PROJECT_NAME}
         LINK_LIBRARIES
             PRIVATE
                 ${OPENGL_LIBRARIES}
-                opengl32
                 Log
                 ${RENDER_LINK_LIBS}
 )
