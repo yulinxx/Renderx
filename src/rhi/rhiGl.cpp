@@ -531,6 +531,7 @@ namespace Render::RHI
         entry.depthFunc = desc.depthFunc;
 
         // ---- 诊断：打印管线 program 与关键 uniform location ----
+        if (0)
         {
             GLint locVM = g->GetUniformLocation(prog, "uViewMatrix");
             GLint locCC = g->GetUniformLocation(prog, "uCameraCenter");
