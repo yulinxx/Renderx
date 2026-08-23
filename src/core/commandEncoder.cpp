@@ -295,6 +295,17 @@ namespace Render
 
             uint32_t cmdCount = static_cast<uint32_t>(m_commands.size());
 
+            // 诊断：命令编码器收集到的绘制命令数量（画图预览不显示时排查用）
+            // uint32_t overlayCmdCount = 0;
+            // for (uint32_t i = 0; i < cmdCount; ++i)
+            // {
+            //     if (m_commands[i].space == DrawSpace::Overlay)
+            //     {
+            //         ++overlayCmdCount;
+            //     }
+            // }
+            // SY_INFOF("[CommandEncoder] execute: totalCmds=%u overlayCmds=%u", cmdCount, overlayCmdCount);
+
             // 计算 batch 数量（按 sortKey 变化点计数）
             m_lastBatchCount = 1;
             for (uint32_t i = 1; i < cmdCount; ++i)

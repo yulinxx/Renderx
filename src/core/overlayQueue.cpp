@@ -793,6 +793,9 @@ namespace Render
             // 统一提交的 overlay 图元
             if (!m_unifiedRanges.empty() && totalUnifiedVerts > 0)
             {
+                // 诊断：统一 overlay 是否被收集到命令编码器（画图预览不显示时排查用）
+                // SY_INFOF("[OverlayQueue] render: unifiedVerts=%u ranges=%zu", totalUnifiedVerts, m_unifiedRanges.size());
+
                 for (const auto& range : m_unifiedRanges)
                 {
                     if (range.count == 0)
