@@ -12,7 +12,7 @@
  * SY_INFOF 级别的冗余信息已移除以减少性能开销。
  * 警告和错误仍通过 SY_WARNF/SY_ERRORF 输出。
  */
-#include "rendercapiinternal.h"
+#include "renderCApiInternal.h"
 
 #if defined(__APPLE__)
     #include <mach-o/dyld.h>

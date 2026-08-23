@@ -91,4 +91,4 @@ namespace Render
         mutable std::mutex m_mutex;  ///< 线程安全
     };
 
-}  // namespace render
+}  // namespace Render

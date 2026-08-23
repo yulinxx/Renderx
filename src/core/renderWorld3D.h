@@ -60,4 +60,4 @@ namespace Render
         Impl* m_impl;
     };
 
-}  // namespace render
+}  // namespace Render

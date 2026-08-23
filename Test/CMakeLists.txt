@@ -13,6 +13,8 @@ include(GoogleTest)
 
 set(RENDERX_NULL_TEST_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/NullBackendTests.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/CommandEncoderTests.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/RenderGraphTests.cpp"
 )
 
 # Null backend 仅需要 rhinull.cpp，不依赖 OpenGL
@@ -21,6 +23,10 @@ set(RENDERX_NULL_INTERNAL_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/../src/rhi/rhinull.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/../src/c_api/renderruntime.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/../src/shader/shaders.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../src/core/commandEncoder.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../src/core/renderGraph.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../src/core/drawBatcher.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../src/core/pipelineStateManager.cpp"
 )
 
 add_executable(RenderxTests ${RENDERX_NULL_TEST_SOURCES} ${RENDERX_NULL_INTERNAL_SOURCES})

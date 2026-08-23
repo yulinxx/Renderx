@@ -11,7 +11,6 @@ namespace Render
     // 静态实例 + 互斥锁用于线程安全的单例访问
     static std::once_flag g_onceFlag;
     static std::unique_ptr<RenderRuntime> g_runtime;
-    static std::mutex g_instanceMutex;
 
     RenderRuntime& RenderRuntime::instance()
     {

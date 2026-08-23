@@ -107,7 +107,7 @@ namespace Render
              *
              * 当图元数量变化超过阈值时调用，重新构建空间分区结构。
              */
-            void rebuildQuadTree();
+            void rebuildQuadTree() const;
 
             /**
              * @brief 插入图元到四叉树
@@ -116,7 +116,7 @@ namespace Render
              * @param entityDenseIdx 图元的稠密索引
              * @param depth 当前递归深度
              */
-            void insertQuadTree(uint32_t nodeIdx, uint32_t entityDenseIdx, uint32_t depth);
+            void insertQuadTree(uint32_t nodeIdx, uint32_t entityDenseIdx, uint32_t depth) const;
 
             /**
              * @brief 检测两个边界框是否相交
@@ -149,19 +149,19 @@ namespace Render
             /// 需要更新的图元索引列表
             std::vector<uint32_t> m_dirtyList;
             /// 四叉树是否需要重建
-            bool m_quadTreeDirty;
+            mutable bool m_quadTreeDirty;
             /// 顶点池是否已调整大小
             bool m_vertexPoolResized;
             /// 图元变更计数器
-            uint32_t m_changeCount;
+            mutable uint32_t m_changeCount;
             /// 上一帧的视图矩阵（用于检测视图变化）
-            float m_lastViewMatrix[9];
+            mutable float m_lastViewMatrix[9];
             /// 四叉树节点数组
-            std::vector<QuadTreeNode> m_quadTree;
+            mutable std::vector<QuadTreeNode> m_quadTree;
             /// 四叉树图元索引数组
-            std::vector<uint32_t> m_quadTreeEntities;
+            mutable std::vector<uint32_t> m_quadTreeEntities;
             /// 四叉树图元链表的下一个指针数组
-            std::vector<uint32_t> m_quadTreeEntityNext;
+            mutable std::vector<uint32_t> m_quadTreeEntityNext;
             /// 材质列表
             std::vector<MaterialEntry> m_materials;
             /// 可见性查询结果缓存
@@ -171,6 +171,7 @@ namespace Render
             uint32_t m_rebuildThreshold = 100;  ///< 基础阈值，可被动态调整
             float m_changeRatioSamples[8] = {0};  ///< 最近8帧的变化比例样本
             uint32_t m_changeRatioSampleCount = 0;  ///< 样本计数
+            uint32_t m_changeRatioWriteIdx = 0;  ///< 循环缓冲区写入位置
             float m_adaptiveRebuildRatio = 0.1f;  ///< 当前动态阈值比例（0.1 = 10%）
 
             /// 视图矩阵变化检测的epsilon值
@@ -436,4 +437,4 @@ namespace Render
         }
 
     }  // namespace core
-}  // namespace render
+}  // namespace Render

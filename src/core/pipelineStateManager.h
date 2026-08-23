@@ -49,7 +49,7 @@ namespace Render
         };
 
     }  // namespace core
-}  // namespace render
+}  // namespace Render
 
 namespace std
 {
@@ -196,4 +196,4 @@ namespace Render
         };
 
     }  // namespace core
-}  // namespace render
+}  // namespace Render

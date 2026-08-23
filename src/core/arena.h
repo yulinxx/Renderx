@@ -17,6 +17,7 @@
 #include <cstdint>
 #include <cstring>
 #include <new>
+#include <utility>
 #include <vector>
 
 /**
@@ -94,7 +95,7 @@ public:
         {
             return nullptr;
         }
-        return new (ptr) T(static_cast<Args&&>(args)...);
+        return new (ptr) T(std::forward<Args>(args)...);
     }
 
     /**

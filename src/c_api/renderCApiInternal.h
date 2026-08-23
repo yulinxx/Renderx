@@ -12,7 +12,7 @@
 #pragma once
 
 #include "render/render.h"
-#include "render/renderTypes.h"
+#include "render/RenderTypes.h"
 #include "core/renderWorld.h"
 #include "core/batchQueue.h"
 #include "core/overlayQueue.h"
@@ -22,7 +22,7 @@
 #include "core/drawBatcher.h"
 #include "core/persistentEntityManager.h"
 #include "core/meshManager.h"
-#include "core/renderWorld3d.h"
+#include "core/renderWorld3D.h"
 #include "core/textAtlas.h"
 #include "core/screenTextRenderer.h"
 #include "core/sceneEnv.h"
@@ -39,7 +39,7 @@
     #include "rhi/rhiMetal.h"
 #endif
 #include "shader/shaders.h"
-#include "renderruntime.h"
+#include "renderRuntime.h"
 
 #include <cstring>
 #include <string>

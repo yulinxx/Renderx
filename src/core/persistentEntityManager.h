@@ -274,4 +274,4 @@ namespace Render
         };
 
     }  // namespace core
-}  // namespace render
+}  // namespace Render

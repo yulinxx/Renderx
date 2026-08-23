@@ -63,6 +63,7 @@ namespace Render::RHI
     static constexpr uint64_t kTypeBuffer = 1ULL << kTypeShift;
     static constexpr uint64_t kTypeTexture = 2ULL << kTypeShift;
     static constexpr uint64_t kTypePipeline = 3ULL << kTypeShift;
+    static constexpr uint64_t kTypeRenderTarget = 4ULL << kTypeShift;
 
     static uint64_t makeHandle(uint64_t typeTag, uint64_t index)
     {
@@ -103,6 +104,21 @@ namespace Render::RHI
         VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
         PrimitiveTopology topology = PrimitiveTopology::TriangleList;
         VertexFormat vertexFormat = VertexFormat::P3C3;
+    };
+
+    struct VulkanDevice::RenderTargetResource
+    {
+        VkImage colorImage = VK_NULL_HANDLE;
+        VkDeviceMemory colorMemory = VK_NULL_HANDLE;
+        VkImageView colorView = VK_NULL_HANDLE;
+        VkImage depthImage = VK_NULL_HANDLE;
+        VkDeviceMemory depthMemory = VK_NULL_HANDLE;
+        VkImageView depthView = VK_NULL_HANDLE;
+        VkFramebuffer framebuffer = VK_NULL_HANDLE;
+        VkRenderPass renderPass = VK_NULL_HANDLE;
+        uint32_t width = 0;
+        uint32_t height = 0;
+        bool hasDepth = false;
     };
 
     // ---------------------------------------------------------------------------
@@ -279,6 +295,145 @@ namespace Render::RHI
 
         SY_ERRORF("Vulkan: failed to find suitable memory type");
         return 0;
+    }
+
+    // ---------------------------------------------------------------------------
+    // Vulkan helper: find memory type for image (wraps static findMemoryType)
+    // ---------------------------------------------------------------------------
+
+    uint32_t VulkanDevice::findMemoryTypeForImage(uint32_t typeFilter, VkMemoryPropertyFlags properties) const
+    {
+        return findMemoryType(m_physicalDevice, typeFilter, properties);
+    }
+
+    // ---------------------------------------------------------------------------
+    // Vulkan helper: create render passes for offscreen render targets
+    // ---------------------------------------------------------------------------
+
+    bool VulkanDevice::createRenderTargetRenderPasses()
+    {
+        // --- Color-only render pass (no depth) ---
+        {
+            VkAttachmentDescription colorAttachment{};
+            colorAttachment.format = m_rtColorFormat;
+            colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+            colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+            colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+            colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+            colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+            colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+            colorAttachment.finalLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+
+            VkAttachmentReference colorRef{};
+            colorRef.attachment = 0;
+            colorRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+            VkSubpassDescription subpass{};
+            subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+            subpass.colorAttachmentCount = 1;
+            subpass.pColorAttachments = &colorRef;
+
+            VkSubpassDependency dependency{};
+            dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
+            dependency.dstSubpass = 0;
+            dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+            dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+            dependency.srcAccessMask = 0;
+            dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+
+            VkRenderPassCreateInfo rpInfo{};
+            rpInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+            rpInfo.attachmentCount = 1;
+            rpInfo.pAttachments = &colorAttachment;
+            rpInfo.subpassCount = 1;
+            rpInfo.pSubpasses = &subpass;
+            rpInfo.dependencyCount = 1;
+            rpInfo.pDependencies = &dependency;
+
+            if (vkCreateRenderPass(m_device, &rpInfo, nullptr, &m_rtRenderPass) != VK_SUCCESS)
+            {
+                SY_ERRORF("VulkanDevice: failed to create color-only render target render pass");
+                return false;
+            }
+        }
+
+        // --- Color + depth render pass ---
+        {
+            VkAttachmentDescription attachments[2]{};
+
+            // Color
+            attachments[0].format = m_rtColorFormat;
+            attachments[0].samples = VK_SAMPLE_COUNT_1_BIT;
+            attachments[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+            attachments[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+            attachments[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+            attachments[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+            attachments[0].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+            attachments[0].finalLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+
+            // Depth
+            attachments[1].format = m_rtDepthFormat;
+            attachments[1].samples = VK_SAMPLE_COUNT_1_BIT;
+            attachments[1].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+            attachments[1].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+            attachments[1].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+            attachments[1].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+            attachments[1].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+            attachments[1].finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+            VkAttachmentReference colorRef{};
+            colorRef.attachment = 0;
+            colorRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+            VkAttachmentReference depthRef{};
+            depthRef.attachment = 1;
+            depthRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+            VkSubpassDescription subpass{};
+            subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+            subpass.colorAttachmentCount = 1;
+            subpass.pColorAttachments = &colorRef;
+            subpass.pDepthStencilAttachment = &depthRef;
+
+            VkSubpassDependency dependency{};
+            dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
+            dependency.dstSubpass = 0;
+            dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+            dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+            dependency.srcAccessMask = 0;
+            dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+
+            VkRenderPassCreateInfo rpInfo{};
+            rpInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+            rpInfo.attachmentCount = 2;
+            rpInfo.pAttachments = attachments;
+            rpInfo.subpassCount = 1;
+            rpInfo.pSubpasses = &subpass;
+            rpInfo.dependencyCount = 1;
+            rpInfo.pDependencies = &dependency;
+
+            if (vkCreateRenderPass(m_device, &rpInfo, nullptr, &m_rtRenderPassDepth) != VK_SUCCESS)
+            {
+                SY_ERRORF("VulkanDevice: failed to create color+depth render target render pass");
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    void VulkanDevice::destroyRenderTargetRenderPasses()
+    {
+        if (m_rtRenderPass != VK_NULL_HANDLE)
+        {
+            vkDestroyRenderPass(m_device, m_rtRenderPass, nullptr);
+            m_rtRenderPass = VK_NULL_HANDLE;
+        }
+        if (m_rtRenderPassDepth != VK_NULL_HANDLE)
+        {
+            vkDestroyRenderPass(m_device, m_rtRenderPassDepth, nullptr);
+            m_rtRenderPassDepth = VK_NULL_HANDLE;
+        }
     }
 
     // ---------------------------------------------------------------------------
@@ -545,6 +700,13 @@ namespace Render::RHI
             return false;
         }
 
+        // --- Create render target render passes ---
+        if (!createRenderTargetRenderPasses())
+        {
+            SY_ERRORF("VulkanDevice::initialize: failed to create render target render passes");
+            return false;
+        }
+
         m_initialized = true;
         SY_DEBUGF("VulkanDevice::initialize: success (queue families: gfx=%d, present=%d)",
             m_graphicsQueueFamily,
@@ -574,6 +736,43 @@ namespace Render::RHI
             }
         }
         m_pipelines.clear();
+
+        // Destroy render targets
+        for (auto& [handle, res] : m_renderTargets)
+        {
+            if (res->framebuffer != VK_NULL_HANDLE)
+            {
+                vkDestroyFramebuffer(m_device, res->framebuffer, nullptr);
+            }
+            if (res->colorView != VK_NULL_HANDLE)
+            {
+                vkDestroyImageView(m_device, res->colorView, nullptr);
+            }
+            if (res->colorImage != VK_NULL_HANDLE)
+            {
+                vkDestroyImage(m_device, res->colorImage, nullptr);
+            }
+            if (res->colorMemory != VK_NULL_HANDLE)
+            {
+                vkFreeMemory(m_device, res->colorMemory, nullptr);
+            }
+            if (res->depthView != VK_NULL_HANDLE)
+            {
+                vkDestroyImageView(m_device, res->depthView, nullptr);
+            }
+            if (res->depthImage != VK_NULL_HANDLE)
+            {
+                vkDestroyImage(m_device, res->depthImage, nullptr);
+            }
+            if (res->depthMemory != VK_NULL_HANDLE)
+            {
+                vkFreeMemory(m_device, res->depthMemory, nullptr);
+            }
+        }
+        m_renderTargets.clear();
+
+        // Destroy render target render passes
+        destroyRenderTargetRenderPasses();
 
         // Destroy textures
         for (auto& [handle, res] : m_textures)
@@ -2064,6 +2263,21 @@ namespace Render::RHI
             vkGetImageMemoryRequirements(m_device, res->image, &reqs);
             totalSize += reqs.size;
         }
+        for (const auto& [handle, res] : m_renderTargets)
+        {
+            if (res->colorImage != VK_NULL_HANDLE)
+            {
+                VkMemoryRequirements reqs;
+                vkGetImageMemoryRequirements(m_device, res->colorImage, &reqs);
+                totalSize += reqs.size;
+            }
+            if (res->depthImage != VK_NULL_HANDLE)
+            {
+                VkMemoryRequirements reqs;
+                vkGetImageMemoryRequirements(m_device, res->depthImage, &reqs);
+                totalSize += reqs.size;
+            }
+        }
         return totalSize;
     }
 
@@ -2072,19 +2286,620 @@ namespace Render::RHI
         return static_cast<void*>(m_device);
     }
 
-    // 离屏渲染目标：Vulkan 后端暂未实现，均返回无效 / 空操作
-    RenderTargetHandle VulkanDevice::createRenderTarget(const RenderTargetDesc&)
+    // ===========================================================================
+    // Render target implementation
+    // ===========================================================================
+
+    RenderTargetHandle VulkanDevice::createRenderTarget(const RenderTargetDesc& desc)
     {
-        return NullRenderTarget;
+        if (desc.width == 0 || desc.height == 0)
+        {
+            SY_ERRORF("VulkanDevice::createRenderTarget: invalid dimensions %ux%u", desc.width, desc.height);
+            return NullRenderTarget;
+        }
+
+        auto res = std::make_unique<RenderTargetResource>();
+        res->width = desc.width;
+        res->height = desc.height;
+        res->hasDepth = desc.depth;
+        res->renderPass = desc.depth ? m_rtRenderPassDepth : m_rtRenderPass;
+
+        if (res->renderPass == VK_NULL_HANDLE)
+        {
+            SY_ERRORF("VulkanDevice::createRenderTarget: render pass not initialized");
+            return NullRenderTarget;
+        }
+
+        // --- Create color image ---
+        {
+            VkImageCreateInfo imageInfo{};
+            imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+            imageInfo.imageType = VK_IMAGE_TYPE_2D;
+            imageInfo.extent = { desc.width, desc.height, 1 };
+            imageInfo.mipLevels = 1;
+            imageInfo.arrayLayers = 1;
+            imageInfo.format = m_rtColorFormat;
+            imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+            imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+            imageInfo.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+            imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+            imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+            if (vkCreateImage(m_device, &imageInfo, nullptr, &res->colorImage) != VK_SUCCESS)
+            {
+                SY_ERRORF("VulkanDevice::createRenderTarget: failed to create color image");
+                return NullRenderTarget;
+            }
+
+            VkMemoryRequirements memReqs;
+            vkGetImageMemoryRequirements(m_device, res->colorImage, &memReqs);
+
+            VkMemoryAllocateInfo allocInfo{};
+            allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+            allocInfo.allocationSize = memReqs.size;
+            allocInfo.memoryTypeIndex = findMemoryType(m_physicalDevice, memReqs.memoryTypeBits,
+                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+            if (vkAllocateMemory(m_device, &allocInfo, nullptr, &res->colorMemory) != VK_SUCCESS)
+            {
+                SY_ERRORF("VulkanDevice::createRenderTarget: failed to allocate color memory");
+                return NullRenderTarget;
+            }
+            vkBindImageMemory(m_device, res->colorImage, res->colorMemory, 0);
+
+            VkImageViewCreateInfo viewInfo{};
+            viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+            viewInfo.image = res->colorImage;
+            viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+            viewInfo.format = m_rtColorFormat;
+            viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            viewInfo.subresourceRange.baseMipLevel = 0;
+            viewInfo.subresourceRange.levelCount = 1;
+            viewInfo.subresourceRange.baseArrayLayer = 0;
+            viewInfo.subresourceRange.layerCount = 1;
+
+            if (vkCreateImageView(m_device, &viewInfo, nullptr, &res->colorView) != VK_SUCCESS)
+            {
+                SY_ERRORF("VulkanDevice::createRenderTarget: failed to create color image view");
+                return NullRenderTarget;
+            }
+        }
+
+        // --- Create depth image (optional) ---
+        if (desc.depth)
+        {
+            VkImageCreateInfo imageInfo{};
+            imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+            imageInfo.imageType = VK_IMAGE_TYPE_2D;
+            imageInfo.extent = { desc.width, desc.height, 1 };
+            imageInfo.mipLevels = 1;
+            imageInfo.arrayLayers = 1;
+            imageInfo.format = m_rtDepthFormat;
+            imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+            imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+            imageInfo.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+            imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+            imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+            if (vkCreateImage(m_device, &imageInfo, nullptr, &res->depthImage) != VK_SUCCESS)
+            {
+                SY_ERRORF("VulkanDevice::createRenderTarget: failed to create depth image");
+                return NullRenderTarget;
+            }
+
+            VkMemoryRequirements memReqs;
+            vkGetImageMemoryRequirements(m_device, res->depthImage, &memReqs);
+
+            VkMemoryAllocateInfo allocInfo{};
+            allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+            allocInfo.allocationSize = memReqs.size;
+            allocInfo.memoryTypeIndex = findMemoryType(m_physicalDevice, memReqs.memoryTypeBits,
+                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+            if (vkAllocateMemory(m_device, &allocInfo, nullptr, &res->depthMemory) != VK_SUCCESS)
+            {
+                SY_ERRORF("VulkanDevice::createRenderTarget: failed to allocate depth memory");
+                return NullRenderTarget;
+            }
+            vkBindImageMemory(m_device, res->depthImage, res->depthMemory, 0);
+
+            VkImageViewCreateInfo viewInfo{};
+            viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+            viewInfo.image = res->depthImage;
+            viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+            viewInfo.format = m_rtDepthFormat;
+            viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
+            viewInfo.subresourceRange.baseMipLevel = 0;
+            viewInfo.subresourceRange.levelCount = 1;
+            viewInfo.subresourceRange.baseArrayLayer = 0;
+            viewInfo.subresourceRange.layerCount = 1;
+
+            if (vkCreateImageView(m_device, &viewInfo, nullptr, &res->depthView) != VK_SUCCESS)
+            {
+                SY_ERRORF("VulkanDevice::createRenderTarget: failed to create depth image view");
+                return NullRenderTarget;
+            }
+        }
+
+        // --- Create framebuffer ---
+        std::vector<VkImageView> attachments;
+        attachments.push_back(res->colorView);
+        if (desc.depth)
+        {
+            attachments.push_back(res->depthView);
+        }
+
+        VkFramebufferCreateInfo fbInfo{};
+        fbInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+        fbInfo.renderPass = res->renderPass;
+        fbInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
+        fbInfo.pAttachments = attachments.data();
+        fbInfo.width = desc.width;
+        fbInfo.height = desc.height;
+        fbInfo.layers = 1;
+
+        if (vkCreateFramebuffer(m_device, &fbInfo, nullptr, &res->framebuffer) != VK_SUCCESS)
+        {
+            SY_ERRORF("VulkanDevice::createRenderTarget: failed to create framebuffer");
+            return NullRenderTarget;
+        }
+
+        // Store and return handle
+        uint64_t id = m_nextRenderTargetId++;
+        RenderTargetHandle handle = makeHandle(kTypeRenderTarget, id);
+        m_renderTargets[handle] = std::move(res);
+
+        SY_DEBUGF("VulkanDevice::createRenderTarget: handle=%llu %ux%u depth=%d",
+            handle, desc.width, desc.height, desc.depth ? 1 : 0);
+        return handle;
     }
 
-    void VulkanDevice::destroyRenderTarget(RenderTargetHandle) {}
+    void VulkanDevice::destroyRenderTarget(RenderTargetHandle handle)
+    {
+        if (handle == NullRenderTarget)
+        {
+            return;
+        }
 
-    void VulkanDevice::bindRenderTarget(RenderTargetHandle) {}
+        auto it = m_renderTargets.find(handle);
+        if (it == m_renderTargets.end())
+        {
+            return;
+        }
 
-    void VulkanDevice::bindDefaultTarget() {}
+        auto& res = it->second;
+        vkDeviceWaitIdle(m_device);
 
-    void VulkanDevice::readRenderTarget(RenderTargetHandle, void*, uint32_t) {}
+        if (res->framebuffer != VK_NULL_HANDLE)
+            vkDestroyFramebuffer(m_device, res->framebuffer, nullptr);
+        if (res->colorView != VK_NULL_HANDLE)
+            vkDestroyImageView(m_device, res->colorView, nullptr);
+        if (res->colorImage != VK_NULL_HANDLE)
+            vkDestroyImage(m_device, res->colorImage, nullptr);
+        if (res->colorMemory != VK_NULL_HANDLE)
+            vkFreeMemory(m_device, res->colorMemory, nullptr);
+        if (res->depthView != VK_NULL_HANDLE)
+            vkDestroyImageView(m_device, res->depthView, nullptr);
+        if (res->depthImage != VK_NULL_HANDLE)
+            vkDestroyImage(m_device, res->depthImage, nullptr);
+        if (res->depthMemory != VK_NULL_HANDLE)
+            vkFreeMemory(m_device, res->depthMemory, nullptr);
+
+        m_renderTargets.erase(it);
+    }
+
+    void VulkanDevice::bindRenderTarget(RenderTargetHandle handle)
+    {
+        if (handle == NullRenderTarget)
+        {
+            return;
+        }
+
+        auto it = m_renderTargets.find(handle);
+        if (it == m_renderTargets.end())
+        {
+            SY_ERRORF("VulkanDevice::bindRenderTarget: invalid handle");
+            return;
+        }
+
+        auto& res = it->second;
+        VkCommandBuffer cmd = m_commandBuffers[m_commandBufferIndex];
+
+        // Save current state (only on first bind)
+        if (!m_renderTargetBound)
+        {
+            m_savedState.renderPass = m_renderPass;
+            m_savedState.framebuffer = (m_currentImageIndex < m_swapchainFramebuffers.size())
+                ? m_swapchainFramebuffers[m_currentImageIndex] : VK_NULL_HANDLE;
+            m_savedState.width = m_swapchainExtent.width;
+            m_savedState.height = m_swapchainExtent.height;
+            m_renderTargetBound = true;
+
+            // End the current swapchain render pass
+            vkCmdEndRenderPass(cmd);
+        }
+
+        // Begin render pass targeting the offscreen framebuffer
+        VkClearValue clearValue{};
+        clearValue.color = { m_clearColor[0], m_clearColor[1], m_clearColor[2], m_clearColor[3] };
+
+        VkClearValue depthClear{};
+        depthClear.depthStencil = { 1.0f, 0 };
+
+        std::vector<VkClearValue> clearValues;
+        clearValues.push_back(clearValue);
+        if (res->hasDepth)
+        {
+            clearValues.push_back(depthClear);
+        }
+
+        VkRenderPassBeginInfo rpInfo{};
+        rpInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+        rpInfo.renderPass = res->renderPass;
+        rpInfo.framebuffer = res->framebuffer;
+        rpInfo.renderArea.offset = { 0, 0 };
+        rpInfo.renderArea.extent = { res->width, res->height };
+        rpInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
+        rpInfo.pClearValues = clearValues.data();
+
+        vkCmdBeginRenderPass(cmd, &rpInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+        // Update viewport and scissor to match render target dimensions
+        VkViewport viewport{};
+        viewport.x = 0.0f;
+        viewport.y = 0.0f;
+        viewport.width = static_cast<float>(res->width);
+        viewport.height = static_cast<float>(res->height);
+        viewport.minDepth = 0.0f;
+        viewport.maxDepth = 1.0f;
+        vkCmdSetViewport(cmd, 0, 1, &viewport);
+
+        VkRect2D scissor{};
+        scissor.offset = { 0, 0 };
+        scissor.extent = { res->width, res->height };
+        vkCmdSetScissor(cmd, 0, 1, &scissor);
+
+        m_width = res->width;
+        m_height = res->height;
+    }
+
+    void VulkanDevice::bindDefaultTarget()
+    {
+        if (!m_renderTargetBound)
+        {
+            return;
+        }
+
+        VkCommandBuffer cmd = m_commandBuffers[m_commandBufferIndex];
+
+        // End the offscreen render pass
+        vkCmdEndRenderPass(cmd);
+
+        // Restore swapchain render pass
+        VkClearValue clearColor{};
+        clearColor.color = { m_clearColor[0], m_clearColor[1], m_clearColor[2], m_clearColor[3] };
+
+        VkRenderPassBeginInfo rpInfo{};
+        rpInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+        rpInfo.renderPass = m_savedState.renderPass;
+        rpInfo.framebuffer = m_savedState.framebuffer;
+        rpInfo.renderArea.offset = { 0, 0 };
+        rpInfo.renderArea.extent = { m_savedState.width, m_savedState.height };
+        rpInfo.clearValueCount = 1;
+        rpInfo.pClearValues = &clearColor;
+
+        vkCmdBeginRenderPass(cmd, &rpInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+        // Restore viewport and scissor
+        VkViewport viewport{};
+        viewport.x = 0.0f;
+        viewport.y = 0.0f;
+        viewport.width = static_cast<float>(m_savedState.width);
+        viewport.height = static_cast<float>(m_savedState.height);
+        viewport.minDepth = 0.0f;
+        viewport.maxDepth = 1.0f;
+        vkCmdSetViewport(cmd, 0, 1, &viewport);
+
+        VkRect2D scissor{};
+        scissor.offset = { 0, 0 };
+        scissor.extent = { m_savedState.width, m_savedState.height };
+        vkCmdSetScissor(cmd, 0, 1, &scissor);
+
+        m_width = m_savedState.width;
+        m_height = m_savedState.height;
+        m_renderTargetBound = false;
+    }
+
+    void VulkanDevice::readRenderTarget(RenderTargetHandle handle, void* rgba8, uint32_t rowPitchBytes)
+    {
+        if (handle == NullRenderTarget || rgba8 == nullptr)
+        {
+            return;
+        }
+
+        auto it = m_renderTargets.find(handle);
+        if (it == m_renderTargets.end())
+        {
+            SY_ERRORF("VulkanDevice::readRenderTarget: invalid handle");
+            return;
+        }
+
+        auto& res = it->second;
+        uint32_t w = res->width;
+        uint32_t h = res->height;
+        VkDeviceSize imageSize = static_cast<VkDeviceSize>(w) * h * 4;
+
+        // Create staging buffer (HOST_VISIBLE)
+        VkBufferCreateInfo bufferInfo{};
+        bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        bufferInfo.size = imageSize;
+        bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+        bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+        VkBuffer stagingBuffer;
+        if (vkCreateBuffer(m_device, &bufferInfo, nullptr, &stagingBuffer) != VK_SUCCESS)
+        {
+            SY_ERRORF("VulkanDevice::readRenderTarget: failed to create staging buffer");
+            return;
+        }
+
+        VkMemoryRequirements memReqs;
+        vkGetBufferMemoryRequirements(m_device, stagingBuffer, &memReqs);
+
+        VkMemoryAllocateInfo allocInfo{};
+        allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        allocInfo.allocationSize = memReqs.size;
+        allocInfo.memoryTypeIndex = findMemoryType(m_physicalDevice, memReqs.memoryTypeBits,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+        VkDeviceMemory stagingMemory;
+        if (vkAllocateMemory(m_device, &allocInfo, nullptr, &stagingMemory) != VK_SUCCESS)
+        {
+            vkDestroyBuffer(m_device, stagingBuffer, nullptr);
+            SY_ERRORF("VulkanDevice::readRenderTarget: failed to allocate staging memory");
+            return;
+        }
+        vkBindBufferMemory(m_device, stagingBuffer, stagingMemory, 0);
+
+        // Record and submit copy command
+        VkCommandBuffer cmd = m_commandBuffers[m_commandBufferIndex];
+        VkCommandBufferBeginInfo beginInfo{};
+        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+        vkBeginCommandBuffer(cmd, &beginInfo);
+
+        // Transition color image to TRANSFER_SRC_OPTIMAL
+        VkImageMemoryBarrier barrier{};
+        barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+        barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+        barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.image = res->colorImage;
+        barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        barrier.subresourceRange.baseMipLevel = 0;
+        barrier.subresourceRange.levelCount = 1;
+        barrier.subresourceRange.baseArrayLayer = 0;
+        barrier.subresourceRange.layerCount = 1;
+        barrier.srcAccessMask = 0;
+        barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+
+        vkCmdPipelineBarrier(cmd,
+            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+            VK_PIPELINE_STAGE_TRANSFER_BIT,
+            0, 0, nullptr, 0, nullptr, 1, &barrier);
+
+        // Copy image to buffer
+        VkBufferImageCopy region{};
+        region.bufferOffset = 0;
+        region.bufferRowLength = 0;
+        region.bufferImageHeight = 0;
+        region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        region.imageSubresource.mipLevel = 0;
+        region.imageSubresource.baseArrayLayer = 0;
+        region.imageSubresource.layerCount = 1;
+        region.imageOffset = { 0, 0, 0 };
+        region.imageExtent = { w, h, 1 };
+
+        vkCmdCopyImageToBuffer(cmd, res->colorImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+            stagingBuffer, 1, &region);
+
+        vkEndCommandBuffer(cmd);
+
+        VkSubmitInfo submitInfo{};
+        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        submitInfo.commandBufferCount = 1;
+        submitInfo.pCommandBuffers = &cmd;
+
+        vkQueueSubmit(m_graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE);
+        vkQueueWaitIdle(m_graphicsQueue);
+
+        // Copy from staging buffer to output with row pitch support
+        void* mappedPtr = nullptr;
+        vkMapMemory(m_device, stagingMemory, 0, imageSize, 0, &mappedPtr);
+
+        if (rowPitchBytes == w * 4 || rowPitchBytes == 0)
+        {
+            std::memcpy(rgba8, mappedPtr, imageSize);
+        }
+        else
+        {
+            uint8_t* src = static_cast<uint8_t*>(mappedPtr);
+            uint8_t* dst = static_cast<uint8_t*>(rgba8);
+            for (uint32_t y = 0; y < h; ++y)
+            {
+                std::memcpy(dst + y * rowPitchBytes, src + y * w * 4, w * 4);
+            }
+        }
+
+        vkUnmapMemory(m_device, stagingMemory);
+        vkDestroyBuffer(m_device, stagingBuffer, nullptr);
+        vkFreeMemory(m_device, stagingMemory, nullptr);
+    }
+
+    // ===========================================================================
+    // readPixels — read from currently bound framebuffer
+    // ===========================================================================
+
+    int VulkanDevice::readPixels(uint32_t x, uint32_t y, uint32_t width, uint32_t height,
+        void* outPixels, uint32_t* outRowPitch)
+    {
+        if (outPixels == nullptr || width == 0 || height == 0 || width > 8192 || height > 8192)
+        {
+            return 0;
+        }
+
+        // Determine which image to read from
+        VkImage sourceImage = VK_NULL_HANDLE;
+        if (m_renderTargetBound)
+        {
+            // Reading from a bound render target is not directly supported
+            // without knowing which target. Use readRenderTarget instead.
+            SY_WARNF("VulkanDevice::readPixels: reading from bound render target not supported, use readRenderTarget");
+            return 0;
+        }
+
+        // Use the current swapchain image
+        if (m_currentImageIndex >= m_swapchainImages.size())
+        {
+            return 0;
+        }
+        sourceImage = m_swapchainImages[m_currentImageIndex];
+
+        // Clamp read region
+        uint32_t clampW = std::min(width, m_swapchainExtent.width - x);
+        uint32_t clampH = std::min(height, m_swapchainExtent.height - y);
+        if (clampW == 0 || clampH == 0)
+        {
+            return 0;
+        }
+
+        VkDeviceSize imageSize = static_cast<VkDeviceSize>(clampW) * clampH * 4;
+
+        // Row pitch aligned to 4 bytes
+        uint32_t rowPitch = ((clampW * 4 + 3) / 4) * 4;
+        if (outRowPitch)
+        {
+            *outRowPitch = rowPitch;
+        }
+
+        // Create staging buffer
+        VkBufferCreateInfo bufferInfo{};
+        bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        bufferInfo.size = imageSize;
+        bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+        bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+        VkBuffer stagingBuffer;
+        if (vkCreateBuffer(m_device, &bufferInfo, nullptr, &stagingBuffer) != VK_SUCCESS)
+        {
+            return 0;
+        }
+
+        VkMemoryRequirements memReqs;
+        vkGetBufferMemoryRequirements(m_device, stagingBuffer, &memReqs);
+
+        VkMemoryAllocateInfo allocInfo{};
+        allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        allocInfo.allocationSize = memReqs.size;
+        allocInfo.memoryTypeIndex = findMemoryType(m_physicalDevice, memReqs.memoryTypeBits,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+        VkDeviceMemory stagingMemory;
+        if (vkAllocateMemory(m_device, &allocInfo, nullptr, &stagingMemory) != VK_SUCCESS)
+        {
+            vkDestroyBuffer(m_device, stagingBuffer, nullptr);
+            return 0;
+        }
+        vkBindBufferMemory(m_device, stagingBuffer, stagingMemory, 0);
+
+        // Record and submit copy command
+        VkCommandBuffer cmd = m_commandBuffers[m_commandBufferIndex];
+        VkCommandBufferBeginInfo beginInfo{};
+        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+        vkBeginCommandBuffer(cmd, &beginInfo);
+
+        // Transition swapchain image to TRANSFER_SRC
+        VkImageMemoryBarrier barrier{};
+        barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        barrier.oldLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+        barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+        barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.image = sourceImage;
+        barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        barrier.subresourceRange.baseMipLevel = 0;
+        barrier.subresourceRange.levelCount = 1;
+        barrier.subresourceRange.baseArrayLayer = 0;
+        barrier.subresourceRange.layerCount = 1;
+        barrier.srcAccessMask = 0;
+        barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+
+        vkCmdPipelineBarrier(cmd,
+            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+            VK_PIPELINE_STAGE_TRANSFER_BIT,
+            0, 0, nullptr, 0, nullptr, 1, &barrier);
+
+        // Copy sub-region
+        VkBufferImageCopy region{};
+        region.bufferOffset = 0;
+        region.bufferRowLength = 0;
+        region.bufferImageHeight = 0;
+        region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        region.imageSubresource.mipLevel = 0;
+        region.imageSubresource.baseArrayLayer = 0;
+        region.imageSubresource.layerCount = 1;
+        region.imageOffset = { static_cast<int32_t>(x), static_cast<int32_t>(y), 0 };
+        region.imageExtent = { clampW, clampH, 1 };
+
+        vkCmdCopyImageToBuffer(cmd, sourceImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+            stagingBuffer, 1, &region);
+
+        // Transition back to PRESENT_SRC
+        VkImageMemoryBarrier barrierBack{};
+        barrierBack.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        barrierBack.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+        barrierBack.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+        barrierBack.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrierBack.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrierBack.image = sourceImage;
+        barrierBack.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        barrierBack.subresourceRange.baseMipLevel = 0;
+        barrierBack.subresourceRange.levelCount = 1;
+        barrierBack.subresourceRange.baseArrayLayer = 0;
+        barrierBack.subresourceRange.layerCount = 1;
+        barrierBack.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+        barrierBack.dstAccessMask = 0;
+
+        vkCmdPipelineBarrier(cmd,
+            VK_PIPELINE_STAGE_TRANSFER_BIT,
+            VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+            0, 0, nullptr, 0, nullptr, 1, &barrierBack);
+
+        vkEndCommandBuffer(cmd);
+
+        VkSubmitInfo submitInfo{};
+        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        submitInfo.commandBufferCount = 1;
+        submitInfo.pCommandBuffers = &cmd;
+
+        vkQueueSubmit(m_graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE);
+        vkQueueWaitIdle(m_graphicsQueue);
+
+        // Copy from staging buffer to output
+        void* mappedPtr = nullptr;
+        vkMapMemory(m_device, stagingMemory, 0, imageSize, 0, &mappedPtr);
+        std::memcpy(outPixels, mappedPtr, imageSize);
+        vkUnmapMemory(m_device, stagingMemory);
+
+        vkDestroyBuffer(m_device, stagingBuffer, nullptr);
+        vkFreeMemory(m_device, stagingMemory, nullptr);
+
+        return 1;
+    }
 
     // Factory function
     IDevice* createVulkanDevice()

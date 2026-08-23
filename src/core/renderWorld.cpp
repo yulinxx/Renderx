@@ -57,11 +57,23 @@ namespace Render
                 uint32_t size = m_freeList[i + 1];
                 if (size >= vertexCount)
                 {
-                    m_freeList.erase(m_freeList.begin() + i, m_freeList.begin() + i + 2);
-                    if (size > vertexCount)
+                    if (size == vertexCount)
                     {
-                        m_freeList.push_back(offset + vertexCount);
-                        m_freeList.push_back(size - vertexCount);
+                        // Exact fit: swap-and-pop for O(1) removal
+                        size_t last = m_freeList.size() - 2;
+                        if (i != last)
+                        {
+                            m_freeList[i] = m_freeList[last];
+                            m_freeList[i + 1] = m_freeList[last + 1];
+                        }
+                        m_freeList.pop_back();
+                        m_freeList.pop_back();
+                    }
+                    else
+                    {
+                        // Partial fit: shrink in-place
+                        m_freeList[i] = offset + vertexCount;
+                        m_freeList[i + 1] = size - vertexCount;
                     }
                     return offset;
                 }
@@ -275,7 +287,6 @@ namespace Render
         {
             // viewWidth/viewHeight 当前不直接参与视锥计算，因为 viewMatrix
             // 已是正交投影矩阵（包含缩放）。保留参数用于未来扩展和退化矩阵兜底。
-            RenderWorld* self = const_cast<RenderWorld*>(this);
 
             if (outCount)
             {
@@ -293,9 +304,9 @@ namespace Render
 
             if (needsRebuild || m_quadTree.empty())
             {
-                self->rebuildQuadTree();
-                self->m_changeCount = 0;
-                std::memcpy(self->m_lastViewMatrix, viewMatrix, sizeof(float) * 9);
+                rebuildQuadTree();
+                m_changeCount = 0;
+                std::memcpy(m_lastViewMatrix, viewMatrix, sizeof(float) * 9);
             }
 
             m_visibleResult.clear();
@@ -464,15 +475,11 @@ void RenderWorld::update()
     }
 
     // 更新样本环（最近8帧）
+    m_changeRatioSamples[m_changeRatioWriteIdx] = dirtyCount;
+    m_changeRatioWriteIdx = (m_changeRatioWriteIdx + 1) % 8;
     if (m_changeRatioSampleCount < 8)
     {
-        m_changeRatioSamples[m_changeRatioSampleCount++] = dirtyCount;
-    }
-    else
-    {
-        // 循环覆盖：用新数据覆盖最旧的样本
-        m_changeRatioSamples[m_changeRatioSampleCount % 8] = dirtyCount;
-        m_changeRatioSampleCount = 8;  // 保持计数在8
+        ++m_changeRatioSampleCount;
     }
 
     // 计算平均变化比例
@@ -592,7 +599,7 @@ void RenderWorld::update()
             }
         }
 
-        void RenderWorld::rebuildQuadTree()
+        void RenderWorld::rebuildQuadTree() const
         {
             m_quadTree.clear();
             m_quadTreeEntities.clear();
@@ -652,7 +659,7 @@ void RenderWorld::update()
             m_quadTreeDirty = false;
         }
 
-        void RenderWorld::insertQuadTree(uint32_t nodeIdx, uint32_t entityDenseIdx, uint32_t depth)
+        void RenderWorld::insertQuadTree(uint32_t nodeIdx, uint32_t entityDenseIdx, uint32_t depth) const
         {
             if (nodeIdx >= m_quadTree.size() || entityDenseIdx >= m_entities.size())
             {

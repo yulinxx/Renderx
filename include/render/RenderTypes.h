@@ -477,14 +477,14 @@ namespace Render
 
     /// 渲染后端类型枚举
     ///
-    /// 注意：当前仅 OpenGL 后端已实现。Vulkan / Metal / Null 仅为类型预留，
-    /// 尚未有对应的运行时实现。跨平台目标需要 Metal 或等价非 OpenGL 后端。
+    /// 注意：当前支持 OpenGL、Vulkan、Metal 和 Null 四种后端。
+    /// Null 后端用于无 GPU 环境下的单元测试。
     enum class BackendType : int
     {
-        OpenGL = 0,  ///< OpenGL 后端（当前唯一已实现的后端）
-        Vulkan = 1,  ///< Vulkan 后端（预留，未实现）
-        Metal = 2,   ///< Metal 后端（Apple 平台，预留，未实现）
-        Null = 3,    ///< 空后端（用于测试，预留）
+        OpenGL = 0,  ///< OpenGL 后端
+        Vulkan = 1,  ///< Vulkan 后端
+        Metal = 2,   ///< Metal 后端（Apple 平台）
+        Null = 3,    ///< 空后端（用于测试）
     };
 
     inline const char* backendName(BackendType b)

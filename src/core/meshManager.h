@@ -235,4 +235,4 @@ namespace Render::core
         void uploadInstanceBuffer(RHI::IDevice* device);
     };
 
-}  // namespace render::core
+}  // namespace Render::core

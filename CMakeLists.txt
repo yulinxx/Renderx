@@ -190,6 +190,11 @@ sanyi_add_shared_library(${PROJECT_NAME}
                 ${RENDER_LINK_LIBS}
 )
 
+# Log库头文件路径（需要显式添加，因为 Log target 可能未导出 include 目录）
+if(EXISTS "${LOG_INCLUDE_DIR}")
+    target_include_directories(${PROJECT_NAME} PRIVATE ${LOG_INCLUDE_DIR})
+endif()
+
 # stb库头文件配置（用于文本渲染）
 find_path(STB_TRUETYPE_INCLUDE_DIR stb_truetype.h QUIET)
 if(STB_TRUETYPE_INCLUDE_DIR)

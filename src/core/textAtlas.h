@@ -181,4 +181,4 @@ namespace Render::core
             uint32_t viewportH);
     };
 
-}  // namespace render::core
+}  // namespace Render::core

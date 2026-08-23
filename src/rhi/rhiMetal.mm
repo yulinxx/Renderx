@@ -1096,4 +1096,4 @@ IDevice* createMetalDevice() {
     return new MetalDevice();
 }
 
-} // namespace render::rhi
+} // namespace Render::RHI

@@ -82,4 +82,4 @@ namespace Render::core
         bool rasterizeGlyph(uint32_t codepoint, float fontSize, GlyphInfo* outInfo);
     };
 
-}  // namespace render::core
+}  // namespace Render::core

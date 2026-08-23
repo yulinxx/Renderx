@@ -13,7 +13,7 @@
  * renderSetSelectionRect / renderSetSelectionHandles）已移除，
  * 所有调用方已迁移到统一 API。
  */
-#include "rendercapiinternal.h"
+#include "renderCApiInternal.h"
 
 using namespace Render;
 

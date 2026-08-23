@@ -109,7 +109,7 @@ namespace Render::RHI
         void enableDepthTest(bool enable) override;
         void enableBlend(bool enable) override;
 
-        // 离屏渲染目标（Vulkan 后端暂未实现，返回无效 / 空操作）
+        // 离屏渲染目标
         RenderTargetHandle createRenderTarget(const RenderTargetDesc&) override;
         void destroyRenderTarget(RenderTargetHandle) override;
         void bindRenderTarget(RenderTargetHandle) override;
@@ -124,6 +124,15 @@ namespace Render::RHI
         bool checkFence(uint64_t fenceValue) const override;
 
     private:
+        // Saved state for render target bind/unbind
+        struct VkSavedState
+        {
+            VkRenderPass renderPass = VK_NULL_HANDLE;
+            VkFramebuffer framebuffer = VK_NULL_HANDLE;
+            uint32_t width = 0;
+            uint32_t height = 0;
+        };
+
         // Vulkan object handles
         VkInstance m_instance = VK_NULL_HANDLE;
         VkSurfaceKHR m_surface = VK_NULL_HANDLE;
@@ -178,16 +187,19 @@ namespace Render::RHI
         struct BufferResource;
         struct TextureResource;
         struct PipelineResource;
+        struct RenderTargetResource;
 
         // Resource maps
         std::unordered_map<uint64_t, std::unique_ptr<BufferResource>> m_buffers;
         std::unordered_map<uint64_t, std::unique_ptr<TextureResource>> m_textures;
         std::unordered_map<uint64_t, std::unique_ptr<PipelineResource>> m_pipelines;
+        std::unordered_map<uint64_t, std::unique_ptr<RenderTargetResource>> m_renderTargets;
 
         // Handle counters
         uint64_t m_nextBufferId = 1;
         uint64_t m_nextTextureId = 1;
         uint64_t m_nextPipelineId = 1;
+        uint64_t m_nextRenderTargetId = 1;
         uint32_t m_drawCallCount = 0;
 
         // State tracking
@@ -198,6 +210,14 @@ namespace Render::RHI
         float m_lineWidth = 1.0f;
         std::vector<float> m_uniformCache;
         std::vector<float> m_pushConstants;
+
+        // Render target state
+        VkRenderPass m_rtRenderPass = VK_NULL_HANDLE;       // Render pass for offscreen targets (no depth)
+        VkRenderPass m_rtRenderPassDepth = VK_NULL_HANDLE;   // Render pass for offscreen targets (with depth)
+        VkFormat m_rtColorFormat = VK_FORMAT_R8G8B8A8_UNORM;
+        VkFormat m_rtDepthFormat = VK_FORMAT_D24_UNORM_S8_UINT;
+        VkSavedState m_savedState{};                         // Saved state for bindDefaultTarget restore
+        bool m_renderTargetBound = false;
 
         // Internal helpers
         bool createSwapchain(uint32_t width, uint32_t height);
@@ -215,6 +235,11 @@ namespace Render::RHI
         VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& available);
         VkPresentModeKHR chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& available);
         VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities, uint32_t width, uint32_t height);
+
+        // Render target helpers
+        bool createRenderTargetRenderPasses();
+        void destroyRenderTargetRenderPasses();
+        uint32_t findMemoryTypeForImage(uint32_t typeFilter, VkMemoryPropertyFlags properties) const;
     };
 
     /**

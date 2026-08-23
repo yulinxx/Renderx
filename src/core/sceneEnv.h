@@ -128,4 +128,4 @@ namespace Render::core
         bool m_dirty = true;
     };
 
-}  // namespace render::core
+}  // namespace Render::core

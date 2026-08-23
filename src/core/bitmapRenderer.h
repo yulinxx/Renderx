@@ -130,4 +130,4 @@ namespace Render::core
         std::vector<BitmapEntry> m_bitmaps;
     };
 
-}  // namespace render::core
+}  // namespace Render::core

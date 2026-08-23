@@ -7,7 +7,7 @@
  * - 3D 网格注册/注销/实例管理
  * - 材质管理
  */
-#include "rendercapiinternal.h"
+#include "renderCApiInternal.h"
 
 using namespace Render;
 
