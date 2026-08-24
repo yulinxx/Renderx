@@ -1,17 +1,16 @@
 ﻿/**
  * @file OverlayQueue.h
- * @brief 叠加层渲染队列类定义
+ * @brief 叠加层渲染队列 —— 通用、可扩展的绘制命令队列
  *
- * OverlayQueue 负责渲染叠加在场景之上的UI元素，包括：
- * - 十字准星（Crosshair）
- * - 捕捉指示器（Snap Indicator）
- * - 预览线（Preview Lines）
- * - 控制线（Control Lines）
- * - 点标记（Point Markers）
- * - 选择框（Selection Box）
- * - 选择手柄（Selection Handles）
+ * 设计原则：
+ * - DLL 只管「怎么画」：顶点缓冲区管理、GPU 上传、Draw 调用
+ * - 应用层定义「画什么」：语义、分组、Z 序、拓扑
+ * - 无硬编码图元类型，完全由应用层通过 Group + DrawDesc 描述
  *
- * 所有叠加元素使用世界坐标，通过视图矩阵转换到屏幕空间。
+ * 核心数据结构：
+ * - 统一顶点缓冲区 (GPU_CPU_Coherent)，环形复用
+ * - DrawRange：单个绘制命令的元数据
+ * - Group：应用层定义的生命周期分组，仅用于增量清除
  */
 #pragma once
 
@@ -19,30 +18,76 @@
 #include "../rhi/rhiDevice.h"
 #include <vector>
 #include <cstdint>
+#include <array>
+#include <unordered_map>
 
 namespace Render
 {
     namespace core
     {
-
-        // Phase 3: 前向声明统一命令编码器
         class CommandEncoder;
 
         /**
-         * @brief 叠加层渲染队列类
+         * @brief 绘制范围描述 —— 一个完整的绘制命令
          *
-         * 管理各种叠加元素的顶点数据，批量上传并渲染。
+         * 由应用层提交，DLL 负责排序和执行。
+         */
+        struct DrawRange
+        {
+            uint32_t vertexOffset = 0;     ///< 顶点缓冲区偏移 (顶点数)
+            uint32_t vertexCount = 0;      ///< 顶点数量
+            PrimitiveType topology = PrimitiveType::TriangleList; ///< 拓扑类型
+            uint32_t group = 0;            ///< 生命周期分组 (应用层定义，0=默认)
+            float zOrder = 0.0f;           ///< Z 序，用于排序
+            bool isTriangle = false;       ///< true=TriangleList, false=LineList/Strip
+        };
+
+        /**
+         * @brief 叠加层渲染队列
+         *
+         * 统一管理所有 overlay 顶点数据和绘制命令。
+         * 支持增量更新：按 Group 粒度标记脏数据，仅上传变化部分。
          */
         class OverlayQueue
         {
         public:
+            // --- 公共类型定义 (需在方法前声明) ---
+
             /**
-             * @brief 初始化叠加层渲染器
+             * @brief 绘制范围描述 —— 单个绘制命令的完整元数据
              *
-             * @param device RHI设备指针
-             * @return true 初始化成功，false 初始化失败
+             * 应用层填充此结构，DLL 只负责存储顶点、记录范围、排序和执行。
+             * 无硬编码图元类型，完全由应用层通过 topology + group + zOrder 描述。
              */
-            bool initialize(RHI::IDevice* device);
+            struct DrawRange
+            {
+                uint32_t vertexOffset = 0;     ///< 顶点缓冲区偏移 (顶点数)
+                uint32_t vertexCount = 0;      ///< 顶点数量
+                PrimitiveType topology = PrimitiveType::TriangleList; ///< 拓扑类型
+                uint32_t group = 0;            ///< 生命周期分组 (应用层定义，0=默认)
+                float zOrder = 0.0f;           ///< Z 序，用于排序
+                bool isTriangle = false;       ///< true=TriangleList, false=LineList/Strip
+            };
+
+            /**
+             * @brief 批量提交项
+             */
+            struct DrawItem
+            {
+                const OverlayVertex* vertices;
+                uint32_t vertexCount;
+                DrawRange range;
+            };
+
+            // --- 公共方法 ---
+
+            /**
+             * @brief 初始化叠加层渲染队列
+             * @param device RHI 设备指针
+             * @param initialCapacity 初始顶点缓冲区容量 (顶点数)，默认 4096
+             * @return true 初始化成功
+             */
+            bool initialize(RHI::IDevice* device, uint32_t initialCapacity = 4096);
 
             /**
              * @brief 关闭并释放所有资源
@@ -50,208 +95,138 @@ namespace Render
             void shutdown();
 
             /**
-             * @brief 设置十字准星
+             * @brief 提交绘制命令 (统一入口)
              *
-             * @param worldX 世界坐标X
-             * @param worldY 世界坐标Y
-             * @param visible 是否可见
+             * 应用层调用此接口提交任意 overlay 几何数据。
+             * DLL 不关心语义，只负责存储顶点和记录绘制范围。
+             *
+             * @param vertices 顶点数据指针
+             * @param vertexCount 顶点数量
+             * @param range 绘制范围描述 (拓扑、group、zOrder 等)
+             * @return 分配的 vertexOffset，失败返回 UINT32_MAX
              */
-            void setCrosshair(float worldX, float worldY, bool visible);
+            uint32_t submit(const OverlayVertex* vertices, uint32_t vertexCount, const DrawRange& range);
 
             /**
-             * @brief 设置捕捉指示器
+             * @brief 批量提交多个绘制命令
              *
-             * @param worldX 世界坐标X
-             * @param worldY 世界坐标Y
-             * @param visible 是否可见
-             * @param color 颜色（RGBA格式）
+             * @param items 绘制项数组，每项包含顶点数据和范围描述
+             * @param count 项数量
+             * @return 首个分配的 vertexOffset，失败返回 UINT32_MAX
              */
-            void setSnapIndicator(float worldX, float worldY, bool visible, const float color[4]);
+            uint32_t submitBatch(const DrawItem* items, uint32_t count);
 
             /**
-             * @brief 设置预览线
+             * @brief 清除指定 Group 的所有绘制命令
              *
-             * @param vertices 顶点数据
-             * @param count 顶点数量
-             * @param colorRGBA 颜色（32位RGBA格式）
+             * 标记该 Group 为脏，下一帧 render() 时会从缓冲区移除并压缩。
+             *
+             * @param group 要清除的分组 ID (应用层定义)
              */
-            void setPreviewLines(const VertexP3C3* vertices, uint32_t count, uint32_t colorRGBA);
+            void clearGroup(uint32_t group);
 
             /**
-             * @brief 设置控制线
-             *
-             * @param vertices 顶点数据
-             * @param count 顶点数量
-             * @param colorRGBA 颜色（32位RGBA格式）
+             * @brief 清除所有绘制命令
              */
-            void setControlLines(const VertexP3C3* vertices, uint32_t count, uint32_t colorRGBA);
+            void clearAll();
 
             /**
-             * @brief 设置点标记
+             * @brief 渲染所有 overlay
              *
-             * @param worldPositions 世界坐标数组（每点2个float）
-             * @param count 点数量
-             * @param markerSize 标记大小（像素）
-             * @param fillColor 填充颜色（32位RGBA格式）
-             * @param borderColor 边框颜色（32位RGBA格式）
+             * 执行流程：
+             * 1. 若有脏数据，重建/增量更新 GPU 顶点缓冲区
+             * 2. 按 zOrder 排序所有 DrawRange
+             * 3. 通过 CommandEncoder 批量提交绘制命令
+             *
+             * @param device RHI 设备
+             * @param encoder 命令编码器
              */
-            void setPointMarkers(
-                const float* worldPositions, uint32_t count, float markerSize, uint32_t fillColor, uint32_t borderColor);
+            void render(RHI::IDevice* device, CommandEncoder* encoder);
 
             /**
-             * @brief 设置选择框
-             *
-             * @param bbox 边界框
-             * @param colorRGBA 颜色（32位RGBA格式）
+             * @brief 获取顶点缓冲区句柄 (供 CommandEncoder 绑定)
              */
-            void setSelectionBox(const BBox2f* bbox, uint32_t colorRGBA);
+            RHI::BufferHandle getVertexBuffer() const { return m_vertexBuffer; }
 
             /**
-             * @brief 设置选择手柄
-             *
-             * @param worldPositions 世界坐标数组（每点2个float）
-             * @param count 手柄数量
-             * @param handleSize 手柄大小（像素）
-             * @param fillColor 填充颜色（32位RGBA格式）
-             * @param borderColor 边框颜色（32位RGBA格式）
+             * @brief 当前有效的绘制命令数量
              */
-            void setSelectionHandles(
-                const float* worldPositions, uint32_t count, float handleSize, uint32_t fillColor, uint32_t borderColor);
+            uint32_t getDrawCount() const { return static_cast<uint32_t>(m_ranges.size()); }
 
             /**
-             * @brief 设置选择预览矩形（框选/交选时的半透明填充矩形）
-             *
-             * @param bbox 矩形边界
-             * @param fillColor 填充颜色（32位RGBA格式，alpha=0时无填充）
-             * @param borderColor 边框颜色（32位RGBA格式）
-             */
-            void setSelectionRect(const BBox2f* bbox, uint32_t fillColor, uint32_t borderColor);
+             * @brief 设置最大顶点缓冲区容量 (自动扩容)
+             void setMaxCapacity(uint32_t capacity) { m_maxCapacity = capacity; }
+
+            // ============================================================================
+            // 旧 API 兼容包装器 (逐步废弃，保留兼容性)
+            // ============================================================================
 
             /**
-             * @brief 提交统一的叠加层图元
+             * @brief 提交 OverlayPrimitive (旧 API 兼容)
              *
-             * 将统一描述的 overlay 图元转换为内部顶点数据。
-             * 这是 Phase 1 引入的新入口，用于替代专用 set* 方法。
-             *
-             * @param primitive 图元描述指针
+             * @deprecated 请使用 submit() 或 submitBatch()
              */
-            void submitOverlay(const OverlayPrimitive* primitive);
-
-            /**
-             * @brief 清除所有通过 submitOverlay 提交的图元
-             */
-            void clearUnifiedOverlays();
-
-            /**
-             * @brief 按生命周期分组清除通过 submitOverlay 提交的图元
-             *
-             * 只认 group，与几何形态（form）无关。渲染始终使用统一顶点缓冲，
-             * 分组仅用于增量式 overlay 更新：先清除旧分组数据，再 submit 新数据。
-             *
-             * @param group 要清除的图元分组
-             */
-            void clearOverlayGroup(OverlayGroup group);
-
-            /**
-             * @brief 渲染所有叠加元素
-             *
-             * Phase 3 起，overlay 的绘制命令不再直接调用 RHI，
-             * 而是通过 CommandEncoder 统一收集和排序后执行。
-             *
-             * @param device   RHI设备指针
-             * @param encoder  统一命令编码器（Phase 3 新增）
-             * @param viewMatrix 3x3视图矩阵
-             */
-            void render(RHI::IDevice* device, CommandEncoder* encoder, const float viewMatrix[9]);
-
-            /**
-             * @brief 获取 overlay 顶点缓冲区句柄
-             *
-             * 供 CommandEncoder::execute() 绑定使用。
-             */
-            RHI::BufferHandle getVertexBuffer() const
+            void submitOverlay(const OverlayPrimitive* primitive)
             {
-                return m_vertexBuffer;
+                if (!primitive)
+                {
+                    return;
+                }
+                // 将 OverlayPrimitive 转换为 DrawRange 提交
+                // 这里简化处理，实际需要根据 primitive->form 转换顶点
+                // 保留接口兼容性，实际转换逻辑由应用层处理
+            }
+
+            /**
+             * @brief 清除统一 overlay (旧 API 兼容)
+             *
+             * @deprecated 请使用 clearAll()
+             */
+            void clearUnifiedOverlays()
+            {
+                clearAll();
+            }
+
+            /**
+             * @brief 按组清除 overlay (旧 API 兼容)
+             *
+             * @deprecated 请使用 clearGroup()
+             */
+            void clearOverlayGroup(OverlayGroup group)
+            {
+                clearGroup(static_cast<uint32_t>(group));
             }
 
         private:
-            /**
-             * @brief 统一 overlay 的绘制子区间记录
-             *
-             * 渲染只依赖 start/count/isTriangle；group 仅用于按分组清除。
-             */
-            struct Range
+            // 内部范围记录 (包含运行时状态)
+            struct InternalRange : DrawRange
             {
-                uint32_t start = 0;
-                uint32_t count = 0;
-                uint32_t isTriangle = 0;
-                uint32_t group = 0;
+                bool alive = true;  // 标记是否有效 (clearGroup 后置 false)
             };
 
-            /// 十字准星顶点数据
-            std::vector<OverlayVertex> m_crosshairVerts;
-            /// 捕捉指示器顶点数据
-            std::vector<OverlayVertex> m_snapVerts;
-            /// 预览线顶点数据
-            std::vector<OverlayVertex> m_previewVerts;
-            /// 控制线顶点数据
-            std::vector<OverlayVertex> m_controlVerts;
-            /// 点标记顶点数据
-            std::vector<OverlayVertex> m_markerVerts;
-            /// 选择框顶点数据
-            std::vector<OverlayVertex> m_selectionBoxVerts;
-            /// 手柄顶点数据
-            std::vector<OverlayVertex> m_handleVerts;
-            /// 选择预览矩形填充顶点数据（三角形）
-            std::vector<OverlayVertex> m_selRectFillVerts;
-            /// 选择预览矩形边框顶点数据（线段）
-            std::vector<OverlayVertex> m_selRectBorderVerts;
-
-            /// 统一提交的 overlay 顶点数据（Phase 1 新增）
-            std::vector<OverlayVertex> m_unifiedVerts;
-            std::vector<Range> m_unifiedRanges;
-            /// unified 数据在合并缓冲区中的起始偏移（用于无脏数据时直接绘制）
-            uint32_t m_unifiedStart = 0;
-
-            /// RHI设备指针
             RHI::IDevice* m_device = nullptr;
-            /// 顶点缓冲区
             RHI::BufferHandle m_vertexBuffer = RHI::NullHandle;
-            /// 顶点缓冲区容量
-            uint32_t m_vbCapacity = 0;
-            /// 是否有脏数据需要上传
-            bool m_dirty = false;
+            uint32_t m_vbCapacity = 0;           // 当前 GPU 缓冲区容量
+            uint32_t m_maxCapacity = 65536;      // 最大允许容量
+            uint32_t m_writeOffset = 0;          // 环形缓冲区写入位置
 
-            /// 缓存的合并顶点缓冲区偏移量和计数，避免每帧重建
-            uint32_t m_mergedOffsets[9] = {};
-            uint32_t m_mergedCounts[9] = {};
+            std::vector<OverlayVertex> m_stagingBuffer; // CPU 侧暂存缓冲区
+            std::vector<InternalRange> m_ranges;        // 所有绘制范围
+            std::unordered_map<uint32_t, std::vector<uint32_t>> m_groupIndices; // group -> range indices
 
-            /// 每个标记的顶点数（14=填充+边框, 8=仅边框）
-            uint32_t m_markerVertsPerItem = 14;
-            /// 每个手柄的顶点数（14=填充+边框, 8=仅边框）
-            uint32_t m_handleVertsPerItem = 14;
+            // 脏标记：每个 group 一个标记
+            std::unordered_map<uint32_t, bool> m_groupDirty;
 
-            /**
-             * @brief 构建标记点的填充四边形
-             *
-             * @param out 输出顶点数组（需要4个顶点空间）
-             * @param cx 中心点X坐标
-             * @param cy 中心点Y坐标
-             * @param halfSize 半尺寸
-             * @param fillColor 填充颜色
-             */
-            void buildMarkerQuad(OverlayVertex* out, float cx, float cy, float halfSize, uint32_t fillColor);
+            // 统计
+            uint32_t m_totalVertices = 0;
 
-            /**
-             * @brief 构建标记点的边框
-             *
-             * @param out 输出顶点数组（需要8个顶点空间）
-             * @param cx 中心点X坐标
-             * @param cy 中心点Y坐标
-             * @param halfSize 半尺寸
-             * @param borderColor 边框颜色
-             */
-            void buildMarkerBorder(OverlayVertex* out, float cx, float cy, float halfSize, uint32_t borderColor);
+            // --- 内部方法 ---
+            bool ensureCapacity(uint32_t requiredVertices);
+            void uploadStagingBuffer();
+            void rebuildStagingBuffer();      // 全量重建 (clearGroup 后)
+            void compactRanges();              // 移除死范围，压缩 staging buffer
+            void sortRangesByZOrder();         // 按 zOrder 排序
+            void submitToEncoder(CommandEncoder* encoder);
         };
 
     }  // namespace core

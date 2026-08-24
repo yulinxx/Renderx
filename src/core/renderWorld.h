@@ -166,6 +166,8 @@ namespace Render
             std::vector<MaterialEntry> m_materials;
             /// 可见性查询结果缓存
             mutable std::vector<uint32_t> m_visibleResult;
+            /// 流式写入追踪（beginEntityVertices 未提交的实体 ID）
+            EntityId m_pendingEntityId = 0;
 
             /// 触发四叉树重建的变更阈值（动态计算：每帧变化图元占总图元的比例）
             uint32_t m_rebuildThreshold = 100;  ///< 基础阈值，可被动态调整
@@ -230,6 +232,30 @@ namespace Render
              */
             void addEntity(
                 EntityId id, const VertexP3C3* vertices, uint32_t vertexCount, PrimitiveType type, uint16_t materialIdx);
+
+            /**
+             * @brief 流式添加图元（零拷贝路径）
+             *
+             * 分配顶点空间并返回可写指针，调用方直接写入顶点数据，避免中间缓冲区拷贝。
+             * 写入完成后必须调用 commitEntityVertices() 提交。
+             *
+             * @param id 图元唯一标识符
+             * @param vertexCount 顶点数量
+             * @param type 图元类型
+             * @param materialIdx 材质索引
+             * @return 可写顶点指针，失败返回 nullptr
+             */
+            VertexP3C3* beginEntityVertices(
+                EntityId id, uint32_t vertexCount, PrimitiveType type, uint16_t materialIdx);
+
+            /**
+             * @brief 提交流式添加的图元
+             *
+             * 标记实体脏并加入变更列表。必须在 beginEntityVertices() 后调用。
+             *
+             * @param id 图元唯一标识符
+             */
+            void commitEntityVertices(EntityId id);
 
             /**
              * @brief 修改已存在的图元

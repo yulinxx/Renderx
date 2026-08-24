@@ -190,6 +190,28 @@ static uint32_t readBackGpuVisibility(RenderDevice* dev, uint32_t* outIndices, u
  * @param outVertices 输出顶点数组
  * @param cameraCenter 相机中心（世界坐标 double[2]），用于精度优化
  */
+static void tessellatePolylineDirect(
+    const GeometryPolyline* polyline, Render::VertexP3C3* outVertices, const double cameraCenter[2])
+{
+    if (!polyline || !polyline->points || polyline->pointCount < 2)
+    {
+        return;
+    }
+
+    float cr = polyline->color[0], cg = polyline->color[1], cb = polyline->color[2];
+    const double camX = cameraCenter[0];
+    const double camY = cameraCenter[1];
+    for (uint32_t i = 0; i < polyline->pointCount; ++i)
+    {
+        outVertices[i] = { static_cast<float>(polyline->points[i].x - camX) + static_cast<float>(camX),
+            static_cast<float>(polyline->points[i].y - camY) + static_cast<float>(camY),
+            0.0f,
+            cr,
+            cg,
+            cb };
+    }
+}
+
 static void tessellatePolyline(
     const GeometryPolyline* polyline, std::vector<Render::VertexP3C3>& outVertices, const double cameraCenter[2])
 {
@@ -229,6 +251,34 @@ static void tessellatePolyline(
  * @param outVertices 输出顶点数组
  * @param cameraCenter 相机中心（世界坐标 double[2]），用于精度优化
  */
+static void tessellateCircleDirect(
+    const GeometryCircle* circle, Render::VertexP3C3* outVertices, const double cameraCenter[2])
+{
+    if (!circle || circle->radius <= 0)
+    {
+        return;
+    }
+
+    float cr = circle->color[0], cg = circle->color[1], cb = circle->color[2];
+    const int segments = Render::tess::kCircleSegments;
+    const double camX = cameraCenter[0];
+    const double camY = cameraCenter[1];
+    const double centerX = static_cast<double>(static_cast<float>(circle->center.x - camX)) + camX;
+    const double centerY = static_cast<double>(static_cast<float>(circle->center.y - camY)) + camY;
+    const double radius = circle->radius;
+
+    for (int i = 0; i < segments; ++i)
+    {
+        double angle = (2.0 * Render::tess::kPi * i) / segments;
+        outVertices[i] = { static_cast<float>(centerX + radius * std::cos(angle)),
+            static_cast<float>(centerY + radius * std::sin(angle)),
+            0.0f,
+            cr,
+            cg,
+            cb };
+    }
+}
+
 static void tessellateCircle(
     const GeometryCircle* circle, std::vector<Render::VertexP3C3>& outVertices, const double cameraCenter[2])
 {
@@ -268,6 +318,44 @@ static void tessellateCircle(
  * @param outVertices 输出顶点数组
  * @param cameraCenter 相机中心（世界坐标 double[2]），用于精度优化
  */
+static void tessellateArcDirect(
+    const GeometryArc* arc, Render::VertexP3C3* outVertices, const double cameraCenter[2])
+{
+    if (!arc || arc->radius <= 0)
+    {
+        return;
+    }
+
+    float cr = arc->color[0], cg = arc->color[1], cb = arc->color[2];
+    double start = arc->startAngle;
+    double end = arc->endAngle;
+    if (end < start)
+    {
+        end += 2.0 * Render::tess::kPi;
+    }
+
+    double angleRange = end - start;
+    int segments = Render::tess::arcSegments(angleRange);
+
+    const double camX = cameraCenter[0];
+    const double camY = cameraCenter[1];
+    const double centerX = static_cast<double>(static_cast<float>(arc->center.x - camX)) + camX;
+    const double centerY = static_cast<double>(static_cast<float>(arc->center.y - camY)) + camY;
+    const double radius = arc->radius;
+
+    for (int i = 0; i <= segments; ++i)
+    {
+        double t = static_cast<double>(i) / segments;
+        double angle = start + t * angleRange;
+        outVertices[i] = { static_cast<float>(centerX + radius * std::cos(angle)),
+            static_cast<float>(centerY + radius * std::sin(angle)),
+            0.0f,
+            cr,
+            cg,
+            cb };
+    }
+}
+
 static void tessellateArc(
     const GeometryArc* arc, std::vector<Render::VertexP3C3>& outVertices, const double cameraCenter[2])
 {
@@ -374,6 +462,62 @@ static void tessellateEllipse(
     }
 }
 
+static void tessellateEllipseDirect(
+    const GeometryEllipse* ellipse, Render::VertexP3C3* outVertices, const double cameraCenter[2])
+{
+    if (!ellipse || ellipse->radiusX <= 0 || ellipse->radiusY <= 0)
+    {
+        return;
+    }
+
+    // 统一离散化基准段数：64（完整椭圆）
+    const int segments = Render::tess::kCircleSegments;
+
+    double start = ellipse->startAngle;
+    double end = ellipse->endAngle;
+    if (ellipse->fullEllipse || (start == 0.0 && end == 0.0))
+    {
+        start = 0.0;
+        end = 2.0 * Render::tess::kPi;
+    }
+    // 椭圆弧角度归一化：end < start 时跨 2π，与增量路径一致
+    if (end < start)
+    {
+        end += 2.0 * Render::tess::kPi;
+    }
+
+    double angleRange = end - start;
+    // 统一离散化段数：完整椭圆 64，椭圆弧按角度比例缩放
+    int actualSegments = Render::tess::ellipseSegments(angleRange);
+
+    const double camX = cameraCenter[0];
+    const double camY = cameraCenter[1];
+    // 绝对世界坐标（double 预减保持精度后加回），与 shader 的 uCameraCenter 相减配套
+    const double centerX = static_cast<double>(static_cast<float>(ellipse->center.x - camX)) + camX;
+    const double centerY = static_cast<double>(static_cast<float>(ellipse->center.y - camY)) + camY;
+    const double rx = ellipse->radiusX;
+    float cr = ellipse->color[0], cg = ellipse->color[1], cb = ellipse->color[2];
+    const double ry = ellipse->radiusY;
+    const double rotation = ellipse->rotation;
+    const double cosRot = std::cos(rotation);
+    const double sinRot = std::sin(rotation);
+
+    for (int i = 0; i <= actualSegments; ++i)
+    {
+        double t = static_cast<double>(i) / actualSegments;
+        double angle = start + t * angleRange;
+        double x = rx * std::cos(angle);
+        double y = ry * std::sin(angle);
+
+        outVertices[i] = { static_cast<float>(centerX + x * cosRot - y * sinRot),
+            static_cast<float>(centerY + x * sinRot + y * cosRot),
+            0.0f,
+            cr,
+            cg,
+            cb };
+    }
+}
+
 // ============================================================================
 // 统一几何提交 API
 // ============================================================================
@@ -410,14 +554,16 @@ static void renderSubmitGeometryImpl(RenderDevice* dev, const GeometryPrimitive*
         {
             return;
         }
-        std::vector<Render::VertexP3C3> vertices;
-        tessellatePolyline(primitive->desc.polyline, vertices, dev->cameraCenter);
-        if (!vertices.empty())
+        EntityId eid = resolveEntityId(dev, primitive->entityId);
+        Render::PrimitiveType type =
+            primitive->desc.polyline->closed ? Render::PrimitiveType::LineLoop : Render::PrimitiveType::LineStrip;
+        
+        Render::VertexP3C3* verts = dev->world2D.beginEntityVertices(
+            eid, primitive->desc.polyline->pointCount, type, 0);
+        if (verts)
         {
-            Render::PrimitiveType type =
-                primitive->desc.polyline->closed ? Render::PrimitiveType::LineLoop : Render::PrimitiveType::LineStrip;
-            EntityId eid = resolveEntityId(dev, primitive->entityId);
-            dev->world2D.addEntity(eid, vertices.data(), static_cast<uint32_t>(vertices.size()), type, 0);
+            tessellatePolylineDirect(primitive->desc.polyline, verts, dev->cameraCenter);
+            dev->world2D.commitEntityVertices(eid);
         }
         break;
     }
@@ -427,13 +573,14 @@ static void renderSubmitGeometryImpl(RenderDevice* dev, const GeometryPrimitive*
         {
             return;
         }
-        std::vector<Render::VertexP3C3> vertices;
-        tessellateCircle(primitive->desc.circle, vertices, dev->cameraCenter);
-        if (!vertices.empty())
+        EntityId eid = resolveEntityId(dev, primitive->entityId);
+        const int segments = Render::tess::kCircleSegments;
+        Render::VertexP3C3* verts = dev->world2D.beginEntityVertices(
+            eid, segments, Render::PrimitiveType::LineLoop, 0);
+        if (verts)
         {
-            EntityId eid = resolveEntityId(dev, primitive->entityId);
-            dev->world2D.addEntity(
-                eid, vertices.data(), static_cast<uint32_t>(vertices.size()), Render::PrimitiveType::LineLoop, 0);
+            tessellateCircleDirect(primitive->desc.circle, verts, dev->cameraCenter);
+            dev->world2D.commitEntityVertices(eid);
         }
         break;
     }
@@ -443,30 +590,52 @@ static void renderSubmitGeometryImpl(RenderDevice* dev, const GeometryPrimitive*
         {
             return;
         }
-        std::vector<Render::VertexP3C3> vertices;
-        tessellateArc(primitive->desc.arc, vertices, dev->cameraCenter);
-        if (!vertices.empty())
+        EntityId eid = resolveEntityId(dev, primitive->entityId);
+        double start = primitive->desc.arc->startAngle;
+        double end = primitive->desc.arc->endAngle;
+        if (end < start)
         {
-            EntityId eid = resolveEntityId(dev, primitive->entityId);
-            dev->world2D.addEntity(
-                eid, vertices.data(), static_cast<uint32_t>(vertices.size()), Render::PrimitiveType::LineStrip, 0);
+            end += 2.0 * Render::tess::kPi;
+        }
+        double angleRange = end - start;
+        int segments = Render::tess::arcSegments(angleRange);
+        Render::VertexP3C3* verts = dev->world2D.beginEntityVertices(
+            eid, segments + 1, Render::PrimitiveType::LineStrip, 0);
+        if (verts)
+        {
+            tessellateArcDirect(primitive->desc.arc, verts, dev->cameraCenter);
+            dev->world2D.commitEntityVertices(eid);
         }
         break;
     }
-    case GeometryPrimitiveKind::Ellipse:
+case GeometryPrimitiveKind::Ellipse:
     {
         if (!primitive->desc.ellipse)
         {
             return;
         }
-        std::vector<Render::VertexP3C3> vertices;
-        tessellateEllipse(primitive->desc.ellipse, vertices, dev->cameraCenter);
-        if (!vertices.empty())
+        EntityId eid = resolveEntityId(dev, primitive->entityId);
+        Render::PrimitiveType type = primitive->desc.ellipse->fullEllipse ? Render::PrimitiveType::LineLoop
+                                                                           : Render::PrimitiveType::LineStrip;
+        // 计算分段数（基于角度范围）
+        double start = primitive->desc.ellipse->startAngle;
+        double end = primitive->desc.ellipse->endAngle;
+        if (end < start)
         {
-            Render::PrimitiveType type = primitive->desc.ellipse->fullEllipse ? Render::PrimitiveType::LineLoop
-                                                                              : Render::PrimitiveType::LineStrip;
-            EntityId eid = resolveEntityId(dev, primitive->entityId);
-            dev->world2D.addEntity(eid, vertices.data(), static_cast<uint32_t>(vertices.size()), type, 0);
+            end += 2.0 * Render::tess::kPi;
+        }
+        double angleRange = end - start;
+        if (primitive->desc.ellipse->fullEllipse || (start == 0.0 && end == 0.0))
+        {
+            angleRange = 2.0 * Render::tess::kPi;
+        }
+        int segments = Render::tess::ellipseSegments(angleRange);
+        Render::VertexP3C3* verts = dev->world2D.beginEntityVertices(
+            eid, segments, type, 0);
+        if (verts)
+        {
+            tessellateEllipseDirect(primitive->desc.ellipse, verts, dev->cameraCenter);
+            dev->world2D.commitEntityVertices(eid);
         }
         break;
     }
@@ -477,31 +646,19 @@ static void renderSubmitGeometryImpl(RenderDevice* dev, const GeometryPrimitive*
             return;
         }
         const GeometryImage* image = primitive->desc.image;
-        std::vector<Render::VertexP3C3> vertices;
-        vertices.reserve(5);
-        Render::VertexP3C3 v;
-        v.cr = image->color[0];
-        v.cg = image->color[1];
-        v.cb = image->color[2];
-        v.px = static_cast<float>(image->topLeft.x);
-        v.py = static_cast<float>(image->topLeft.y);
-        v.pz = 0.0f;
-        vertices.push_back(v);
-        v.px = static_cast<float>(image->topRight.x);
-        v.py = static_cast<float>(image->topRight.y);
-        vertices.push_back(v);
-        v.px = static_cast<float>(image->bottomRight.x);
-        v.py = static_cast<float>(image->bottomRight.y);
-        vertices.push_back(v);
-        v.px = static_cast<float>(image->bottomLeft.x);
-        v.py = static_cast<float>(image->bottomLeft.y);
-        vertices.push_back(v);
-        v.px = static_cast<float>(image->topLeft.x);
-        v.py = static_cast<float>(image->topLeft.y);
-        vertices.push_back(v);
         EntityId eid = resolveEntityId(dev, primitive->entityId);
-        dev->world2D.addEntity(
-            eid, vertices.data(), static_cast<uint32_t>(vertices.size()), Render::PrimitiveType::LineStrip, 0);
+        Render::VertexP3C3* verts = dev->world2D.beginEntityVertices(
+            eid, 5, Render::PrimitiveType::LineStrip, 0);
+        if (verts)
+        {
+            float cr = image->color[0], cg = image->color[1], cb = image->color[2];
+            verts[0] = { static_cast<float>(image->topLeft.x), static_cast<float>(image->topLeft.y), 0.0f, cr, cg, cb };
+            verts[1] = { static_cast<float>(image->topRight.x), static_cast<float>(image->topRight.y), 0.0f, cr, cg, cb };
+            verts[2] = { static_cast<float>(image->bottomRight.x), static_cast<float>(image->bottomRight.y), 0.0f, cr, cg, cb };
+            verts[3] = { static_cast<float>(image->bottomLeft.x), static_cast<float>(image->bottomLeft.y), 0.0f, cr, cg, cb };
+            verts[4] = { static_cast<float>(image->topLeft.x), static_cast<float>(image->topLeft.y), 0.0f, cr, cg, cb };
+            dev->world2D.commitEntityVertices(eid);
+        }
         break;
     }
     // ---- 文本缓存路径 ----
@@ -758,7 +915,7 @@ extern "C"
                 pass.name = "OverlayCollect";
                 pass.enabled = true;
                 pass.onExecute = [dev](RHI::IDevice* d) {
-                    dev->overlayQueue.render(d, &dev->commandEncoder, dev->view2D.viewMatrix);
+                    dev->overlayQueue.render(d, &dev->commandEncoder);
                 };
                 pass.inputs.push_back(
                     { core::PassResourceType::VertexBuffer, core::PassResourceAccess::Read, "OverlayQueue_VB", 0 });

@@ -145,6 +145,81 @@ namespace Render
             //     (uint32_t)m_entities.size(), (uint32_t)m_vertexPool.size());
         }
 
+        VertexP3C3* RenderWorld::beginEntityVertices(
+            EntityId id, uint32_t vertexCount, PrimitiveType type, uint16_t materialIdx)
+        {
+            if (vertexCount == 0)
+            {
+                return nullptr;
+            }
+
+            // 如果已有同 ID 实体，先释放旧空间
+            auto it = m_entityKeyMap.find(id);
+            if (it != m_entityKeyMap.end())
+            {
+                auto entryIt = m_entities.find(it->second);
+                if (entryIt)
+                {
+                    deallocateVertexSpace(entryIt->vertexOffset, entryIt->allocatedSize);
+                    m_entities.erase(it->second);
+                }
+                m_entityKeyMap.erase(it);
+            }
+
+            EntityEntry entry;
+            entry.entityId = id;
+            entry.vertexCount = vertexCount;
+            entry.allocatedSize = vertexCount;
+            entry.primitiveType = static_cast<uint16_t>(type);
+            entry.materialIndex = materialIdx;
+            entry.flags = 0;
+            entry.dirty = true;
+
+            entry.vertexOffset = allocateVertexSpace(vertexCount);
+
+            uint64_t key = m_entities.insert(entry);
+            m_entityKeyMap[id] = key;
+
+            m_pendingEntityId = id;
+
+            // 返回直接可写的指针
+            return m_vertexPool.data() + entry.vertexOffset;
+        }
+
+        void RenderWorld::commitEntityVertices(EntityId id)
+        {
+            if (id == 0 || id != m_pendingEntityId)
+            {
+                return;
+            }
+
+            m_pendingEntityId = 0;
+
+            auto it = m_entityKeyMap.find(id);
+            if (it == m_entityKeyMap.end())
+            {
+                return;
+            }
+
+            auto entryIt = m_entities.find(it->second);
+            if (!entryIt)
+            {
+                return;
+            }
+
+            // 根据已写入的顶点数据计算 bounding box
+            computeBBox(m_vertexPool.data() + entryIt->vertexOffset, entryIt->vertexCount,
+                &entryIt->bbox[0], &entryIt->bbox[1], &entryIt->bbox[2], &entryIt->bbox[3]);
+
+            // 计算 dense index
+            const EntityEntry* denseBase = m_entities.dense_data();
+            uint32_t denseIdx = static_cast<uint32_t>(entryIt - denseBase);
+            m_dirtyList.push_back(denseIdx);
+            m_changeCount++;
+            m_generation++;
+            m_quadTreeDirty = true;
+        }
+
         void RenderWorld::modifyEntity(
             EntityId id, const VertexP3C3* vertices, uint32_t vertexCount, PrimitiveType type, uint16_t materialIdx)
         {

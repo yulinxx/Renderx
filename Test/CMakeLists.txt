@@ -42,10 +42,13 @@ target_include_directories(RenderxTests PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/../src"
 )
 
-# Log 库头文件路径
-set(LOG_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../Log/Log/Include")
-if(EXISTS "${LOG_INCLUDE_DIR}/Log/SyLogger.h")
-    target_include_directories(RenderxTests PRIVATE ${LOG_INCLUDE_DIR})
+# Log 库：如果作为子目录构建，target_link_libraries 会自动传播 include 目录
+# 否则回退到显式添加头文件路径
+if(NOT TARGET Log)
+    set(LOG_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../Log/Log/Include")
+    if(EXISTS "${LOG_INCLUDE_DIR}/Log/SyLogger.h")
+        target_include_directories(RenderxTests PRIVATE ${LOG_INCLUDE_DIR})
+    endif()
 endif()
 
 target_link_libraries(RenderxTests PRIVATE
@@ -85,8 +88,11 @@ target_include_directories(RenderxGLTests PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/../src"
 )
 
-if(EXISTS "${LOG_INCLUDE_DIR}/Log/SyLogger.h")
-    target_include_directories(RenderxGLTests PRIVATE ${LOG_INCLUDE_DIR})
+if(NOT TARGET Log)
+    set(LOG_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../Log/Log/Include")
+    if(EXISTS "${LOG_INCLUDE_DIR}/Log/SyLogger.h")
+        target_include_directories(RenderxGLTests PRIVATE ${LOG_INCLUDE_DIR})
+    endif()
 endif()
 
 if(WIN32)

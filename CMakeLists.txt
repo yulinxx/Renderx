@@ -156,12 +156,32 @@ else()
 endif()
 
 # Log库配置（项目内部日志库）
-# 通过 target_link_libraries(Log) 自动获取头文件路径和链接
-set(LOG_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../Log/Log/Include")
-if(EXISTS "${LOG_INCLUDE_DIR}/Log/SyLogger.h")
-    message(STATUS "[Renderx] Found Log library include: ${LOG_INCLUDE_DIR}")
+# 优先使用已构建的 Log target，否则作为子目录构建
+if(TARGET Log)
+    message(STATUS "[Renderx] Log target already available from parent scope")
+elseif(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../Log/Log/CMakeLists.txt")
+    add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../Log/Log" "${CMAKE_CURRENT_BINARY_DIR}/Log" EXCLUDE_FROM_ALL)
+    message(STATUS "[Renderx] Log library added as subdirectory")
 else()
-    message(WARNING "[Renderx] Log library include not found: ${LOG_INCLUDE_DIR}")
+    # 回退：尝试通过 find_package 找到已安装的 Log 库
+    find_package(Log QUIET)
+    if(NOT Log_FOUND)
+        message(WARNING "[Renderx] Log library not found as subdirectory or package")
+    endif()
+endif()
+
+# Log库头文件路径（子目录构建时自动导出，否则显式添加）
+if(TARGET Log)
+    # Log target 已存在，CMake 会自动传播 include 目录
+    message(STATUS "[Renderx] Log target available")
+else()
+    # 回退：显式添加头文件路径
+    set(LOG_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../Log/Log/Include")
+    if(EXISTS "${LOG_INCLUDE_DIR}/Log/SyLogger.h")
+        message(STATUS "[Renderx] Found Log library include: ${LOG_INCLUDE_DIR}")
+    else()
+        message(WARNING "[Renderx] Log library include not found: ${LOG_INCLUDE_DIR}")
+    endif()
 endif()
 
 # ==================== 库目标配置 ====================

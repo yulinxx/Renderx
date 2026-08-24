@@ -188,4 +188,87 @@ extern "C"
         }
         dev->bitmapRenderer.clear();
     }
+
+    // ==================== 新一代 Overlay Draw API ====================
+
+    RENDER_API uint32_t renderSubmitOverlayDraw(RenderDevice* dev,
+        const OverlayVertex* vertices, uint32_t vertexCount, const OverlayDrawRange* range)
+    {
+        if (!dev || !vertices || !range || vertexCount == 0 || range->vertexCount == 0)
+        {
+            return UINT32_MAX;
+        }
+
+        Render::core::OverlayQueue::DrawRange rangeCpp;
+        rangeCpp.vertexOffset = 0; // 由内部分配
+        rangeCpp.vertexCount = range->vertexCount;
+        rangeCpp.topology = range->topology;
+        rangeCpp.group = range->group;
+        rangeCpp.zOrder = range->zOrder;
+        rangeCpp.isTriangle = range->isTriangle != 0;
+
+        return dev->overlayQueue.submit(
+            reinterpret_cast<const Render::OverlayVertex*>(vertices),
+            vertexCount,
+            rangeCpp);
+    }
+
+    RENDER_API uint32_t renderSubmitOverlayDrawBatch(RenderDevice* dev,
+        const OverlayDrawItem* items, uint32_t count)
+    {
+        if (!dev || !items || count == 0)
+        {
+            return UINT32_MAX;
+        }
+
+        // 转换为内部结构
+        std::vector<Render::core::OverlayQueue::DrawItem> itemsCpp;
+        itemsCpp.reserve(count);
+
+        for (uint32_t i = 0; i < count; ++i)
+        {
+            const OverlayDrawItem& item = items[i];
+            if (!item.vertices || item.vertexCount == 0)
+            {
+                continue;
+            }
+
+            Render::core::OverlayQueue::DrawItem itemCpp;
+            itemCpp.vertices = reinterpret_cast<const Render::OverlayVertex*>(item.vertices);
+            itemCpp.vertexCount = item.vertexCount;
+            itemCpp.range.vertexOffset = 0;
+            itemCpp.range.vertexCount = item.range.vertexCount;
+            itemCpp.range.topology = item.range.topology;
+            itemCpp.range.group = item.range.group;
+            itemCpp.range.zOrder = item.range.zOrder;
+            itemCpp.range.isTriangle = item.range.isTriangle != 0;
+
+            itemsCpp.push_back(itemCpp);
+        }
+
+        if (itemsCpp.empty())
+        {
+            return UINT32_MAX;
+        }
+
+        return dev->overlayQueue.submitBatch(itemsCpp.data(), static_cast<uint32_t>(itemsCpp.size()));
+    }
+
+    RENDER_API void renderClearOverlayDrawGroup(RenderDevice* dev, uint32_t group)
+    {
+        if (!dev)
+        {
+            return;
+        }
+        dev->overlayQueue.clearGroup(group);
+    }
+
+    RENDER_API void renderClearOverlayDrawAll(RenderDevice* dev)
+    {
+        if (!dev)
+        {
+            return;
+        }
+        dev->overlayQueue.clearAll();
+    }
 }  // extern "C"

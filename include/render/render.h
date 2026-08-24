@@ -391,6 +391,77 @@ namespace Render
          */
         RENDER_API void renderClearOverlayGroup(RenderDevice* dev, OverlayGroup group);
 
+        // ============================================================================
+        // 新一代 Overlay API —— 通用绘制命令队列 (DLL 只管"怎么画"，应用层定义"画什么")
+        // ============================================================================
+
+        /**
+         * @brief 绘制范围描述 —— 单个绘制命令的完整元数据
+         *
+         * 应用层填充此结构，DLL 只负责存储顶点、记录范围、排序和执行。
+         * 无硬编码图元类型，完全由应用层通过 topology + group + zOrder 描述。
+         */
+        typedef struct OverlayDrawRange
+        {
+            uint32_t vertexOffset;      ///< 顶点缓冲区偏移 (顶点数)，submit 时输出
+            uint32_t vertexCount;       ///< 顶点数量
+            PrimitiveType topology;     ///< 拓扑类型
+            uint32_t group;             ///< 生命周期分组 (应用层自定义，0=默认)
+            float zOrder;               ///< Z 序，用于排序
+            int isTriangle;             ///< 1=TriangleList, 0=LineList/Strip
+        } OverlayDrawRange;
+
+        /**
+         * @brief 批量提交项
+         */
+        typedef struct OverlayDrawItem
+        {
+            const OverlayVertex* vertices;   ///< 顶点数据指针
+            uint32_t vertexCount;            ///< 顶点数量
+            OverlayDrawRange range;          ///< 绘制范围描述
+        } OverlayDrawItem;
+
+        /**
+         * @brief 提交单个 overlay 绘制命令 (新 API)
+         *
+         * 统一入口，应用层提供顶点数据和完整绘制描述。
+         * DLL 只负责存储、排序、上传、执行，不关心语义。
+         *
+         * @param dev   渲染设备
+         * @param vertices 顶点数据指针
+         * @param vertexCount 顶点数量
+         * @param range 绘制范围描述
+         * @return 分配的 vertexOffset，失败返回 UINT32_MAX
+         */
+        RENDER_API uint32_t renderSubmitOverlayDraw(RenderDevice* dev,
+            const OverlayVertex* vertices, uint32_t vertexCount, const OverlayDrawRange* range);
+
+        /**
+         * @brief 批量提交 overlay 绘制命令 (新 API)
+         *
+         * @param dev   渲染设备
+         * @param items 绘制项数组
+         * @param count 项数量
+         * @return 首个分配的 vertexOffset，失败返回 UINT32_MAX
+         */
+        RENDER_API uint32_t renderSubmitOverlayDrawBatch(RenderDevice* dev,
+            const OverlayDrawItem* items, uint32_t count);
+
+        /**
+         * @brief 清除指定分组的 overlay (新 API)
+         *
+         * 标记该 group 的所有绘制命令为待移除，下一帧 render 时压缩缓冲区。
+         *
+         * @param dev   渲染设备
+         * @param group 分组 ID (应用层自定义，0=默认)
+         */
+        RENDER_API void renderClearOverlayDrawGroup(RenderDevice* dev, uint32_t group);
+
+        /**
+         * @brief 清除所有 overlay 绘制命令 (新 API)
+         */
+        RENDER_API void renderClearOverlayDrawAll(RenderDevice* dev);
+
         /**
          * @brief 设置场景环境层（完整版本，支持像素坐标、三角形标志、深度）
          *
