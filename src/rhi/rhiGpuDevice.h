@@ -45,6 +45,17 @@ namespace Render::RHI
         LogCallback logCallback = nullptr;
         void* logUserData = nullptr;
         const char* applicationName = "RenderX";
+        /**
+         * @brief GL 专用：宿主提供的 getProcAddress，签名为 void*(const char*)
+         *
+         * 传 nullptr 时使用平台默认实现（Windows: wglGetProcAddress +
+         * opengl32.dll；Linux: glXGetProcAddress；macOS: dlsym）。
+         * Qt 宿主应传 QOpenGLContext::getProcAddress 的包装：Qt 在某些平台
+         * （尤其是 ANGLE / EGL 后端）下的符号解析与平台默认路径不一致。
+         *
+         * 其他后端忽略此字段。
+         */
+        void* glGetProcAddress = nullptr;
     };
 
     /**

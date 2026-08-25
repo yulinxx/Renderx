@@ -10,6 +10,8 @@
     #include <dlfcn.h>
 #endif
 
+// 进程级全局表：仅供旧 rhiGl 使用（见 glLoader.h 中的缺陷说明），
+// Phase 6 删除旧后端时一并移除。
 static GLFuncs g_funcs;
 
 extern "C" GLFuncs* gl()
@@ -42,153 +44,179 @@ static void* default_get_proc_address(const char* name)
 #endif
 }
 
-extern "C" bool gl_loader_init(void* getProcAddress)
+extern "C" bool gl_loader_load(GLFuncs* out, void* getProcAddress)
 {
+    if (!out)
+    {
+        return false;
+    }
+
     typedef void* (*GetProcAddrFunc)(const char*);
     GetProcAddrFunc getProc =
         getProcAddress ? reinterpret_cast<GetProcAddrFunc>(getProcAddress) : default_get_proc_address;
 
-    memset(&g_funcs, 0, sizeof(g_funcs));
+    GLFuncs& f = *out;
+    memset(out, 0, sizeof(GLFuncs));
 
-    g_funcs.GenBuffers = (PFNGLGENBUFFERSPROC)getProc("glGenBuffers");
-    g_funcs.DeleteBuffers = (PFNGLDELETEBUFFERSPROC)getProc("glDeleteBuffers");
-    g_funcs.BindBuffer = (PFNGLBINDBUFFERPROC)getProc("glBindBuffer");
-    g_funcs.BufferData = (PFNGLBUFFERDATAPROC)getProc("glBufferData");
-    g_funcs.BufferSubData = (PFNGLBUFFERSUBDATAPROC)getProc("glBufferSubData");
-    g_funcs.BufferStorage = (PFNGLBUFFERSTORAGEPROC)getProc("glBufferStorage");
-    g_funcs.MapBufferRange = (PFNGLMAPBUFFERRANGEPROC)getProc("glMapBufferRange");
-    g_funcs.UnmapBuffer = (PFNGLUNMAPBUFFERPROC)getProc("glUnmapBuffer");
-    g_funcs.FlushMappedBufferRange = (PFNGLFLUSHMAPPEDBUFFERRANGEPROC)getProc("glFlushMappedBufferRange");
-    g_funcs.InvalidateBufferData = (PFNGLINVALIDATEBUFFERDATAPROC)getProc("glInvalidateBufferData");
-    g_funcs.CopyBufferSubData = (PFNGLCOPYBUFFERSUBDATAPROC)getProc("glCopyBufferSubData");
+    f.GenBuffers = (PFNGLGENBUFFERSPROC)getProc("glGenBuffers");
+    f.DeleteBuffers = (PFNGLDELETEBUFFERSPROC)getProc("glDeleteBuffers");
+    f.BindBuffer = (PFNGLBINDBUFFERPROC)getProc("glBindBuffer");
+    f.BufferData = (PFNGLBUFFERDATAPROC)getProc("glBufferData");
+    f.BufferSubData = (PFNGLBUFFERSUBDATAPROC)getProc("glBufferSubData");
+    f.BufferStorage = (PFNGLBUFFERSTORAGEPROC)getProc("glBufferStorage");
+    f.MapBufferRange = (PFNGLMAPBUFFERRANGEPROC)getProc("glMapBufferRange");
+    f.UnmapBuffer = (PFNGLUNMAPBUFFERPROC)getProc("glUnmapBuffer");
+    f.FlushMappedBufferRange = (PFNGLFLUSHMAPPEDBUFFERRANGEPROC)getProc("glFlushMappedBufferRange");
+    f.InvalidateBufferData = (PFNGLINVALIDATEBUFFERDATAPROC)getProc("glInvalidateBufferData");
+    f.CopyBufferSubData = (PFNGLCOPYBUFFERSUBDATAPROC)getProc("glCopyBufferSubData");
 
-    g_funcs.GenVertexArrays = (PFNGLGENVERTEXARRAYSPROC)getProc("glGenVertexArrays");
-    g_funcs.DeleteVertexArrays = (PFNGLDELETEVERTEXARRAYSPROC)getProc("glDeleteVertexArrays");
-    g_funcs.BindVertexArray = (PFNGLBINDVERTEXARRAYPROC)getProc("glBindVertexArray");
-    g_funcs.EnableVertexAttribArray = (PFNGLENABLEVERTEXATTRIBARRAYPROC)getProc("glEnableVertexAttribArray");
-    g_funcs.VertexAttribPointer = (PFNGLVERTEXATTRIBPOINTERPROC)getProc("glVertexAttribPointer");
-    g_funcs.VertexAttribBinding = (PFNGLVERTEXATTRIBBINDINGPROC)getProc("glVertexAttribBinding");
-    g_funcs.VertexAttribFormat = (PFNGLVERTEXATTRIBFORMATPROC)getProc("glVertexAttribFormat");
-    g_funcs.BindVertexBuffer = (PFNGLBINDVERTEXBUFFERPROC)getProc("glBindVertexBuffer");
-    g_funcs.VertexBindingDivisor = (PFNGLVERTEXBINDINGDIVISORPROC)getProc("glVertexBindingDivisor");
+    f.GenVertexArrays = (PFNGLGENVERTEXARRAYSPROC)getProc("glGenVertexArrays");
+    f.DeleteVertexArrays = (PFNGLDELETEVERTEXARRAYSPROC)getProc("glDeleteVertexArrays");
+    f.BindVertexArray = (PFNGLBINDVERTEXARRAYPROC)getProc("glBindVertexArray");
+    f.EnableVertexAttribArray = (PFNGLENABLEVERTEXATTRIBARRAYPROC)getProc("glEnableVertexAttribArray");
+    f.VertexAttribPointer = (PFNGLVERTEXATTRIBPOINTERPROC)getProc("glVertexAttribPointer");
+    f.VertexAttribBinding = (PFNGLVERTEXATTRIBBINDINGPROC)getProc("glVertexAttribBinding");
+    f.VertexAttribFormat = (PFNGLVERTEXATTRIBFORMATPROC)getProc("glVertexAttribFormat");
+    f.BindVertexBuffer = (PFNGLBINDVERTEXBUFFERPROC)getProc("glBindVertexBuffer");
+    f.VertexBindingDivisor = (PFNGLVERTEXBINDINGDIVISORPROC)getProc("glVertexBindingDivisor");
 
-    g_funcs.DrawArrays = (PFNGLDRAWARRAYSPROC)getProc("glDrawArrays");
-    g_funcs.DrawElements = (PFNGLDRAWELEMENTSPROC)getProc("glDrawElements");
-    g_funcs.DrawArraysInstanced = (PFNGLDRAWARRAYSINSTANCEDPROC)getProc("glDrawArraysInstanced");
-    g_funcs.DrawElementsInstanced = (PFNGLDRAWELEMENTSINSTANCEDPROC)getProc("glDrawElementsInstanced");
-    g_funcs.DrawArraysIndirect = (PFNGLDRAWARRAYSINDIRECTPROC)getProc("glDrawArraysIndirect");
-    g_funcs.DrawElementsIndirect = (PFNGLDRAWELEMENTSINDIRECTPROC)getProc("glDrawElementsIndirect");
-    g_funcs.MultiDrawArraysIndirect = (PFNGLMULTIDRAWARRAYSINDIRECTPROC)getProc("glMultiDrawArraysIndirect");
-    g_funcs.MultiDrawElementsIndirect = (PFNGLMULTIDRAWELEMENTSINDIRECTPROC)getProc("glMultiDrawElementsIndirect");
+    f.DrawArrays = (PFNGLDRAWARRAYSPROC)getProc("glDrawArrays");
+    f.DrawElements = (PFNGLDRAWELEMENTSPROC)getProc("glDrawElements");
+    f.DrawArraysInstanced = (PFNGLDRAWARRAYSINSTANCEDPROC)getProc("glDrawArraysInstanced");
+    f.DrawElementsInstanced = (PFNGLDRAWELEMENTSINSTANCEDPROC)getProc("glDrawElementsInstanced");
+    f.DrawArraysIndirect = (PFNGLDRAWARRAYSINDIRECTPROC)getProc("glDrawArraysIndirect");
+    f.DrawElementsIndirect = (PFNGLDRAWELEMENTSINDIRECTPROC)getProc("glDrawElementsIndirect");
+    f.MultiDrawArraysIndirect = (PFNGLMULTIDRAWARRAYSINDIRECTPROC)getProc("glMultiDrawArraysIndirect");
+    f.MultiDrawElementsIndirect = (PFNGLMULTIDRAWELEMENTSINDIRECTPROC)getProc("glMultiDrawElementsIndirect");
 
-    g_funcs.DispatchCompute = (PFNGLDISPATCHCOMPUTEPROC)getProc("glDispatchCompute");
-    g_funcs.MemoryBarrier = (PFNGLMEMORYBARRIERPROC)getProc("glMemoryBarrier");
-    g_funcs.ShaderBinary = (PFNGLSHADERBINARYPROC)getProc("glShaderBinary");
-    g_funcs.SpecializeShader = (PFNGLSPECIALIZESHADERPROC)getProc("glSpecializeShader");
-    g_funcs.NamedBufferStorage = (PFNGLNAMEDBUFFERSTORAGEPROC)getProc("glNamedBufferStorage");
+    f.DispatchCompute = (PFNGLDISPATCHCOMPUTEPROC)getProc("glDispatchCompute");
+    f.MemoryBarrier = (PFNGLMEMORYBARRIERPROC)getProc("glMemoryBarrier");
+    f.ShaderBinary = (PFNGLSHADERBINARYPROC)getProc("glShaderBinary");
+    f.SpecializeShader = (PFNGLSPECIALIZESHADERPROC)getProc("glSpecializeShader");
+    f.NamedBufferStorage = (PFNGLNAMEDBUFFERSTORAGEPROC)getProc("glNamedBufferStorage");
 
-    g_funcs.CreateShader = (PFNGLCREATESHADERPROC)getProc("glCreateShader");
-    g_funcs.DeleteShader = (PFNGLDELETESHADERPROC)getProc("glDeleteShader");
-    g_funcs.ShaderSource = (PFNGLSHADERSOURCEPROC)getProc("glShaderSource");
-    g_funcs.CompileShader = (PFNGLCOMPILESHADERPROC)getProc("glCompileShader");
-    g_funcs.CreateProgram = (PFNGLCREATEPROGRAMPROC)getProc("glCreateProgram");
-    g_funcs.DeleteProgram = (PFNGLDELETEPROGRAMPROC)getProc("glDeleteProgram");
-    g_funcs.AttachShader = (PFNGLATTACHSHADERPROC)getProc("glAttachShader");
-    g_funcs.LinkProgram = (PFNGLLINKPROGRAMPROC)getProc("glLinkProgram");
-    g_funcs.UseProgram = (PFNGLUSEPROGRAMPROC)getProc("glUseProgram");
-    g_funcs.GetShaderiv = (PFNGLGETSHADERIVPROC)getProc("glGetShaderiv");
-    g_funcs.GetShaderInfoLog = (PFNGLGETSHADERINFOLOGPROC)getProc("glGetShaderInfoLog");
-    g_funcs.GetProgramiv = (PFNGLGETPROGRAMIVPROC)getProc("glGetProgramiv");
-    g_funcs.GetProgramInfoLog = (PFNGLGETPROGRAMINFOLOGPROC)getProc("glGetProgramInfoLog");
-    g_funcs.GetUniformLocation = (PFNGLGETUNIFORMLOCATIONPROC)getProc("glGetUniformLocation");
-    g_funcs.Uniform1f = (PFNGLUNIFORM1FPROC)getProc("glUniform1f");
-    g_funcs.Uniform2f = (PFNGLUNIFORM2FPROC)getProc("glUniform2f");
-    g_funcs.Uniform3f = (PFNGLUNIFORM3FPROC)getProc("glUniform3f");
-    g_funcs.Uniform4f = (PFNGLUNIFORM4FPROC)getProc("glUniform4f");
-    g_funcs.Uniform1i = (PFNGLUNIFORM1IPROC)getProc("glUniform1i");
-    g_funcs.UniformMatrix3fv = (PFNGLUNIFORMMATRIX3FVPROC)getProc("glUniformMatrix3fv");
-    g_funcs.UniformMatrix4fv = (PFNGLUNIFORMMATRIX4FVPROC)getProc("glUniformMatrix4fv");
-    g_funcs.Uniform1ui = (PFNGLUNIFORM1UIPROC)getProc("glUniform1ui");
-    g_funcs.Uniform2ui = (PFNGLUNIFORM2UIPROC)getProc("glUniform2ui");
-    g_funcs.Uniform1fv = (PFNGLUNIFORM1FVPROC)getProc("glUniform1fv");
-    g_funcs.Uniform2fv = (PFNGLUNIFORM2FVPROC)getProc("glUniform2fv");
-    g_funcs.Uniform3fv = (PFNGLUNIFORM3FVPROC)getProc("glUniform3fv");
-    g_funcs.Uniform4fv = (PFNGLUNIFORM4FVPROC)getProc("glUniform4fv");
+    f.CreateShader = (PFNGLCREATESHADERPROC)getProc("glCreateShader");
+    f.DeleteShader = (PFNGLDELETESHADERPROC)getProc("glDeleteShader");
+    f.ShaderSource = (PFNGLSHADERSOURCEPROC)getProc("glShaderSource");
+    f.CompileShader = (PFNGLCOMPILESHADERPROC)getProc("glCompileShader");
+    f.CreateProgram = (PFNGLCREATEPROGRAMPROC)getProc("glCreateProgram");
+    f.DeleteProgram = (PFNGLDELETEPROGRAMPROC)getProc("glDeleteProgram");
+    f.AttachShader = (PFNGLATTACHSHADERPROC)getProc("glAttachShader");
+    f.LinkProgram = (PFNGLLINKPROGRAMPROC)getProc("glLinkProgram");
+    f.UseProgram = (PFNGLUSEPROGRAMPROC)getProc("glUseProgram");
+    f.GetShaderiv = (PFNGLGETSHADERIVPROC)getProc("glGetShaderiv");
+    f.GetShaderInfoLog = (PFNGLGETSHADERINFOLOGPROC)getProc("glGetShaderInfoLog");
+    f.GetProgramiv = (PFNGLGETPROGRAMIVPROC)getProc("glGetProgramiv");
+    f.GetProgramInfoLog = (PFNGLGETPROGRAMINFOLOGPROC)getProc("glGetProgramInfoLog");
+    f.GetUniformLocation = (PFNGLGETUNIFORMLOCATIONPROC)getProc("glGetUniformLocation");
+    f.Uniform1f = (PFNGLUNIFORM1FPROC)getProc("glUniform1f");
+    f.Uniform2f = (PFNGLUNIFORM2FPROC)getProc("glUniform2f");
+    f.Uniform3f = (PFNGLUNIFORM3FPROC)getProc("glUniform3f");
+    f.Uniform4f = (PFNGLUNIFORM4FPROC)getProc("glUniform4f");
+    f.Uniform1i = (PFNGLUNIFORM1IPROC)getProc("glUniform1i");
+    f.UniformMatrix3fv = (PFNGLUNIFORMMATRIX3FVPROC)getProc("glUniformMatrix3fv");
+    f.UniformMatrix4fv = (PFNGLUNIFORMMATRIX4FVPROC)getProc("glUniformMatrix4fv");
+    f.Uniform1ui = (PFNGLUNIFORM1UIPROC)getProc("glUniform1ui");
+    f.Uniform2ui = (PFNGLUNIFORM2UIPROC)getProc("glUniform2ui");
+    f.Uniform1fv = (PFNGLUNIFORM1FVPROC)getProc("glUniform1fv");
+    f.Uniform2fv = (PFNGLUNIFORM2FVPROC)getProc("glUniform2fv");
+    f.Uniform3fv = (PFNGLUNIFORM3FVPROC)getProc("glUniform3fv");
+    f.Uniform4fv = (PFNGLUNIFORM4FVPROC)getProc("glUniform4fv");
 
-    g_funcs.GenTextures = (PFNGLGENTEXTURESPROC)getProc("glGenTextures");
-    g_funcs.DeleteTextures = (PFNGLDELETETEXTURESPROC)getProc("glDeleteTextures");
-    g_funcs.BindTexture = (PFNGLBINDTEXTUREPROC)getProc("glBindTexture");
-    g_funcs.TexImage2D = (PFNGLTEXIMAGE2DPROC)getProc("glTexImage2D");
-    g_funcs.TexSubImage2D = (PFNGLTEXSUBIMAGE2DPROC)getProc("glTexSubImage2D");
-    g_funcs.TexParameteri = (PFNGLTEXPARAMETERIPROC)getProc("glTexParameteri");
-    g_funcs.ActiveTexture = (PFNGLACTIVETEXTUREPROC)getProc("glActiveTexture");
+    f.GenTextures = (PFNGLGENTEXTURESPROC)getProc("glGenTextures");
+    f.DeleteTextures = (PFNGLDELETETEXTURESPROC)getProc("glDeleteTextures");
+    f.BindTexture = (PFNGLBINDTEXTUREPROC)getProc("glBindTexture");
+    f.TexImage2D = (PFNGLTEXIMAGE2DPROC)getProc("glTexImage2D");
+    f.TexSubImage2D = (PFNGLTEXSUBIMAGE2DPROC)getProc("glTexSubImage2D");
+    f.TexParameteri = (PFNGLTEXPARAMETERIPROC)getProc("glTexParameteri");
+    f.ActiveTexture = (PFNGLACTIVETEXTUREPROC)getProc("glActiveTexture");
 
-    g_funcs.Enable = (PFNGLENABLEPROC)getProc("glEnable");
-    g_funcs.Disable = (PFNGLDISABLEPROC)getProc("glDisable");
-    g_funcs.BlendFunc = (PFNGLBLENDFUNCPROC)getProc("glBlendFunc");
-    g_funcs.LineWidth = (PFNGLLINEWIDTHPROC)getProc("glLineWidth");
-    g_funcs.PointSize = (PFNGLPOINTSIZEPROC)getProc("glPointSize");
-    g_funcs.Viewport = (PFNGLVIEWPORTPROC)getProc("glViewport");
-    g_funcs.Scissor = (PFNGLSCISSORPROC)getProc("glScissor");
-    g_funcs.ClearColor = (PFNGLCLEARCOLORPROC)getProc("glClearColor");
-    g_funcs.Clear = (PFNGLCLEARPROC)getProc("glClear");
-    g_funcs.ReadPixels = (PFNGLREADPIXELSPROC)getProc("glReadPixels");
-    g_funcs.ColorMask = (PFNGLCOLORMASKPROC)getProc("glColorMask");
-    g_funcs.DepthMask = (PFNGLDEPTHMASKPROC)getProc("glDepthMask");
-    g_funcs.DepthFunc = (PFNGLDEPTHFUNCPROC)getProc("glDepthFunc");
-    g_funcs.PolygonMode = (PFNGLPOLYGONMODEPROC)getProc("glPolygonMode");
-    g_funcs.GetIntegerv = (PFNGLGETINTEGERVPROC)getProc("glGetIntegerv");
-    g_funcs.GetFloatv = (PFNGLGETFLOATVPROC)getProc("glGetFloatv");
-    g_funcs.Hint = (PFNGLHINTPROC)getProc("glHint");
+    f.Enable = (PFNGLENABLEPROC)getProc("glEnable");
+    f.Disable = (PFNGLDISABLEPROC)getProc("glDisable");
+    f.BlendFunc = (PFNGLBLENDFUNCPROC)getProc("glBlendFunc");
+    f.LineWidth = (PFNGLLINEWIDTHPROC)getProc("glLineWidth");
+    f.PointSize = (PFNGLPOINTSIZEPROC)getProc("glPointSize");
+    f.Viewport = (PFNGLVIEWPORTPROC)getProc("glViewport");
+    f.Scissor = (PFNGLSCISSORPROC)getProc("glScissor");
+    f.ClearColor = (PFNGLCLEARCOLORPROC)getProc("glClearColor");
+    f.Clear = (PFNGLCLEARPROC)getProc("glClear");
+    f.ReadPixels = (PFNGLREADPIXELSPROC)getProc("glReadPixels");
+    f.ColorMask = (PFNGLCOLORMASKPROC)getProc("glColorMask");
+    f.DepthMask = (PFNGLDEPTHMASKPROC)getProc("glDepthMask");
+    f.DepthFunc = (PFNGLDEPTHFUNCPROC)getProc("glDepthFunc");
+    f.PolygonMode = (PFNGLPOLYGONMODEPROC)getProc("glPolygonMode");
+    f.GetIntegerv = (PFNGLGETINTEGERVPROC)getProc("glGetIntegerv");
+    f.GetFloatv = (PFNGLGETFLOATVPROC)getProc("glGetFloatv");
+    f.Hint = (PFNGLHINTPROC)getProc("glHint");
 
-    g_funcs.GenFramebuffers = (PFNGLGENFRAMEBUFFERSPROC)getProc("glGenFramebuffers");
-    g_funcs.DeleteFramebuffers = (PFNGLDELETEFRAMEBUFFERSPROC)getProc("glDeleteFramebuffers");
-    g_funcs.BindFramebuffer = (PFNGLBINDFRAMEBUFFERPROC)getProc("glBindFramebuffer");
-    g_funcs.FramebufferTexture2D = (PFNGLFRAMEBUFFERTEXTURE2DPROC)getProc("glFramebufferTexture2D");
-    g_funcs.GenRenderbuffers = (PFNGLGENRENDERBUFFERSPROC)getProc("glGenRenderbuffers");
-    g_funcs.DeleteRenderbuffers = (PFNGLDELETERENDERBUFFERSPROC)getProc("glDeleteRenderbuffers");
-    g_funcs.BindRenderbuffer = (PFNGLBINDRENDERBUFFERPROC)getProc("glBindRenderbuffer");
-    g_funcs.RenderbufferStorage = (PFNGLRENDERBUFFERSTORAGEPROC)getProc("glRenderbufferStorage");
-    g_funcs.FramebufferRenderbuffer = (PFNGLFRAMEBUFFERRENDERBUFFERPROC)getProc("glFramebufferRenderbuffer");
-    g_funcs.CheckFramebufferStatus = (PFNGLCHECKFRAMEBUFFERSTATUSPROC)getProc("glCheckFramebufferStatus");
+    f.GenFramebuffers = (PFNGLGENFRAMEBUFFERSPROC)getProc("glGenFramebuffers");
+    f.DeleteFramebuffers = (PFNGLDELETEFRAMEBUFFERSPROC)getProc("glDeleteFramebuffers");
+    f.BindFramebuffer = (PFNGLBINDFRAMEBUFFERPROC)getProc("glBindFramebuffer");
+    f.FramebufferTexture2D = (PFNGLFRAMEBUFFERTEXTURE2DPROC)getProc("glFramebufferTexture2D");
+    f.GenRenderbuffers = (PFNGLGENRENDERBUFFERSPROC)getProc("glGenRenderbuffers");
+    f.DeleteRenderbuffers = (PFNGLDELETERENDERBUFFERSPROC)getProc("glDeleteRenderbuffers");
+    f.BindRenderbuffer = (PFNGLBINDRENDERBUFFERPROC)getProc("glBindRenderbuffer");
+    f.RenderbufferStorage = (PFNGLRENDERBUFFERSTORAGEPROC)getProc("glRenderbufferStorage");
+    f.FramebufferRenderbuffer = (PFNGLFRAMEBUFFERRENDERBUFFERPROC)getProc("glFramebufferRenderbuffer");
+    f.CheckFramebufferStatus = (PFNGLCHECKFRAMEBUFFERSTATUSPROC)getProc("glCheckFramebufferStatus");
 
-    g_funcs.CreateBuffers = (PFNGLCREATEBUFFERSPROC)getProc("glCreateBuffers");
-    g_funcs.NamedBufferData = (PFNGLNAMEDBUFFERDATAPROC)getProc("glNamedBufferData");
-    g_funcs.NamedBufferSubData = (PFNGLNAMEDBUFFERSUBDATAPROC)getProc("glNamedBufferSubData");
-    g_funcs.MapNamedBufferRange = (PFNGLMAPNAMEDBUFFERRANGEPROC)getProc("glMapNamedBufferRange");
-    g_funcs.UnmapNamedBuffer = (PFNGLUNMAPNAMEDBUFFERPROC)getProc("glUnmapNamedBuffer");
-    g_funcs.FlushMappedNamedBufferRange =
+    f.CreateBuffers = (PFNGLCREATEBUFFERSPROC)getProc("glCreateBuffers");
+    f.NamedBufferData = (PFNGLNAMEDBUFFERDATAPROC)getProc("glNamedBufferData");
+    f.NamedBufferSubData = (PFNGLNAMEDBUFFERSUBDATAPROC)getProc("glNamedBufferSubData");
+    f.MapNamedBufferRange = (PFNGLMAPNAMEDBUFFERRANGEPROC)getProc("glMapNamedBufferRange");
+    f.UnmapNamedBuffer = (PFNGLUNMAPNAMEDBUFFERPROC)getProc("glUnmapNamedBuffer");
+    f.FlushMappedNamedBufferRange =
         (PFNGLFLUSHMAPPEDNAMEDBUFFERRANGEPROC)getProc("glFlushMappedNamedBufferRange");
-    g_funcs.CopyNamedBufferSubData = (PFNGLCOPYNAMEDBUFFERSUBDATAPROC)getProc("glCopyNamedBufferSubData");
+    f.CopyNamedBufferSubData = (PFNGLCOPYNAMEDBUFFERSUBDATAPROC)getProc("glCopyNamedBufferSubData");
 
-    g_funcs.Flush = (PFNGLFLUSHPROC)getProc("glFlush");
-    g_funcs.BindBufferRange = (PFNGLBINDBUFFERRANGEPROC)getProc("glBindBufferRange");
+    f.Flush = (PFNGLFLUSHPROC)getProc("glFlush");
+    f.BindBufferRange = (PFNGLBINDBUFFERRANGEPROC)getProc("glBindBufferRange");
 
-    g_funcs.CreateTextures = (PFNGLCREATETEXTURESPROC)getProc("glCreateTextures");
-    g_funcs.TextureParameteri = (PFNGLTEXTUREPARAMETERIPROC)getProc("glTextureParameteri");
-    g_funcs.TextureStorage2D = (PFNGLTEXTURESTORAGE2DPROC)getProc("glTextureStorage2D");
-    g_funcs.TextureSubImage2D = (PFNGLTEXTURESUBIMAGE2DPROC)getProc("glTextureSubImage2D");
-    g_funcs.BindTextureUnit = (PFNGLBINDTEXTUREUNITPROC)getProc("glBindTextureUnit");
-    g_funcs.CreateVertexArrays = (PFNGLCREATEVERTEXARRAYSPROC)getProc("glCreateVertexArrays");
-    g_funcs.EnableVertexArrayAttrib = (PFNGLENABLEVERTEXARRAYATTRIBPROC)getProc("glEnableVertexArrayAttrib");
-    g_funcs.VertexArrayAttribBinding = (PFNGLVERTEXARRAYATTRIBBINDINGPROC)getProc("glVertexArrayAttribBinding");
-    g_funcs.VertexArrayAttribFormat = (PFNGLVERTEXARRAYATTRIBFORMATPROC)getProc("glVertexArrayAttribFormat");
-    g_funcs.VertexArrayVertexBuffer = (PFNGLVERTEXARRAYVERTEXBUFFERPROC)getProc("glVertexArrayVertexBuffer");
-    g_funcs.VertexArrayElementBuffer = (PFNGLVERTEXARRAYELEMENTBUFFERPROC)getProc("glVertexArrayElementBuffer");
+    f.CreateTextures = (PFNGLCREATETEXTURESPROC)getProc("glCreateTextures");
+    f.TextureParameteri = (PFNGLTEXTUREPARAMETERIPROC)getProc("glTextureParameteri");
+    f.TextureStorage2D = (PFNGLTEXTURESTORAGE2DPROC)getProc("glTextureStorage2D");
+    f.TextureSubImage2D = (PFNGLTEXTURESUBIMAGE2DPROC)getProc("glTextureSubImage2D");
+    f.BindTextureUnit = (PFNGLBINDTEXTUREUNITPROC)getProc("glBindTextureUnit");
+    f.CreateVertexArrays = (PFNGLCREATEVERTEXARRAYSPROC)getProc("glCreateVertexArrays");
+    f.EnableVertexArrayAttrib = (PFNGLENABLEVERTEXARRAYATTRIBPROC)getProc("glEnableVertexArrayAttrib");
+    f.VertexArrayAttribBinding = (PFNGLVERTEXARRAYATTRIBBINDINGPROC)getProc("glVertexArrayAttribBinding");
+    f.VertexArrayAttribFormat = (PFNGLVERTEXARRAYATTRIBFORMATPROC)getProc("glVertexArrayAttribFormat");
+    f.VertexArrayVertexBuffer = (PFNGLVERTEXARRAYVERTEXBUFFERPROC)getProc("glVertexArrayVertexBuffer");
+    f.VertexArrayElementBuffer = (PFNGLVERTEXARRAYELEMENTBUFFERPROC)getProc("glVertexArrayElementBuffer");
 
-    g_funcs.FenceSync = (PFNGLFENCESYNCPROC)getProc("glFenceSync");
-    g_funcs.ClientWaitSync = (PFNGLCLIENTWAITSYNCPROC)getProc("glClientWaitSync");
-    g_funcs.DeleteSync = (PFNGLDELETESYNCPROC)getProc("glDeleteSync");
+    f.FenceSync = (PFNGLFENCESYNCPROC)getProc("glFenceSync");
+    f.ClientWaitSync = (PFNGLCLIENTWAITSYNCPROC)getProc("glClientWaitSync");
+    f.DeleteSync = (PFNGLDELETESYNCPROC)getProc("glDeleteSync");
 
-    g_funcs.GetError = (PFNGLGETERRORPROC)getProc("glGetError");
-    g_funcs.GetString = (PFNGLGETSTRINGPROC)getProc("glGetString");
-    g_funcs.GetStringi = (PFNGLGETSTRINGIPROC)getProc("glGetStringi");
-    g_funcs.GetBooleanv = (PFNGLGETBOOLEANVPROC)getProc("glGetBooleanv");
+    f.GetError = (PFNGLGETERRORPROC)getProc("glGetError");
+    f.GetString = (PFNGLGETSTRINGPROC)getProc("glGetString");
+    f.GetStringi = (PFNGLGETSTRINGIPROC)getProc("glGetStringi");
+    f.GetBooleanv = (PFNGLGETBOOLEANVPROC)getProc("glGetBooleanv");
 
-    if (!g_funcs.GenBuffers || !g_funcs.BindVertexArray || !g_funcs.UseProgram)
+    // 新 RHI GL 后端补充入口（剔除/朝向、分离式混合、像素对齐、uniform block）。
+    // 这些不进关键入口检查：缺失时由后端在 Capabilities 里降级声明，
+    // 而不是让整个设备创建失败。
+    f.FrontFace = (GLFuncs::PFNGLFRONTFACEPROC)getProc("glFrontFace");
+    f.CullFace = (GLFuncs::PFNGLCULLFACEPROC)getProc("glCullFace");
+    f.PixelStorei = (GLFuncs::PFNGLPIXELSTOREIPROC)getProc("glPixelStorei");
+    f.BlendFuncSeparate = (GLFuncs::PFNGLBLENDFUNCSEPARATEPROC)getProc("glBlendFuncSeparate");
+    f.BlendEquationSeparate = (GLFuncs::PFNGLBLENDEQUATIONSEPARATEPROC)getProc("glBlendEquationSeparate");
+    f.GetUniformBlockIndex = (GLFuncs::PFNGLGETUNIFORMBLOCKINDEXPROC)getProc("glGetUniformBlockIndex");
+    f.UniformBlockBinding = (GLFuncs::PFNGLUNIFORMBLOCKBINDINGPROC)getProc("glUniformBlockBinding");
+    f.VertexAttribIPointer = (GLFuncs::PFNGLVERTEXATTRIBIPOINTERPROC)getProc("glVertexAttribIPointer");
+    f.VertexAttribDivisor = (GLFuncs::PFNGLVERTEXATTRIBDIVISORPROC)getProc("glVertexAttribDivisor");
+
+    // 关键入口缺失即视为加载失败：后续所有绘制都会静默无效，
+    // 早失败比在渲染期空指针崩溃好。
+    if (!f.GenBuffers || !f.BindVertexArray || !f.UseProgram)
     {
         return false;
     }
 
     return true;
+}
+
+extern "C" bool gl_loader_init(void* getProcAddress)
+{
+    return gl_loader_load(&g_funcs, getProcAddress);
 }

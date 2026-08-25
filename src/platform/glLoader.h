@@ -661,7 +661,129 @@ struct GLFuncs
     PFNGLGETSTRINGPROC GetString;
     PFNGLGETSTRINGIPROC GetStringi;
     PFNGLGETBOOLEANVPROC GetBooleanv;
+
+    // ==================== 新 RHI GL 后端补充入口 ====================
+    //
+    // 以下入口是新 RHI（rhiCore.h 的 RasterState / ColorBlendState /
+    // BindingSlot 模型）所必需，旧 rhiGl 因为只支持「关闭剔除 + 单一
+    // BlendFunc + 字符串 uniform」而从未解析它们：
+    // - 剔除与朝向：RasterState::cullMode / frontFace
+    // - 分离式混合：ColorBlendState 的 color/alpha 因子与 BlendOp
+    // - 像素打包对齐：R8 字体图集按行上传时必须设为 1，否则每行按 4 字节
+    //   对齐读取，窄图集会整体错位
+    // - uniform block：pushConstants 在 GL 上映射为一个 UBO，
+    //   需要按块名解析 index 并绑定到 binding point
+
+    typedef void(RENDER_GLAPI* PFNGLFRONTFACEPROC)(GLenum mode);
+    typedef void(RENDER_GLAPI* PFNGLCULLFACEPROC)(GLenum mode);
+    typedef void(RENDER_GLAPI* PFNGLPIXELSTOREIPROC)(GLenum pname, GLint param);
+    typedef void(RENDER_GLAPI* PFNGLBLENDFUNCSEPARATEPROC)(
+        GLenum srcRGB, GLenum dstRGB, GLenum srcAlpha, GLenum dstAlpha);
+    typedef void(RENDER_GLAPI* PFNGLBLENDEQUATIONSEPARATEPROC)(GLenum modeRGB, GLenum modeAlpha);
+    typedef GLuint(RENDER_GLAPI* PFNGLGETUNIFORMBLOCKINDEXPROC)(GLuint program, const GLchar* name);
+    typedef void(RENDER_GLAPI* PFNGLUNIFORMBLOCKBINDINGPROC)(
+        GLuint program, GLuint blockIndex, GLuint blockBinding);
+    typedef void(RENDER_GLAPI* PFNGLVERTEXATTRIBIPOINTERPROC)(
+        GLuint index, GLint size, GLenum type, GLsizei stride, const void* pointer);
+    typedef void(RENDER_GLAPI* PFNGLVERTEXATTRIBDIVISORPROC)(GLuint index, GLuint divisor);
+
+    PFNGLFRONTFACEPROC FrontFace;
+    PFNGLCULLFACEPROC CullFace;
+    PFNGLPIXELSTOREIPROC PixelStorei;
+    PFNGLBLENDFUNCSEPARATEPROC BlendFuncSeparate;
+    PFNGLBLENDEQUATIONSEPARATEPROC BlendEquationSeparate;
+    PFNGLGETUNIFORMBLOCKINDEXPROC GetUniformBlockIndex;
+    PFNGLUNIFORMBLOCKBINDINGPROC UniformBlockBinding;
+    PFNGLVERTEXATTRIBIPOINTERPROC VertexAttribIPointer;
+    PFNGLVERTEXATTRIBDIVISORPROC VertexAttribDivisor;
 };
 
+#ifndef GL_CULL_FACE
+    #define GL_CULL_FACE 0x0B44
+#endif
+#ifndef GL_FRONT
+    #define GL_FRONT 0x0404
+#endif
+#ifndef GL_BACK
+    #define GL_BACK 0x0405
+#endif
+#ifndef GL_CW
+    #define GL_CW 0x0900
+#endif
+#ifndef GL_CCW
+    #define GL_CCW 0x0901
+#endif
+#ifndef GL_FUNC_ADD
+    #define GL_FUNC_ADD 0x8006
+#endif
+#ifndef GL_FUNC_SUBTRACT
+    #define GL_FUNC_SUBTRACT 0x800A
+#endif
+#ifndef GL_FUNC_REVERSE_SUBTRACT
+    #define GL_FUNC_REVERSE_SUBTRACT 0x800B
+#endif
+#ifndef GL_MIN
+    #define GL_MIN 0x8007
+#endif
+#ifndef GL_MAX
+    #define GL_MAX 0x8008
+#endif
+#ifndef GL_UNPACK_ALIGNMENT
+    #define GL_UNPACK_ALIGNMENT 0x0CF5
+#endif
+#ifndef GL_PACK_ALIGNMENT
+    #define GL_PACK_ALIGNMENT 0x0D05
+#endif
+#ifndef GL_MAX_TEXTURE_SIZE
+    #define GL_MAX_TEXTURE_SIZE 0x0D33
+#endif
+#ifndef GL_MAX_VERTEX_ATTRIBS
+    #define GL_MAX_VERTEX_ATTRIBS 0x8869
+#endif
+#ifndef GL_MAX_COLOR_ATTACHMENTS
+    #define GL_MAX_COLOR_ATTACHMENTS 0x8CDF
+#endif
+#ifndef GL_UNIFORM_BUFFER_OFFSET_ALIGNMENT
+    #define GL_UNIFORM_BUFFER_OFFSET_ALIGNMENT 0x8A34
+#endif
+#ifndef GL_SHADER_STORAGE_BUFFER_OFFSET_ALIGNMENT
+    #define GL_SHADER_STORAGE_BUFFER_OFFSET_ALIGNMENT 0x90DF
+#endif
+#ifndef GL_INVALID_INDEX
+    #define GL_INVALID_INDEX 0xFFFFFFFFu
+#endif
+#ifndef GL_R8
+    #define GL_R8 0x8229
+#endif
+#ifndef GL_RG8
+    #define GL_RG8 0x822B
+#endif
+#ifndef GL_RED
+    #define GL_RED 0x1903
+#endif
+#ifndef GL_RG
+    #define GL_RG 0x8227
+#endif
+
+/**
+ * 进程级全局函数表（legacy）。
+ *
+ * 注意：这是一个已知缺陷——`gl()` 返回的是唯一一份全局表，每次
+ * `gl_loader_init` 都会把它清零并重新解析。在 Windows 上 `wglGetProcAddress`
+ * 的返回值是「按当前上下文的像素格式」有效的，多上下文场景下后创建的窗口会
+ * 覆盖先创建窗口的函数指针。新 RHI 的 GL 后端改为每设备一份函数表
+ * （见 `gl_loader_load`），此处仅为旧 rhiGl 保留，Phase 6 一并删除。
+ */
 extern "C" GLFuncs* gl();
 extern "C" bool gl_loader_init(void* getProcAddress);
+
+/**
+ * @brief 把 GL 函数指针解析进调用方提供的表
+ *
+ * @param out            目标函数表，函数内部先整体清零
+ * @param getProcAddress 平台 getProcAddress，传 nullptr 用平台默认实现
+ * @return 关键入口（GenBuffers/BindVertexArray/UseProgram）全部解析成功返回 true
+ *
+ * 每个 GL 设备（每个上下文）持有自己的一份表，这是多窗口正确性的前提。
+ */
+extern "C" bool gl_loader_load(GLFuncs* out, void* getProcAddress);

@@ -124,6 +124,9 @@ set(RENDERX_SHADER_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/world_point_p3c3.frag
     ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/world_p3c4.vert
     ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/world_p3c4.frag
+    # 世界锚定 + 屏幕定尺寸（RenderSpace::WorldPinned，见新渲染架构 §15）。
+    # 片段复用 world_p3c4.frag。
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/world_pinned_p3o2c4.vert
     ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/screen_p3c3.vert
     ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/screen_point_p3c3.vert
     ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/screen_p3c4.vert

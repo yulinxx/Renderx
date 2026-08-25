@@ -69,6 +69,10 @@ gtest_discover_tests(RenderxTests)
 
 set(RENDERX_GL_TEST_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/TransientBufferPoolTests.cpp"
+    # 新 RHI 的契约测试跑在 Null 后端上（不需要 GL 上下文），但放在本目标里：
+    # rhiFactory.cpp 会引用 createGlDevice，链接时需要 GL 后端与 glLoader，
+    # 而 RenderxTests 目标不链接 OpenGL。
+    "${CMAKE_CURRENT_SOURCE_DIR}/RhiCoreTests.cpp"
 )
 
 # OpenGL tests 需要完整的 GL 栈
@@ -76,6 +80,11 @@ set(RENDERX_GL_INTERNAL_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/../src/core/transientBufferPool.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/../src/rhi/rhiGl.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/../src/platform/glLoader.cpp"
+    # 新 RHI：工厂 + Null 后端 + GL 后端
+    "${CMAKE_CURRENT_SOURCE_DIR}/../src/rhi/rhiFactory.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../src/rhi/null/nullBackend.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../src/rhi/gl/glDevice.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../src/rhi/gl/glCommandList.cpp"
 )
 
 add_executable(RenderxGLTests ${RENDERX_GL_TEST_SOURCES} ${RENDERX_GL_INTERNAL_SOURCES})

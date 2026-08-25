@@ -173,12 +173,31 @@ namespace Render
 
         // ==================== 绘制状态 ====================
 
+        /**
+         * @brief 渲染空间：决定图元如何响应平移与缩放
+         *
+         * 三档语义互不重叠，标记类图元必须按需求选对，
+         * 不要在业务层用「每帧按当前缩放反算顶点」来模拟：
+         * 那会把渲染策略散进每个调用点，且三个后端难以保持一致。
+         */
         enum class RenderSpace : uint8_t
         {
-            /// 顶点经 viewMatrix 变换
+            /// 跟随平移，跟随缩放。顶点经 viewMatrix 变换。常规图元。
             World = 0,
-            /// 顶点直接是像素坐标，不随缩放变化
+            /// 不跟随平移，不跟随缩放。顶点直接是像素坐标。HUD、标尺、屏幕角标。
             Screen = 1,
+            /**
+             * 跟随平移，**不**跟随缩放。顶点 = 世界锚点 + 像素偏移。
+             *
+             * 用于场景内的定尺寸标记：箭头、符号、标注框、引线端点。
+             * 需配合 VertexFormat::P3O2C4；换算在顶点着色器内完成
+             * （clip.xy += offset * 2/viewport * clip.w），
+             * 因此缩放不影响屏幕尺寸。
+             *
+             * 拾取判定必须用同一公式（锚点投影后再加像素偏移），
+             * 否则视觉与命中区会随缩放错位。
+             */
+            WorldPinned = 2,
         };
 
         enum class PrimitiveTopology : uint8_t
@@ -201,6 +220,9 @@ namespace Render
             P3N3 = 2,
             /// 位置 float2 + UV float2 + 颜色 float4，32 字节
             P2T2C4 = 3,
+            /// 世界锚点 float3 + 像素偏移 float2 + 颜色 float4，36 字节。
+            /// 专用于 RenderSpace::WorldPinned。
+            P3O2C4 = 4,
         };
 
         /// 返回某顶点格式的步长（字节）。调用方据此计算偏移，
@@ -213,6 +235,7 @@ namespace Render
             case VertexFormat::P3C4: return 28;
             case VertexFormat::P3N3: return 24;
             case VertexFormat::P2T2C4: return 32;
+            case VertexFormat::P3O2C4: return 36;
             }
             return 0;
         }
@@ -257,7 +280,11 @@ namespace Render
             ScreenLine4 = 10,
             ScreenTri4 = 11,
             ScreenPoint4 = 12,
-            Count = 13,
+            /// 世界锚点 + 像素偏移的定尺寸标记（P3O2C4）。
+            /// 点标记继续用 ScreenPoint 系列：点本身就是像素尺寸。
+            WorldPinnedLine = 13,
+            WorldPinnedTri = 14,
+            Count = 15,
         };
 
         // ==================== 创建描述 ====================
