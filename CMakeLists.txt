@@ -61,11 +61,15 @@ endif()
 
 # 公开头文件列表（对外暴露的API头文件）
 #
-# 重构说明：legacy 的 render.h（62 个 C API）与 TessParams.h 已删除。
-# render.h 是「DLL 内做几何离散化 + 持有场景实体表」的旧模型入口；
-# TessParams.h 通过公共头共享 inline 离散化实现，是耦合而非封装。
-# 离散化职责已按 Docs/03-渲染主链/新渲染架构.md §1 归还应用层。
+# 目标形态：renderx.h 是唯一公共头（零 STL、全 POD、全 static_assert）。
+# RenderTypes.h 与 runtime_session.h 是收缩中的 legacy 头，将在
+# Phase 6（Runtime/Surface/Session 切到 renderx.h）后一并删除。
+# 二者与 renderx.h 在 namespace Render::RT 中有同名类型，不能同时 include。
+#
+# 已删除：render.h（62 个 C API，其中 4 个函数早已无定义）、
+# TessParams.h（通过公共头共享 inline 离散化实现，是耦合而非封装）。
 set(RENDER_PUBLIC_HEADERS
+    include/render/renderx.h
     include/render/RenderTypes.h
     include/render/runtime_session.h
 )

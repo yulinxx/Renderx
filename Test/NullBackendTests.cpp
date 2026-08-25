@@ -14,7 +14,6 @@
 #include "rhi/rhiNull.h"
 #include "rhi/rhiDevice.h"
 #include "rhi/rhiTypes.h"
-#include "render/RenderTypes.h"
 
 using namespace Render;
 using namespace Render::RHI;

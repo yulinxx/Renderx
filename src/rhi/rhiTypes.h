@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @file rhi_types.h
  * @brief Render Hardware Interface (RHI) 的类型定义
  *
@@ -17,12 +17,41 @@
 #pragma once
 #include <cstdint>
 
-// 复用公开层定义的离屏渲染目标类型（RenderTargetHandle / RenderTargetDesc），
-// 使 RHI 接口与 C API 共用同一套类型，避免类型分裂。
-#include "../../include/render/RenderTypes.h"
+// 注：此前这里 #include "../../include/render/RenderTypes.h"，只为复用
+// RenderTargetHandle / RenderTargetDesc。这让「DLL 内部实现细节」反向依赖
+// 「对外 ABI 契约」，两者本应独立演进。离屏渲染目标是纯粹的 RHI 概念，
+// 调用方从不直接构造它，因此定义下移到本文件。
 
 namespace Render::RHI
 {
+
+    /// 离屏渲染目标句柄（0 = 无效）
+    using RenderTargetHandle = uint64_t;
+    /// 无效离屏渲染目标句柄
+    constexpr RenderTargetHandle NullRenderTarget = 0;
+
+    /// 离屏渲染目标的深度附件格式
+    enum class DepthFormat : uint8_t
+    {
+        None = 0,   ///< 无深度附件（纯 2D 离屏）
+        D24S8 = 1,  ///< 24 位深度 + 8 位模板
+        D32F = 2,   ///< 32 位浮点深度
+    };
+
+    /**
+     * @brief 离屏渲染目标（Framebuffer Object）描述
+     *
+     * 用于渲染到一张离屏纹理，实现截图、离屏合成等，
+     * 而不干扰屏幕上正在显示的默认帧缓冲（无闪烁）。
+     */
+    struct RenderTargetDesc
+    {
+        uint32_t width = 0;
+        uint32_t height = 0;
+        bool depth = true;
+        DepthFormat depthFormat = DepthFormat::D24S8;
+        const char* debugName = nullptr;
+    };
 
     /// 纹理和缓冲区数据格式枚举
     enum class Format : uint8_t

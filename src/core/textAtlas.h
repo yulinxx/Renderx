@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @file textAtlas.h
  * @brief 文本贴图管理器类定义
  *
@@ -12,7 +12,8 @@
  */
 #pragma once
 
-#include "render/RenderTypes.h"
+// 注：此前这里 include 了公共 ABI 头 render/RenderTypes.h，但本文件
+// 未使用其中任何类型（GlyphInfo 等均为本地定义），属于陈旧依赖。
 #include "../rhi/rhiDevice.h"
 #include <vector>
 #include <cstdint>
@@ -20,6 +21,33 @@
 
 namespace Render::core
 {
+
+    /**
+     * @brief 单个文本项
+     *
+     * 从公共头 RenderTypes.h 下移至此：文本布局与提交已归应用层，
+     * DLL 只保留字形光栅化与图集（GPU 资源缓存），因此这两个结构
+     * 不再属于对外 ABI 面。
+     */
+    struct TextItem
+    {
+        const char* text;   ///< 文本内容（UTF-8）
+        float x, y;         ///< 文本位置
+        int32_t coordMode;  ///< 0=世界坐标，1=屏幕坐标
+        int32_t hAlign;     ///< 0=左，1=中，2=右
+        int32_t vAlign;     ///< 0=上，1=中，2=下
+        int32_t fontSize;   ///< 字体大小（像素）
+        float color[4];
+        float rotationDeg;
+        float zOrder;
+    };
+
+    /// 批量文本项
+    struct TextItemList
+    {
+        const TextItem* items;
+        uint32_t count;
+    };
 
     /**
      * @brief 文本贴图管理器类

@@ -1509,13 +1509,13 @@ namespace Render::RHI
 
     namespace
     {
-        GLuint depthInternalFormatToGL(Render::DepthFormat fmt)
+        GLuint depthInternalFormatToGL(Render::RHI::DepthFormat fmt)
         {
             switch (fmt)
             {
-            case Render::DepthFormat::D32F:
+            case Render::RHI::DepthFormat::D32F:
                 return GL_DEPTH_COMPONENT32F;
-            case Render::DepthFormat::D24S8:
+            case Render::RHI::DepthFormat::D24S8:
             default:
                 return GL_DEPTH24_STENCIL8;
             }
