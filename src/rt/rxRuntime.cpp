@@ -260,16 +260,38 @@ namespace Render::RT::detail
         return true;
     }
 
-    void TransientRing::shutdown()
+    void TransientRing::releaseOverflowBuffers()
     {
         for (Overflow& overflow : m_overflow)
         {
+            // 先摘公共句柄再销毁 RHI 句柄：句柄表里若残留已销毁的缓冲，
+            // Runtime::destroy() 末尾的统一清理会再销毁一次。
+            if (m_owner && overflow.publicHandle != BufferHandle::Invalid)
+            {
+                m_owner->buffers.erase(static_cast<uint64_t>(overflow.publicHandle));
+                overflow.publicHandle = BufferHandle::Invalid;
+            }
             if (m_device && overflow.buffer.valid())
             {
                 m_device->destroyBuffer(overflow.buffer);
             }
         }
         m_overflow.clear();
+    }
+
+    void TransientRing::shutdown()
+    {
+        releaseOverflowBuffers();
+
+        // 环形缓冲本体的公共句柄同样登记在 owner 的 buffers 表里
+        // （见 Runtime::initialize 里的 setPublicHandle），必须在这里摘除。
+        // 几何仓的 shutdown 早就这么做了，瞬态环漏了这一步，结果同一个缓冲
+        // 被销毁两次——日志里的 `destroyBuffer: 句柄已失效（重复销毁？）` 就是它。
+        if (m_owner && m_publicHandle != BufferHandle::Invalid)
+        {
+            m_owner->buffers.erase(static_cast<uint64_t>(m_publicHandle));
+            m_publicHandle = BufferHandle::Invalid;
+        }
 
         if (m_device && m_buffer.valid())
         {
@@ -278,18 +300,12 @@ namespace Render::RT::detail
         m_buffer = {};
         m_staging.clear();
         m_device = nullptr;
+        m_owner = nullptr;
     }
 
     void TransientRing::beginFrame()
     {
-        for (Overflow& overflow : m_overflow)
-        {
-            if (m_device && overflow.buffer.valid())
-            {
-                m_device->destroyBuffer(overflow.buffer);
-            }
-        }
-        m_overflow.clear();
+        releaseOverflowBuffers();
 
         m_segment = (m_segment + 1) % kSegmentCount;
         m_segmentBase = m_capacity * m_segment;

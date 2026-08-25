@@ -150,6 +150,16 @@ namespace Render::RT::detail
             std::vector<uint8_t> staging;
         };
         std::vector<Overflow> m_overflow;
+
+        /**
+         * @brief 销毁全部溢出缓冲，并从 owner 的公共句柄表里摘除它们
+         *
+         * 摘除公共句柄不是可省略的收尾动作：句柄表在 `Runtime::destroy()` 末尾
+         * 会被统一遍历并逐个 `destroyBuffer`，表里若还留着已销毁的 RHI 句柄，
+         * 就是一次双重销毁（表现为 `destroyBuffer: 句柄已失效（重复销毁？）`）。
+         * beginFrame 与 shutdown 都要走这条路径，故收敛成一处。
+         */
+        void releaseOverflowBuffers();
     };
 
     /// 管线缓存键：同一组状态只建一条管线
