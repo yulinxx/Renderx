@@ -823,6 +823,9 @@ RuntimeDesc rd{};
 rd.abiVersion = RENDERX_ABI_VERSION;   // 必填，否则创建失败
 rd.backend = Backend::Auto;
 rd.logCallback = &myLogSink;           // DLL 不依赖任何日志库，出口由宿主注入
+// GL 后端：Qt 宿主传 QOpenGLContext::getProcAddress 的包装，避免与平台默认
+// 符号解析（ANGLE/EGL vs 桌面 GL）混用；为 nullptr 时后端走平台默认实现
+rd.glGetProcAddress = reinterpret_cast<void*>(&myGlGetProcAddress);
 RuntimeHandle runtime = rxRuntimeCreate(&rd);
 
 SurfaceDesc sd{};

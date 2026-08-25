@@ -392,6 +392,8 @@ namespace Render::RT::detail
         deviceDesc.logCallback = desc.logCallback ? &LogBridge::forward : nullptr;
         deviceDesc.logUserData = &logBridge;
         deviceDesc.applicationName = desc.applicationName ? desc.applicationName : "RenderX";
+        // GL 后端专用：宿主（Qt）注入的符号解析入口。nullptr 时后端用平台默认实现。
+        deviceDesc.glGetProcAddress = desc.glGetProcAddress;
 
         device = RHI::createDevice(deviceDesc);
         if (!device)

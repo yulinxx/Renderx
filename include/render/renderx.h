@@ -83,7 +83,7 @@
 // ==================== ABI 版本 ====================
 
 #define RENDERX_ABI_VERSION_MAJOR 3
-#define RENDERX_ABI_VERSION_MINOR 1
+#define RENDERX_ABI_VERSION_MINOR 2
 #define RENDERX_ABI_VERSION \
     ((RENDERX_ABI_VERSION_MAJOR << 16) | RENDERX_ABI_VERSION_MINOR)
 
@@ -335,8 +335,22 @@ namespace Render
             rxLogCallback logCallback;
             void* logUserData;
             const char* applicationName;
+            /**
+             * @brief GL 专用：宿主提供的 getProcAddress，签名为 `void* (*)(const char*)`
+             *
+             * 传 nullptr 时用平台默认实现（Windows: wglGetProcAddress + opengl32.dll；
+             * Linux: glXGetProcAddress；macOS: dlsym）。
+             *
+             * **Qt 宿主应当传** `QOpenGLContext::getProcAddress` 的包装：
+             * Qt 在部分平台（尤其 Windows 上的 ANGLE / EGL 后端）解析到的
+             * 实现与平台默认路径不是同一套，混用会得到「函数指针非空但调用行为
+             * 不对」——这类错误没有任何报错，只表现为画面局部异常。
+             *
+             * 其他后端忽略此字段。
+             */
+            void* glGetProcAddress;
         };
-        static_assert(sizeof(RuntimeDesc) == 48, "RuntimeDesc ABI size changed");
+        static_assert(sizeof(RuntimeDesc) == 56, "RuntimeDesc ABI size changed");
 
         struct SurfaceDesc
         {
