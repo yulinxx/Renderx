@@ -105,6 +105,89 @@ foreach(_hdr IN LISTS RENDER_PUBLIC_HEADERS)
 endforeach()
 set(RENDER_PUBLIC_HEADERS ${RENDER_HEADERS_NORM})
 
+# ==================== Shader 嵌入 ====================
+#
+# shader 不再在运行时从磁盘加载，而是在构建期转成字节数组编入 DLL。
+# 详细动机见 CMake/EmbedShaders.cmake 的文件头（macOS bundle 下路径推导
+# 失败导致视口全黑、shader 非构建依赖导致调试时跑旧 shader）。
+#
+# 新增 shader 只需把文件加进本列表，无需改任何 C++ 代码。
+# 语言按扩展名自动推断：.vert/.frag/.comp -> GLSL，.spv -> SPIR-V，
+# .metallib -> Metal 库，.metal -> MSL。
+set(RENDERX_SHADER_SOURCES
+    # ---- RT 默认管线（DefaultPipeline 枚举对应）----
+    # 这 11 个此前是 rendererRuntime.cpp 里的 raw string 字面量。内联在 .cpp 中
+    # 的 GLSL 无法被语法高亮、无法被构建工具交叉编译成 SPIR-V / MSL，
+    # 也绕过了 src/shader/ 目录的存在意义，因此提取为独立文件。
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/world_p3c3.vert
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/world_p3c3.frag
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/world_point_p3c3.frag
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/world_p3c4.vert
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/world_p3c4.frag
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/screen_p3c3.vert
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/screen_point_p3c3.vert
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/screen_p3c4.vert
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/screen_p3c4.frag
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/screen_tex_p2t2c4.vert
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/screen_tex_p2t2c4.frag
+
+    # ---- 文本（Phase 6 字体图集接入 Runtime 时启用）----
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/text_sdf.vert
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/text_sdf.frag
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/text_screen.vert
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/text_screen.frag
+
+    # ---- 3D（Phase 11 收口 3D 时启用）----
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/mesh_3d.vert
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/mesh_3d.frag
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/mesh_3d_instanced.vert
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/highlight_3d.vert
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/highlight_3d.frag
+
+    # ---- GPU 剔除 ----
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/culling.comp
+)
+# 已删除：scene_2d.* / overlay.* / overlay_screen.* / bitmap.*
+# 它们只服务于已删除的 legacy 路径，且仅被 rhiGl.cpp 中一段约 125 行的
+# 字符串比较链引用——那段链在 legacy 删除后已成死代码。
+
+set(RENDERX_EMBED_SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/CMake/EmbedShaders.cmake")
+set(RENDERX_GENERATED_SHADER_CPP "${CMAKE_CURRENT_BINARY_DIR}/generated/shaderBlobs.cpp")
+
+# 列表要作为单个 -D 参数传给脚本。
+# 不能直接用分号：add_custom_command 会把 COMMAND 参数里的 ';' 当作参数分隔符，
+# 从而把一个 -D 拆成 22 个参数；而转义成 '\;' 后，脚本侧收到的是字面量
+# 反斜杠分号，foreach(IN LISTS) 只会迭代一次（整串被当成一个路径）。
+# 因此改用 '|' 作为分隔符，由脚本还原成 CMake 列表——路径中不会出现 '|'。
+string(REPLACE ";" "|" RENDERX_SHADER_SOURCES_ARG "${RENDERX_SHADER_SOURCES}")
+
+add_custom_command(
+    OUTPUT "${RENDERX_GENERATED_SHADER_CPP}"
+    COMMAND ${CMAKE_COMMAND}
+        "-DEMBED_INPUT_LIST=${RENDERX_SHADER_SOURCES_ARG}"
+        "-DEMBED_OUTPUT=${RENDERX_GENERATED_SHADER_CPP}"
+        -P "${RENDERX_EMBED_SCRIPT}"
+    # 把 shader 文件本身声明为依赖——这正是旧方案缺失的一环：
+    # 此前 .vert/.frag 改动不触发任何重新构建
+    DEPENDS ${RENDERX_SHADER_SOURCES} "${RENDERX_EMBED_SCRIPT}"
+    COMMENT "[Renderx] Embedding ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/* into shaderBlobs.cpp"
+    VERBATIM
+)
+
+# 生成的 shaderBlobs.cpp 与 shaderLibrary.cpp 不直接编进 RenderX，而是单独做成
+# OBJECT 库 RenderxShaders（见下方「Shader 对象库」段）。
+#
+# 原因：add_custom_command 的 OUTPUT 只能被声明它的同一目录中的目标消费。
+# Test/ 是子目录，若在那里直接引用 ${RENDERX_GENERATED_SHADER_CPP}，
+# Makefile 生成器会报 "no rule to make target"。抽成 OBJECT 库后，
+# RenderX 与两个测试目标都通过 target_link_libraries 复用同一份对象文件，
+# 既不重复编译，也不会重复定义符号。
+list(REMOVE_ITEM RENDER_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/shader/shaderLibrary.cpp")
+
+# 让 shader 源文件出现在 IDE 工程树中（不参与编译）
+set_source_files_properties(${RENDERX_SHADER_SOURCES} PROPERTIES HEADER_FILE_ONLY TRUE)
+
+
 # ==================== 依赖库配置 ====================
 
 # OpenGL库配置（跨平台）
@@ -129,6 +212,34 @@ if(NOT TARGET Log AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../Log/Log/CMakeLists.
     message(STATUS "[Renderx] Log library added as subdirectory")
 endif()
 
+# ==================== Shader 对象库 ====================
+#
+# RenderxShaders 承载两个文件：
+#   - 构建期生成的 shaderBlobs.cpp（shader 字节数组）
+#   - shaderLibrary.cpp（按名字+语言查表）
+# 由 RenderX 与 Test/ 下的两个测试目标共同链接，见上方 REMOVE_ITEM 处的说明。
+add_library(RenderxShaders OBJECT
+    "${RENDERX_GENERATED_SHADER_CPP}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/shader/shaderLibrary.cpp"
+)
+
+target_compile_features(RenderxShaders PRIVATE cxx_std_17)
+
+# shader 表是 DLL 内部实现，绝不导出；与 RenderX 目标保持同样的 hidden 可见性。
+# POSITION_INDEPENDENT_CODE 是必须的：这些对象文件会被链进 SHARED 库。
+set_target_properties(RenderxShaders PROPERTIES
+    POSITION_INDEPENDENT_CODE ON
+    CXX_VISIBILITY_PRESET hidden
+    VISIBILITY_INLINES_HIDDEN ON
+    FOLDER "Render"
+)
+
+# shaderLibrary.cpp 需要 src/ 下的头文件与 Log/SyLogger.h
+target_include_directories(RenderxShaders PUBLIC
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+)
+target_link_libraries(RenderxShaders PUBLIC Log)
+
 # ==================== 库目标配置 ====================
 
 # 创建渲染库目标（统一入口，显式 SHARED，不依赖 BUILD_SHARED_LIBS 全局选项）
@@ -152,6 +263,7 @@ sanyi_add_shared_library(${PROJECT_NAME}
             PRIVATE
                 ${OPENGL_LIBRARIES}
                 Log
+                RenderxShaders
                 ${RENDER_LINK_LIBS}
 )
 
@@ -193,52 +305,16 @@ if(NOT WIN32 AND ${CMAKE_CXX_COMPILER_ID} STREQUAL "GNU")
     )
 endif()
 
-# ==================== Shader文件配置 ====================
-
-# 所有Shader文件列表
-# 默认屏幕字体文件（运行时自动加载）
-set(FONT_FILES
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/res/default_screen_font.ttf
-)
-
-# 构建后自动复制字体文件到输出目录
-add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${FONT_FILES}
-        "$<TARGET_FILE_DIR:${PROJECT_NAME}>/"
-    COMMENT "Copying font files to output directory"
-)
-
-# 所有Shader文件列表
-set(SHADER_FILES
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/scene_2d.vert
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/scene_2d.frag
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/overlay.vert
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/overlay.frag
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/overlay_screen.vert
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/overlay_screen.frag
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/bitmap.vert
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/bitmap.frag
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/mesh_3d.vert
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/mesh_3d.frag
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/mesh_3d_instanced.vert
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/text_sdf.vert
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/text_sdf.frag
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/text_screen.vert
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/text_screen.frag
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/highlight_3d.vert
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/highlight_3d.frag
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/culling.comp
-)
-
-# 构建后自动复制Shader文件到输出目录
-add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:${PROJECT_NAME}>"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${SHADER_FILES}
-        "$<TARGET_FILE_DIR:${PROJECT_NAME}>/"
-    COMMENT "Copying shader files to output directory"
-)
+# ==================== 资源文件说明 ====================
+#
+# shader：已在构建期编入 DLL（见上方 Shader 嵌入段），不再有运行时拷贝与安装。
+#
+# 字体：DLL 不再从磁盘读取字体。原先 renderCreateDevice 用 std::filesystem
+# 从可执行文件路径推导目录、再读 default_screen_font.ttf——这让 DLL 依赖运行
+# 目录布局，在 macOS .app bundle 下极易失效。现改为由宿主通过
+# rxFontLoad(runtime, fontData, dataSize, pixelHeight) 以内存数据注入
+# （见 include/render/renderx.h）。src/res/default_screen_font.ttf 保留在
+# 仓库中供宿主取用，但不再由本目标复制或安装。
 
 # ==================== 安装配置 ====================
 
@@ -246,17 +322,11 @@ add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
 install(TARGETS ${PROJECT_NAME}
     RUNTIME DESTINATION bin    # 动态库安装到bin目录
     LIBRARY DESTINATION lib    # 共享库安装到lib目录
-    ARCHIVE DESTINATION lib    # 静态库安装到lib目录
 )
 
 # 安装头文件目录
 install(DIRECTORY include/render
     DESTINATION include
-)
-
-# 安装Shader文件
-install(FILES ${SHADER_FILES}
-    DESTINATION bin
 )
 
 # ==================== 构建信息输出 ====================

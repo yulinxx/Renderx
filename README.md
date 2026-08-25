@@ -278,9 +278,21 @@ Phase 3 引入的统一命令收集与排序组件：
 
 ### Shader 管理
 
-**文件**：`src/shader/shaders.h` / `src/shader/shaders.cpp`
+**文件**：`src/shader/shaderLibrary.h` / `src/shader/shaderLibrary.cpp`
+**构建期代码生成**：`CMake/EmbedShaders.cmake` → `<build>/generated/shaderBlobs.cpp`
 
-运行时从文件加载 GLSL Shader 源码，提供统一的 Shader 资源访问接口。
+Shader 在构建期转成字节数组编入 DLL，运行期没有任何文件 IO：
+
+- `src/shader/*.vert|frag|comp` 由 `EmbedShaders.cmake` 转成 `unsigned char[]`，
+  语言按扩展名推断（`.vert/.frag/.comp` → GLSL，`.spv` → SPIR-V，`.metal` → MSL，`.metallib` → MetalLib）
+- shader 文件是 `add_custom_command` 的 `DEPENDS`，改动即触发重新生成与重新编译
+- 运行期通过 `shader::find(name, language, &blob)` / `shader::glslSource(name)` 按文件名查表；
+  后端拿到的 `PipelineDesc::vertexShader` 既可以是 GLSL 源码本身，也可以是库中的文件名（如 `"world_p3c3.vert"`）
+- 新增 shader 只需把文件加进 `CMakeLists.txt` 的 `RENDERX_SHADER_SOURCES` 列表，无需改任何 C++ 代码
+
+替换了旧的 `shaders.h` / `shaders.cpp` 方案。旧方案有三个实际故障：macOS `.app` bundle 下
+从可执行文件路径推导 shader 目录失败导致视口全黑（见 `Docs/Mac渲染.md` §4）；shader 文件不是
+构建依赖，调试时跑的是旧 shader；文本加载无法承载 Vulkan/Metal 需要的 SPIR-V 与 metallib。
 
 ## 依赖库
 
@@ -325,7 +337,13 @@ vec3 pos = uViewMatrix * vec3(aPosition.xy, 1.0);
 3. **World2D 使用纯缩放矩阵**：移除视图矩阵中的平移分量，避免灾难性抵消
 4. **相机中心作为 uniform 传入**：每帧更新，确保平移/缩放时精度正确
 
-#### 着色器实现（scene_2d.vert）
+#### 着色器实现（legacy `scene_2d.vert`，已删除）
+
+> 现状：`uCameraCenter` 这一层已不存在。当前 RT 路径的世界空间 shader
+> （`world_p3c3.vert` / `world_p3c4.vert`）只有一个 `uniform mat4 uView`，
+> 相机相对偏移完全在 CPU 侧的离散化阶段以 double 精度减去（按
+> `Docs/03-渲染主链/新渲染架构.md` §1，离散化归应用层的 `RenderSceneBuilder`）。
+> 下面这段是 legacy 2D 路径的做法，保留作为精度问题的说明。
 
 ```glsl
 uniform mat3 uViewMatrix;
@@ -631,23 +649,31 @@ option(BUILD_SHARED_LIBS "Build shared libraries" ON)
 - 公开头文件安装到 `include/`
 - 动态库安装到 `bin/`，静态库安装到 `lib/`
 
-### Shader 文件复制
+### Shader 嵌入（不再有文件复制）
 
-构建完成后，CMake 自动将所有 Shader 文件复制到输出目录（`$<TARGET_FILE_DIR:RenderX>/`），共 15 个文件：
+Shader 在构建期编入 DLL，构建后输出目录中不再有 `.vert/.frag/.comp` 文件，运行期也不再读盘。
+详见上文「Shader 管理」。当前嵌入 21 个文件：
 
 | 类别 | 文件名 |
 |------|--------|
-| 2D 场景 | `scene_2d.vert`、`scene_2d.frag` |
-| 叠加层 | `overlay.vert`、`overlay.frag`、`overlay_screen.vert`、`overlay_screen.frag` |
-| 位图 | `bitmap.vert`、`bitmap.frag` |
+| 世界空间图元 | `world_p3c3.vert`、`world_p3c3.frag`、`world_point_p3c3.frag`、`world_p3c4.vert`、`world_p3c4.frag` |
+| 屏幕空间图元 | `screen_p3c3.vert`、`screen_point_p3c3.vert`、`screen_p3c4.vert`、`screen_p3c4.frag` |
+| 屏幕空间纹理 | `screen_tex_p2t2c4.vert`、`screen_tex_p2t2c4.frag` |
 | 3D 网格 | `mesh_3d.vert`、`mesh_3d.frag`、`mesh_3d_instanced.vert` |
 | 文本 | `text_sdf.vert`、`text_sdf.frag`、`text_screen.vert`、`text_screen.frag` |
 | 高亮 | `highlight_3d.vert`、`highlight_3d.frag` |
 | GPU 剔除 | `culling.comp` |
 
-### 字体文件复制
+已删除：`scene_2d.*`、`overlay.*`、`overlay_screen.*`、`bitmap.*`——它们只服务于已删除的
+legacy 渲染路径。世界/屏幕空间图元的 shader 是从 `rendererRuntime.cpp` 中 11 段内联
+GLSL 字符串字面量提取出来的独立文件。
 
-默认屏幕字体 `default_screen_font.ttf` 在构建后自动复制到输出目录，`renderCreateDevice` 时自动加载（14px 字号）。也可通过 `renderLoadScreenFont` 在运行时加载自定义字体。
+### 字体文件
+
+DLL 不再从磁盘读取字体。原先 `renderCreateDevice` 用 `std::filesystem` 从可执行文件路径推导
+目录再读 `default_screen_font.ttf`，这让 DLL 依赖运行目录布局，在 macOS `.app` bundle 下极易失效。
+现改为由宿主通过 `rxFontLoad(runtime, fontData, dataSize, pixelHeight)` 以内存数据注入。
+`src/res/default_screen_font.ttf` 保留在仓库中供宿主取用，但不再由构建复制或安装。
 
 ### 测试构建
 
@@ -790,16 +816,22 @@ renderFrame 内部流程（2D 模式）:
 
 | Shader 名称 | 类型 | 文件 | 用途 |
 |-------------|------|------|------|
-| Scene2D | 顶点+片段 | `scene_2d.vert/frag` | 2D 场景图元渲染，支持相机相对渲染（`uCameraCenter` uniform） |
-| Overlay | 顶点+片段 | `overlay.vert/frag` | 叠加层渲染（世界坐标） |
-| OverlayScreen | 顶点+片段 | `overlay_screen.vert/frag` | 叠加层渲染（屏幕坐标） |
-| Bitmap | 顶点+片段 | `bitmap.vert/frag` | 位图图像渲染 |
+| WorldLine / WorldTriangle | 顶点+片段 | `world_p3c3.vert/frag` | 世界空间图元（P3C3），支持相机相对渲染（`uCameraCenter` uniform） |
+| WorldPoint | 片段 | `world_point_p3c3.frag` | 世界空间圆点（在片段中做圆形裁剪） |
+| WorldLine4 / WorldTriangle4 | 顶点+片段 | `world_p3c4.vert/frag` | 世界空间图元（P3C4，带 alpha） |
+| ScreenLine / ScreenTriangle | 顶点+片段 | `screen_p3c3.vert` + `world_p3c3.frag` | 屏幕空间图元（P3C3） |
+| ScreenPoint | 顶点 | `screen_point_p3c3.vert` | 屏幕空间点 |
+| ScreenLine4 / ScreenTriangle4 | 顶点+片段 | `screen_p3c4.vert/frag` | 屏幕空间图元（P3C4，带 alpha） |
+| ScreenTex | 顶点+片段 | `screen_tex_p2t2c4.vert/frag` | 屏幕空间纹理（文本图集、位图） |
 | Mesh3D | 顶点+片段 | `mesh_3d.vert/frag` | 3D 网格渲染 |
 | Mesh3DInstanced | 顶点 | `mesh_3d_instanced.vert` | 3D 网格实例化渲染 |
 | TextSDF | 顶点+片段 | `text_sdf.vert/frag` | SDF 文本渲染 |
 | TextScreen | 顶点+片段 | `text_screen.vert/frag` | 屏幕空间文本渲染 |
 | Highlight3D | 顶点+片段 | `highlight_3d.vert/frag` | 3D 高亮渲染 |
 | Culling | 计算 | `culling.comp` | GPU 视锥剔除 |
+
+> 所有 shader 都显式标注 `layout(location = N)`：Apple 的 GLSL 编译器在缺省时会乱序分配
+> attribute slot，导致颜色/坐标错位（见 `Docs/Mac渲染.md` §9）。
 
 ## 版本信息
 

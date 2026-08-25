@@ -1,6 +1,6 @@
 #include "rhiGl.h"
 #include "platform/glLoader.h"
-#include "../shader/shaders.h"
+#include "../shader/shaderLibrary.h"
 #include "Log/SyLogger.h"
 
 #include <cstdio>
@@ -296,6 +296,41 @@ namespace Render::RHI
         m_textureFreeList.push_back(uint32_t(idx));
     }
 
+    namespace
+    {
+        /**
+         * @brief 把 PipelineDesc 里的 shader 字段解析成一段可直接编译的 GLSL 源码
+         *
+         * 兼容两种传法，调用方不需要区分：
+         *  - 直接是 GLSL 源码。GLSL 必须以 #version 开头，所以第一个非空白字符
+         *    是 '#' 即判定为源码本身。
+         *  - 内置 shader 库中的文件名，如 "world_p3c3.vert" / "culling.comp"，
+         *    交给 shader::glslSource 查表。查不到时该函数自身会记一条 Warn，
+         *    这里返回 nullptr 由调用方走失败路径。
+         *
+         * @return NUL 结尾的 GLSL 源码；入参为空或查表失败返回 nullptr
+         */
+        const char* resolveShaderSource(const char* nameOrSource)
+        {
+            if (!nameOrSource || nameOrSource[0] == '\0')
+            {
+                return nullptr;
+            }
+
+            const char* p = nameOrSource;
+            while (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n')
+            {
+                ++p;
+            }
+            if (*p == '#')
+            {
+                return nameOrSource;
+            }
+
+            return shader::glslSource(nameOrSource);
+        }
+    }  // namespace
+
     PipelineHandle GLDevice::createPipeline(const PipelineDesc& desc)
     {
         auto* g = gl();
@@ -305,12 +340,13 @@ namespace Render::RHI
         // compute pipeline 分支：只需要 compute shader
         if (desc.computeShader)
         {
-            const char* csSource = desc.computeShader;
-
-            // compute shader 名称映射
-            if (std::strcmp(csSource, "culling_comp") == 0)
+            const char* csSource = resolveShaderSource(desc.computeShader);
+            if (!csSource)
             {
-                csSource = shader::CULLING_COMP;
+                SY_ERRORF("[rhiGl] createPipeline: compute shader source unavailable");
+                entry = GLPipelineEntry{};
+                m_pipelineFreeList.push_back(uint32_t(handle - 1));
+                return NullHandle;
             }
 
             uint32_t cs = compileShader(GL_COMPUTE_SHADER, csSource);
@@ -367,129 +403,24 @@ namespace Render::RHI
         }
 
         // 图形 pipeline 分支：需要 vertex + fragment shader
-        const char* vsSource = desc.vertexShader;
-        const char* fsSource = desc.fragmentShader;
+        //
+        // desc.vertexShader / fragmentShader 既可以是 GLSL 源码本身，
+        // 也可以是内置 shader 库中的文件名（如 "world_p3c3.vert"）。
+        //
+        // 此前这里是一段约 125 行的 if-else 字符串比较链，把 "passthrough_vert"
+        // 一类逻辑名映射到 shaders.h 的 18 个 extern const char* 全局变量。
+        // 那些逻辑名只有已删除的 legacy 路径会传入，链本身已成死代码；
+        // 且每新增一个 shader 都要同时改 shaders.h / shaders.cpp / 本链三处。
+        const char* vsSource = resolveShaderSource(desc.vertexShader);
+        const char* fsSource = resolveShaderSource(desc.fragmentShader);
 
-        if (strcmp(desc.vertexShader, "passthrough_vert") == 0)
+        if (!vsSource || !fsSource)
         {
-            vsSource = shader::SCENE_2D_VERT;
-        }
-        else if (strcmp(desc.vertexShader, "passthrough_frag") == 0)
-        {
-            vsSource = shader::SCENE_2D_FRAG;
-        }
-        else if (strcmp(desc.vertexShader, "overlay_vert") == 0)
-        {
-            vsSource = shader::OVERLAY_VERT;
-        }
-        else if (strcmp(desc.vertexShader, "overlay_frag") == 0)
-        {
-            vsSource = shader::OVERLAY_FRAG;
-        }
-        else if (strcmp(desc.vertexShader, "overlay_screen_vert") == 0)
-        {
-            vsSource = shader::OVERLAY_SCREEN_VERT;
-        }
-        else if (strcmp(desc.vertexShader, "overlay_screen_frag") == 0)
-        {
-            vsSource = shader::OVERLAY_SCREEN_FRAG;
-        }
-        else if (strcmp(desc.vertexShader, "mesh_3d_vert") == 0)
-        {
-            vsSource = shader::MESH_3D_VERT;
-        }
-        else if (strcmp(desc.vertexShader, "mesh_3d_frag") == 0)
-        {
-            vsSource = shader::MESH_3D_FRAG;
-        }
-        else if (strcmp(desc.vertexShader, "mesh_3d_instanced_vert") == 0)
-        {
-            vsSource = shader::MESH_3D_INSTANCED_VERT;
-        }
-        else if (strcmp(desc.vertexShader, "text_sdf_vert") == 0)
-        {
-            vsSource = shader::TEXT_SDF_VERT;
-        }
-        else if (strcmp(desc.vertexShader, "text_sdf_frag") == 0)
-        {
-            vsSource = shader::TEXT_SDF_FRAG;
-        }
-        else if (strcmp(desc.vertexShader, "bitmap_vert") == 0)
-        {
-            vsSource = shader::BITMAP_VERT;
-        }
-        else if (strcmp(desc.vertexShader, "bitmap_frag") == 0)
-        {
-            vsSource = shader::BITMAP_FRAG;
-        }
-        else if (strcmp(desc.vertexShader, "highlight_3d_vert") == 0)
-        {
-            vsSource = shader::HIGHLIGHT_3D_VERT;
-        }
-        else if (strcmp(desc.vertexShader, "highlight_3d_frag") == 0)
-        {
-            vsSource = shader::HIGHLIGHT_3D_FRAG;
-        }
-
-        if (strcmp(desc.fragmentShader, "passthrough_vert") == 0)
-        {
-            fsSource = shader::SCENE_2D_VERT;
-        }
-        else if (strcmp(desc.fragmentShader, "passthrough_frag") == 0)
-        {
-            fsSource = shader::SCENE_2D_FRAG;
-        }
-        else if (strcmp(desc.fragmentShader, "overlay_vert") == 0)
-        {
-            fsSource = shader::OVERLAY_VERT;
-        }
-        else if (strcmp(desc.fragmentShader, "overlay_frag") == 0)
-        {
-            fsSource = shader::OVERLAY_FRAG;
-        }
-        else if (strcmp(desc.fragmentShader, "overlay_screen_vert") == 0)
-        {
-            fsSource = shader::OVERLAY_SCREEN_VERT;
-        }
-        else if (strcmp(desc.fragmentShader, "overlay_screen_frag") == 0)
-        {
-            fsSource = shader::OVERLAY_SCREEN_FRAG;
-        }
-        else if (strcmp(desc.fragmentShader, "mesh_3d_vert") == 0)
-        {
-            fsSource = shader::MESH_3D_VERT;
-        }
-        else if (strcmp(desc.fragmentShader, "mesh_3d_frag") == 0)
-        {
-            fsSource = shader::MESH_3D_FRAG;
-        }
-        else if (strcmp(desc.fragmentShader, "mesh_3d_instanced_vert") == 0)
-        {
-            fsSource = shader::MESH_3D_INSTANCED_VERT;
-        }
-        else if (strcmp(desc.fragmentShader, "text_sdf_vert") == 0)
-        {
-            fsSource = shader::TEXT_SDF_VERT;
-        }
-        else if (strcmp(desc.fragmentShader, "text_sdf_frag") == 0)
-        {
-            fsSource = shader::TEXT_SDF_FRAG;
-        }
-        else if (strcmp(desc.fragmentShader, "bitmap_vert") == 0)
-        {
-            fsSource = shader::BITMAP_VERT;
-        }
-        else if (strcmp(desc.fragmentShader, "bitmap_frag") == 0)
-        {
-            fsSource = shader::BITMAP_FRAG;
-        }
-        else if (strcmp(desc.fragmentShader, "highlight_3d_vert") == 0)
-        {
-            fsSource = shader::HIGHLIGHT_3D_VERT;
-        }
-        else if (strcmp(desc.fragmentShader, "highlight_3d_frag") == 0)
-        {
-            fsSource = shader::HIGHLIGHT_3D_FRAG;
+            SY_ERRORF("[rhiGl] createPipeline: shader source unavailable (vs=%s, fs=%s)",
+                      vsSource ? "ok" : "MISSING", fsSource ? "ok" : "MISSING");
+            entry = GLPipelineEntry{};
+            m_pipelineFreeList.push_back(uint32_t(handle - 1));
+            return NullHandle;
         }
 
         uint32_t vs = compileShader(GL_VERTEX_SHADER, vsSource);

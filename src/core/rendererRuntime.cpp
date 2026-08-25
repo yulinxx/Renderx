@@ -1,4 +1,5 @@
 #include "rendererRuntime.h"
+#include "shader/shaderLibrary.h"
 #include "Log/SyLogger.h"
 
 #include <algorithm>
@@ -10,100 +11,14 @@ namespace Render
 
         namespace
         {
-            static const char* kWorldVert = R"(#version 330 core
-layout(location=0) in vec3 aPos;
-layout(location=1) in vec3 aColor;
-uniform mat4 uView;
-out vec3 vColor;
-void main(){ vColor = aColor; gl_Position = uView * vec4(aPos, 1.0); })";
-
-            static const char* kWorldFrag = R"(#version 330 core
-in vec3 vColor;
-out vec4 frag;
-void main(){ frag = vec4(vColor, 1.0); })";
-
-            static const char* kWorldPointFrag = R"(#version 330 core
-in vec3 vColor;
-out vec4 frag;
-uniform float uPointSize;
-void main(){
-    vec2 d = gl_PointCoord * 2.0 - 1.0;
-    if (dot(d, d) > 1.0) discard;
-    frag = vec4(vColor, 1.0);
-})";
-
-            static const char* kScreenVert = R"(#version 330 core
-layout(location=0) in vec3 aPos;
-layout(location=1) in vec3 aColor;
-uniform vec2 uViewport;
-out vec3 vColor;
-void main(){
-    vec2 c = vec2(aPos.x / uViewport.x * 2.0 - 1.0, 1.0 - aPos.y / uViewport.y * 2.0);
-    vColor = aColor;
-    gl_Position = vec4(c, 0.0, 1.0);
-})";
-
-            static const char* kScreenPointVert = R"(#version 330 core
-layout(location=0) in vec3 aPos;
-layout(location=1) in vec3 aColor;
-uniform vec2 uViewport;
-uniform float uPointSize;
-out vec3 vColor;
-void main(){
-    vec2 c = vec2(aPos.x / uViewport.x * 2.0 - 1.0, 1.0 - aPos.y / uViewport.y * 2.0);
-    vColor = aColor;
-    gl_Position = vec4(c, 0.0, 1.0);
-    gl_PointSize = uPointSize;
-})";
-
-            static const char* kScreenTexVert = R"(#version 330 core
-layout(location=0) in vec2 aPos;
-layout(location=1) in vec2 aUV;
-layout(location=2) in vec4 aColor;
-uniform vec2 uViewport;
-out vec2 vUV;
-out vec4 vColor;
-void main(){
-    vec2 c = vec2(aPos.x / uViewport.x * 2.0 - 1.0, 1.0 - aPos.y / uViewport.y * 2.0);
-    vUV = aUV; vColor = aColor;
-    gl_Position = vec4(c, 0.0, 1.0);
-})";
-
-            static const char* kScreenTexFrag = R"(#version 330 core
-in vec2 vUV;
-in vec4 vColor;
-uniform sampler2D uTex;
-out vec4 frag;
-void main(){ frag = texture(uTex, vUV) * vColor; })";
-
-            // ---- P3C4 (alpha-aware) variants ----
-            static const char* kWorldVert4 = R"(#version 330 core
-layout(location=0) in vec3 aPos;
-layout(location=1) in vec4 aColor;
-uniform mat4 uView;
-out vec4 vColor;
-void main(){ vColor = aColor; gl_Position = uView * vec4(aPos, 1.0); })";
-
-            static const char* kWorldFrag4 = R"(#version 330 core
-in vec4 vColor;
-out vec4 frag;
-void main(){ frag = vec4(vColor.rgb, vColor.a); })";
-
-            static const char* kScreenVert4 = R"(#version 330 core
-layout(location=0) in vec3 aPos;
-layout(location=1) in vec4 aColor;
-uniform vec2 uViewport;
-out vec4 vColor;
-void main(){
-    vec2 c = vec2(aPos.x / uViewport.x * 2.0 - 1.0, 1.0 - aPos.y / uViewport.y * 2.0);
-    vColor = aColor;
-    gl_Position = vec4(c, 0.0, 1.0);
-})";
-
-            static const char* kScreenFrag4 = R"(#version 330 core
-in vec4 vColor;
-out vec4 frag;
-void main(){ frag = vec4(vColor.rgb, vColor.a); })";
+            // 默认管线的 shader 现在通过 shaderLibrary 按文件名取用，
+            // 不再是本文件里的 raw string 字面量。
+            //
+            // 改动原因：内联在 .cpp 中的 GLSL 无法被编辑器语法高亮，无法被
+            // 构建工具交叉编译成 SPIR-V / MSL（Vulkan 与 Metal 后端的前提），
+            // 而且与 src/shader/ 目录并存造成「两套互不相干的 shader 集合」——
+            // 此前 src/shader/ 下的 18 个文件只服务已删除的 legacy 路径，
+            // 真正在跑的 11 个 shader 却藏在这里。
 
             static RHI::PrimitiveTopology mapTopology(RTPrimitiveTopology t)
             {
@@ -265,48 +180,86 @@ void main(){ frag = vec4(vColor.rgb, vColor.a); })";
             if (m_defaultsReady)
                 return;
 
-            auto make = [&](RTPrimitiveTopology topo, RTVertexFormat fmt, const char* vs, const char* fs,
-                           bool depth, bool blend, bool pointVert) {
+            // shader 名即 src/shader/ 下的文件名，由 CMake 在构建期嵌入二进制。
+            // 命名规则：<空间>_<顶点格式>.<阶段>，见 CMakeLists 的 RENDERX_SHADER_SOURCES。
+            auto make = [&](const char* label, RTPrimitiveTopology topo, RTVertexFormat fmt,
+                            const char* vsName, const char* fsName, bool depth, bool blend) -> uint16_t {
+                const char* vs = shader::glslSource(vsName);
+                const char* fs = shader::glslSource(fsName);
+                if (!vs || !fs)
+                {
+                    // shaderLibrary 内部已记录未找到的具体名字与语言，这里补上用途上下文
+                    SY_ERRORF("Runtime: default pipeline '%s' unavailable (vs='%s' %s, fs='%s' %s)",
+                              label, vsName, vs ? "ok" : "MISSING", fsName, fs ? "ok" : "MISSING");
+                    return 0;
+                }
+
                 RTPipelineDesc d{};
                 d.topology = topo;
                 d.vertexFormat = fmt;
                 d.depthTest = depth ? 1 : 0;
                 d.depthWrite = depth ? 1 : 0;
                 d.blendEnable = blend ? 1 : 0;
-                d.vertexShader = pointVert ? kScreenPointVert : vs;
+                d.vertexShader = vs;
                 d.fragmentShader = fs;
+
                 PipelineHandle h = createPipeline(&d);
+                if (h == 0)
+                {
+                    SY_ERRORF("Runtime: default pipeline '%s' creation failed", label);
+                }
                 return static_cast<uint16_t>(h);
             };
 
-            m_defaults[static_cast<int>(DefaultPipeline::WorldLine)] =
-                make(RTPrimitiveTopology::LineStrip, RTVertexFormat::P3C3, kWorldVert, kWorldFrag, false, true, false);
-            m_defaults[static_cast<int>(DefaultPipeline::WorldTri)] =
-                make(RTPrimitiveTopology::Triangles, RTVertexFormat::P3C3, kWorldVert, kWorldFrag, false, true, false);
-            m_defaults[static_cast<int>(DefaultPipeline::WorldPoint)] =
-                make(RTPrimitiveTopology::Points, RTVertexFormat::P3C3, kWorldVert, kWorldPointFrag, false, true, false);
-            m_defaults[static_cast<int>(DefaultPipeline::ScreenLine)] =
-                make(RTPrimitiveTopology::LineStrip, RTVertexFormat::P3C3, kScreenVert, kWorldFrag, false, true, false);
-            m_defaults[static_cast<int>(DefaultPipeline::ScreenTri)] =
-                make(RTPrimitiveTopology::Triangles, RTVertexFormat::P3C3, kScreenVert, kWorldFrag, false, true, false);
-            m_defaults[static_cast<int>(DefaultPipeline::ScreenPoint)] =
-                make(RTPrimitiveTopology::Points, RTVertexFormat::P3C3, kScreenPointVert, kWorldPointFrag, false, true, true);
-            m_defaults[static_cast<int>(DefaultPipeline::ScreenTextured)] =
-                make(RTPrimitiveTopology::Triangles, RTVertexFormat::P2T2C4, kScreenTexVert, kScreenTexFrag, false, true, false);
+            using DP = DefaultPipeline;
+            using Topo = RTPrimitiveTopology;
+            using Fmt = RTVertexFormat;
 
-            // P3C4 (alpha-aware) variants
-            m_defaults[static_cast<int>(DefaultPipeline::WorldLine4)] =
-                make(RTPrimitiveTopology::LineStrip, RTVertexFormat::P3C4, kWorldVert4, kWorldFrag4, false, true, false);
-            m_defaults[static_cast<int>(DefaultPipeline::WorldTri4)] =
-                make(RTPrimitiveTopology::Triangles, RTVertexFormat::P3C4, kWorldVert4, kWorldFrag4, false, true, false);
-            m_defaults[static_cast<int>(DefaultPipeline::WorldPoint4)] =
-                make(RTPrimitiveTopology::Points, RTVertexFormat::P3C4, kWorldVert4, kWorldFrag4, false, true, false);
-            m_defaults[static_cast<int>(DefaultPipeline::ScreenLine4)] =
-                make(RTPrimitiveTopology::LineStrip, RTVertexFormat::P3C4, kScreenVert4, kScreenFrag4, false, true, false);
-            m_defaults[static_cast<int>(DefaultPipeline::ScreenTri4)] =
-                make(RTPrimitiveTopology::Triangles, RTVertexFormat::P3C4, kScreenVert4, kScreenFrag4, false, true, false);
-            m_defaults[static_cast<int>(DefaultPipeline::ScreenPoint4)] =
-                make(RTPrimitiveTopology::Points, RTVertexFormat::P3C4, kScreenVert4, kScreenFrag4, false, true, false);
+            // ---- 世界空间 / P3C3（图元几何本身，不含透明度）----
+            m_defaults[static_cast<int>(DP::WorldLine)] =
+                make("WorldLine", Topo::LineStrip, Fmt::P3C3, "world_p3c3.vert", "world_p3c3.frag", false, true);
+            m_defaults[static_cast<int>(DP::WorldTri)] =
+                make("WorldTri", Topo::Triangles, Fmt::P3C3, "world_p3c3.vert", "world_p3c3.frag", false, true);
+            m_defaults[static_cast<int>(DP::WorldPoint)] =
+                make("WorldPoint", Topo::Points, Fmt::P3C3, "world_p3c3.vert", "world_point_p3c3.frag", false, true);
+
+            // ---- 屏幕空间 / P3C3（标尺、HUD，不随视图缩放）----
+            m_defaults[static_cast<int>(DP::ScreenLine)] =
+                make("ScreenLine", Topo::LineStrip, Fmt::P3C3, "screen_p3c3.vert", "world_p3c3.frag", false, true);
+            m_defaults[static_cast<int>(DP::ScreenTri)] =
+                make("ScreenTri", Topo::Triangles, Fmt::P3C3, "screen_p3c3.vert", "world_p3c3.frag", false, true);
+            // 点图元用专门的顶点着色器写 gl_PointSize
+            m_defaults[static_cast<int>(DP::ScreenPoint)] =
+                make("ScreenPoint", Topo::Points, Fmt::P3C3, "screen_point_p3c3.vert", "world_point_p3c3.frag", false, true);
+
+            // ---- 屏幕空间带纹理（文本字形四边形、位图）----
+            m_defaults[static_cast<int>(DP::ScreenTextured)] =
+                make("ScreenTextured", Topo::Triangles, Fmt::P2T2C4, "screen_tex_p2t2c4.vert", "screen_tex_p2t2c4.frag", false, true);
+
+            // ---- P3C4 变体：覆盖层（选择框/手柄/虚线轮廓/点标记/捕捉圈）----
+            // 统一走世界空间，保证缩放时与图元几何一致变换
+            m_defaults[static_cast<int>(DP::WorldLine4)] =
+                make("WorldLine4", Topo::LineStrip, Fmt::P3C4, "world_p3c4.vert", "world_p3c4.frag", false, true);
+            m_defaults[static_cast<int>(DP::WorldTri4)] =
+                make("WorldTri4", Topo::Triangles, Fmt::P3C4, "world_p3c4.vert", "world_p3c4.frag", false, true);
+            m_defaults[static_cast<int>(DP::WorldPoint4)] =
+                make("WorldPoint4", Topo::Points, Fmt::P3C4, "world_p3c4.vert", "world_p3c4.frag", false, true);
+            m_defaults[static_cast<int>(DP::ScreenLine4)] =
+                make("ScreenLine4", Topo::LineStrip, Fmt::P3C4, "screen_p3c4.vert", "screen_p3c4.frag", false, true);
+            m_defaults[static_cast<int>(DP::ScreenTri4)] =
+                make("ScreenTri4", Topo::Triangles, Fmt::P3C4, "screen_p3c4.vert", "screen_p3c4.frag", false, true);
+            m_defaults[static_cast<int>(DP::ScreenPoint4)] =
+                make("ScreenPoint4", Topo::Points, Fmt::P3C4, "screen_p3c4.vert", "screen_p3c4.frag", false, true);
+
+            // 统计成功数量，便于在「画面全黑」时一眼定位是管线没建起来
+            int ready = 0;
+            for (int i = 0; i < static_cast<int>(DP::Count); ++i)
+            {
+                if (m_defaults[i] != 0)
+                    ++ready;
+            }
+            SY_INFOF("Runtime: default pipelines ready %d/%d (embedded shaders: %u)",
+                     ready, static_cast<int>(DP::Count), shader::count());
 
             m_defaultsReady = true;
         }
@@ -395,21 +348,30 @@ void main(){ frag = vec4(vColor.rgb, vColor.a); })";
             const char* fs = nullptr;
             if (fmt == RTVertexFormat::P3C4)
             {
-                // 统一使用 *Vert4（vec4 顶点着色器）。kScreenPointVert4 在部分驱动上与
-                // kScreenFrag4 链接失败（vColor 类型不匹配的误报），故圆点退化为方块点。
-                vs = isScreen ? kScreenVert4 : kWorldVert4;
-                fs = isScreen ? kScreenFrag4 : kWorldFrag4;
+                // 统一使用 P3C4（vec4 顶点着色器）。screen_point_p3c4 在部分驱动上与
+                // screen_p3c4.frag 链接失败（vColor 类型不匹配的误报），故圆点退化为方块点，
+                // 即屏幕空间点也走 screen_p3c4.vert。
+                vs = isScreen ? "screen_p3c4.vert" : "world_p3c4.vert";
+                fs = isScreen ? "screen_p3c4.frag" : "world_p3c4.frag";
             }
             else if (fmt == RTVertexFormat::P2T2C4)
             {
-                vs = kScreenTexVert;
-                fs = kScreenTexFrag;
+                vs = "screen_tex_p2t2c4.vert";
+                fs = "screen_tex_p2t2c4.frag";
             }
             else  // P3C3
             {
-                vs = isScreen ? (isPoint ? kScreenPointVert : kScreenVert) : (isPoint ? kWorldVert : kWorldVert);
-                fs = isPoint ? kWorldPointFrag : kWorldFrag;
+                // 世界空间顶点着色器不区分点与线：原实现两个分支取的是同一个 shader。
+                vs = isScreen ? (isPoint ? "screen_point_p3c3.vert" : "screen_p3c3.vert") : "world_p3c3.vert";
+                fs = isPoint ? "world_point_p3c3.frag" : "world_p3c3.frag";
             }
+
+            SY_DEBUGF("Runtime::resolvePipeline: fmt=%d topo=%d space=%s -> vs='%s' fs='%s'",
+                      static_cast<int>(fmt),
+                      static_cast<int>(topo),
+                      isScreen ? "screen" : "world",
+                      vs,
+                      fs);
 
             RTPipelineDesc d{};
             d.topology = topo;

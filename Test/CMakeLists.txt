@@ -25,7 +25,6 @@ set(RENDERX_NULL_TEST_SOURCES
 # 侥幸解析成功，在 Linux 上会直接配置失败。
 set(RENDERX_NULL_INTERNAL_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/../src/rhi/rhiNull.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/../src/shader/shaders.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/../src/core/pipelineStateManager.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/../src/core/rendererRuntime.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/../src/core/rendererSession.cpp"
@@ -59,6 +58,7 @@ target_link_libraries(RenderxTests PRIVATE
     GTest::gtest
     GTest::gtest_main
     Log
+    RenderxShaders
 )
 
 gtest_discover_tests(RenderxTests)
@@ -76,7 +76,6 @@ set(RENDERX_GL_INTERNAL_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/../src/core/transientBufferPool.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/../src/rhi/rhiGl.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/../src/platform/glLoader.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/../src/shader/shaders.cpp"
 )
 
 add_executable(RenderxGLTests ${RENDERX_GL_TEST_SOURCES} ${RENDERX_GL_INTERNAL_SOURCES})
@@ -107,6 +106,7 @@ target_link_libraries(RenderxGLTests PRIVATE
     GTest::gtest
     GTest::gtest_main
     Log
+    RenderxShaders
 )
 
 gtest_discover_tests(RenderxGLTests)

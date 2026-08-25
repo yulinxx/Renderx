@@ -1,5 +1,4 @@
 #include "textAtlas.h"
-#include "shader/shaders.h"
 
 #include <stb_truetype.h>
 #include <cstring>
@@ -46,8 +45,10 @@ namespace Render::core
         {
             RHI::PipelineDesc desc{};
             desc.topology = RHI::PrimitiveTopology::TriangleList;
-            desc.vertexShader = shader::TEXT_SDF_VERT;
-            desc.fragmentShader = shader::TEXT_SDF_FRAG;
+            // shader 以内置库中的文件名传入，由后端在 createPipeline 时查表取源码
+            // （见 src/shader/shaderLibrary.h）；此前传的是 shaders.h 的全局变量。
+            desc.vertexShader = "text_sdf.vert";
+            desc.fragmentShader = "text_sdf.frag";
             desc.computeShader = nullptr;
             desc.vertexFormat = RHI::VertexFormat::P3T2C4;
             desc.depthTest = false;
