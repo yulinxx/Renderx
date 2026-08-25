@@ -741,7 +741,26 @@ extern "C"
      *
      * @param dev 渲染设备指针
      */
-    RENDER_API void renderFrame(RenderDevice* dev)
+     RENDER_API RHI::IDevice* renderGetRHI(RenderDevice* dev)
+     {
+         if (!dev)
+             return nullptr;
+         return dev->rhiDevice;
+     }
+
+     RENDER_API void renderSetRTWorldDraw(RenderDevice* dev,
+         Render::RT::SessionHandle session,
+         void (*callback)(RHI::IDevice* d, int phase, void* userData),
+         void* userData)
+     {
+         if (!dev)
+             return;
+         dev->rtSession = session;
+         dev->rtWorldDraw = (session != 0 && callback) ? callback : nullptr;
+         dev->rtWorldDrawUser = (session != 0 && callback) ? userData : nullptr;
+     }
+
+     RENDER_API void renderFrame(RenderDevice* dev)
     {
         if (!dev || !dev->rhiDevice)
         {
@@ -851,12 +870,29 @@ extern "C"
                 dev->renderGraph.addPass(pass);
             }
 
+            // ---- RT Pass: WorldBack ----
+            // 2D 全量迁移：背景(grid/ruler 线) 改由 Render::RT 框架绘制（共享本设备 RHI）。
+            {
+                core::PassDesc pass;
+                pass.name = "RTWorldBack";
+                pass.enabled = (dev->rtSession != 0);
+                pass.onExecute = [dev](RHI::IDevice* d) {
+                    if (dev->rtWorldDraw)
+                        dev->rtWorldDraw(d, 0, dev->rtWorldDrawUser);
+                };
+                pass.inputs.push_back(
+                    { core::PassResourceType::ColorTarget, core::PassResourceAccess::Read, "Backbuffer", 0 });
+                pass.outputs.push_back(
+                    { core::PassResourceType::ColorTarget, core::PassResourceAccess::Write, "Backbuffer", 0 });
+                dev->renderGraph.addPass(pass);
+            }
+
             // ---- Pass 1: SceneEnv ----
             // 渲染场景环境（网格背景等）
             {
                 core::PassDesc pass;
                 pass.name = "SceneEnv";
-                pass.enabled = true;
+                pass.enabled = (dev->rtSession == 0);
                 pass.onExecute = [dev](RHI::IDevice* d) {
                     dev->sceneEnv.render(d,
                         dev->view2D.viewMatrix,
@@ -892,12 +928,29 @@ extern "C"
                 dev->renderGraph.addPass(pass);
             }
 
+            // ---- RT Pass: WorldFront ----
+            // 2D 全量迁移：实体 + 覆盖层(选择框/手柄/虚线等) 改由 Render::RT 框架绘制。
+            {
+                core::PassDesc pass;
+                pass.name = "RTWorldFront";
+                pass.enabled = (dev->rtSession != 0);
+                pass.onExecute = [dev](RHI::IDevice* d) {
+                    if (dev->rtWorldDraw)
+                        dev->rtWorldDraw(d, 1, dev->rtWorldDrawUser);
+                };
+                pass.inputs.push_back(
+                    { core::PassResourceType::ColorTarget, core::PassResourceAccess::Read, "Backbuffer", 0 });
+                pass.outputs.push_back(
+                    { core::PassResourceType::ColorTarget, core::PassResourceAccess::Write, "Backbuffer", 0 });
+                dev->renderGraph.addPass(pass);
+            }
+
             // ---- Pass 3: World2DCollect ----
             // 将 world2D 图元渲染命令收集到 CommandEncoder
             {
                 core::PassDesc pass;
                 pass.name = "World2DCollect";
-                pass.enabled = true;
+                pass.enabled = (dev->rtSession == 0);
                 pass.onExecute = [dev](RHI::IDevice* d) {
                     dev->batchQueue.render(d, &dev->commandEncoder, dev->view2D.viewMatrix, dev->world2D);
                 };
@@ -913,7 +966,7 @@ extern "C"
             {
                 core::PassDesc pass;
                 pass.name = "OverlayCollect";
-                pass.enabled = true;
+                pass.enabled = (dev->rtSession == 0);
                 pass.onExecute = [dev](RHI::IDevice* d) {
                     dev->overlayQueue.render(d, &dev->commandEncoder);
                 };
@@ -927,7 +980,7 @@ extern "C"
             {
                 core::PassDesc pass;
                 pass.name = "CommandExecute";
-                pass.enabled = true;
+                pass.enabled = (dev->rtSession == 0);
                 pass.onExecute = [dev](RHI::IDevice* d) {
                     const float camCenterF[2] = { static_cast<float>(dev->cameraCenter[0]),
                         static_cast<float>(dev->cameraCenter[1]) };

@@ -19,6 +19,14 @@
 #include "RenderTypes.h"
 #include <cstdint>
 
+namespace Render
+{
+    namespace RHI
+    {
+        class IDevice;
+    }
+}
+
 /// API 导出宏定义，支持 Windows 和 Linux/macOS 平台
 #ifndef RENDER_API
     #if defined(_WIN32) || defined(_WIN64)
@@ -595,6 +603,30 @@ namespace Render
          * @param dev 渲染设备
          */
         RENDER_API void renderFrame(RenderDevice* dev);
+
+        /**
+         * @brief 取回设备底层的 RHI 设备指针（供 Render::RT 框架共享同一绘制上下文）
+         * @param dev 渲染设备
+         * @return RHI::IDevice* 底层设备；设备无效时返回 nullptr
+         */
+        RENDER_API RHI::IDevice* renderGetRHI(RenderDevice* dev);
+
+        /**
+         * @brief 注册 RT 世界绘制回调（2D 全量迁移到 Render::RT 框架时使用）
+         *
+         * 当 session 非零时，renderFrame 会关闭旧的 grid/实体/overlay Pass，
+         * 改为在帧内注入 RT 绘制 Pass，回调 phase=0 画背景(grid)、phase=1 画实体+覆盖层。
+         * 若 session 为 0，则恢复旧渲染路径。
+         *
+         * @param dev       渲染设备
+         * @param session   RT Session 句柄（0 表示关闭 RT 注入）
+         * @param callback  绘制回调（可为 nullptr，表示仅关闭 RT 注入）
+         * @param userData  回调用户数据
+         */
+        RENDER_API void renderSetRTWorldDraw(RenderDevice* dev,
+            uint64_t session,
+            void (*callback)(RHI::IDevice* dev, int phase, void* userData),
+            void* userData);
 
         /**
          * @brief 读取当前帧缓冲区像素数据

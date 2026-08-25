@@ -63,6 +63,7 @@ set(RENDER_PUBLIC_HEADERS
     include/render/render.h
     include/render/RenderTypes.h
     include/render/TessParams.h
+    include/render/runtime_session.h
 )
 
 # 源文件列表
@@ -155,8 +156,13 @@ else()
     set(OPENGL_LIBRARIES OpenGL::GL)
 endif()
 
-# 导入依赖库的配置文件
-include("${CMAKE_BINARY_DIR}/cmake/LogConfig.cmake")
+# Log库配置（作为子目录构建，自动导出 target）
+# 注意：顶层 CMakeLists 已 add_subdirectory(Log/Log) 提供全局 Log 目标；
+# 这里仅在顶层尚未提供时才作为子目录纳入，避免重复定义 "Log" 目标。
+if(NOT TARGET Log AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../Log/Log/CMakeLists.txt")
+    add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../Log" "${CMAKE_CURRENT_BINARY_DIR}/Log" EXCLUDE_FROM_ALL)
+    message(STATUS "[Renderx] Log library added as subdirectory")
+endif()
 
 # ==================== 库目标配置 ====================
 

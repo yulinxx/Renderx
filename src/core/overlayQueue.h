@@ -155,49 +155,10 @@ namespace Render
 
             /**
              * @brief 设置最大顶点缓冲区容量 (自动扩容)
-             void setMaxCapacity(uint32_t capacity) { m_maxCapacity = capacity; }
-
-            // ============================================================================
-            // 旧 API 兼容包装器 (逐步废弃，保留兼容性)
-            // ============================================================================
-
-            /**
-             * @brief 提交 OverlayPrimitive (旧 API 兼容)
-             *
-             * @deprecated 请使用 submit() 或 submitBatch()
              */
-            void submitOverlay(const OverlayPrimitive* primitive)
-            {
-                if (!primitive)
-                {
-                    return;
-                }
-                // 将 OverlayPrimitive 转换为 DrawRange 提交
-                // 这里简化处理，实际需要根据 primitive->form 转换顶点
-                // 保留接口兼容性，实际转换逻辑由应用层处理
-            }
+            void setMaxCapacity(uint32_t capacity) { m_maxCapacity = capacity; }
 
-            /**
-             * @brief 清除统一 overlay (旧 API 兼容)
-             *
-             * @deprecated 请使用 clearAll()
-             */
-            void clearUnifiedOverlays()
-            {
-                clearAll();
-            }
-
-            /**
-             * @brief 按组清除 overlay (旧 API 兼容)
-             *
-             * @deprecated 请使用 clearGroup()
-             */
-            void clearOverlayGroup(OverlayGroup group)
-            {
-                clearGroup(static_cast<uint32_t>(group));
-            }
-
-        private:
+            private:
             // 内部范围记录 (包含运行时状态)
             struct InternalRange : DrawRange
             {

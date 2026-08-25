@@ -30,43 +30,9 @@ extern "C"
         dev->renderTexts(texts);
     }
 
-    // ==================== Overlay 统一 API ====================
-
-    RENDER_API void renderSubmitOverlay(RenderDevice* dev, const OverlayPrimitive* primitive)
-    {
-        if (!dev || !primitive)
-        {
-            return;
-        }
-        dev->submitOverlay(primitive);
-    }
-
-    RENDER_API void renderSubmitOverlays(RenderDevice* dev, const OverlayPrimitive* primitives, uint32_t count)
-    {
-        if (!dev || !primitives || count == 0)
-        {
-            return;
-        }
-        dev->submitOverlays(primitives, count);
-    }
-
-    RENDER_API void renderClearOverlays(RenderDevice* dev)
-    {
-        if (!dev)
-        {
-            return;
-        }
-        dev->clearOverlays();
-    }
-
-    RENDER_API void renderClearOverlayGroup(RenderDevice* dev, OverlayGroup group)
-    {
-        if (!dev)
-        {
-            return;
-        }
-        dev->clearOverlayGroup(group);
-    }
+    // ==================== Overlay 统一 API (已移至业务层) ====================
+    // 旧 API renderSubmitOverlay/renderClearOverlayGroup 已移除
+    // 业务层应直接使用 renderSubmitOverlayDraw / renderClearOverlayDrawGroup 等新 API
 
     // ==================== 场景环境 ====================
 

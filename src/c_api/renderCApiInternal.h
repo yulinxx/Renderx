@@ -13,6 +13,7 @@
 
 #include "render/render.h"
 #include "render/RenderTypes.h"
+#include "render/runtime_session.h"
 #include "core/renderWorld.h"
 #include "core/batchQueue.h"
 #include "core/overlayQueue.h"
@@ -146,6 +147,14 @@ namespace Render
 
         std::vector<PendingScreenText> pendingScreenTexts;
 
+        /// ---- RT 世界绘制（2D 全量迁移到 Render::RT 框架）----
+        /// 非零时：renderFrame 关闭旧的 grid/实体/overlay Pass，
+        /// 改为注入 RT 绘制 Pass（背景=grid，前景=实体+覆盖层）。帧的生命周期仍由本设备负责。
+        RT::SessionHandle rtSession = 0;
+        /// RT 世界绘制回调；phase=0 画背景(grid/ruler 线)，phase=1 画实体+覆盖层。由 RT 拥有方设置。
+        void (*rtWorldDraw)(RHI::IDevice* dev, int phase, void* userData) = nullptr;
+        void* rtWorldDrawUser = nullptr;
+
         /// 视口像素尺寸（由 renderResize 更新，供 TextAtlas 等模块使用）
         uint32_t viewportWidth = 0;
         uint32_t viewportHeight = 0;
@@ -158,28 +167,11 @@ namespace Render
 
         // === C API 封装方法：避免 C API 层直接访问内部组件 ===
 
-        void submitOverlay(const OverlayPrimitive* primitive)
-        {
-            overlayQueue.submitOverlay(primitive);
-        }
-
-        void submitOverlays(const OverlayPrimitive* primitives, uint32_t count)
-        {
-            for (uint32_t i = 0; i < count; ++i)
-            {
-                overlayQueue.submitOverlay(&primitives[i]);
-            }
-        }
-
-        void clearOverlays()
-        {
-            overlayQueue.clearUnifiedOverlays();
-        }
-
-        void clearOverlayGroup(OverlayGroup group)
-        {
-            overlayQueue.clearOverlayGroup(group);
-        }
+        // Overlay 旧 API 已移除，业务层应直接使用 overlayQueue.submit()/clearGroup()
+        // void submitOverlay(const OverlayPrimitive* primitive) = delete;
+        // void submitOverlays(const OverlayPrimitive* primitives, uint32_t count) = delete;
+        // void clearOverlays() = delete;
+        // void clearOverlayGroup(OverlayGroup group) = delete;
 
         void setSceneEnvEx(const VertexP3C3* vertices,
             uint32_t vertexCount,
