@@ -205,6 +205,8 @@ extern "C" bool gl_loader_load(GLFuncs* out, void* getProcAddress)
     f.UniformBlockBinding = (GLFuncs::PFNGLUNIFORMBLOCKBINDINGPROC)getProc("glUniformBlockBinding");
     f.VertexAttribIPointer = (GLFuncs::PFNGLVERTEXATTRIBIPOINTERPROC)getProc("glVertexAttribIPointer");
     f.VertexAttribDivisor = (GLFuncs::PFNGLVERTEXATTRIBDIVISORPROC)getProc("glVertexAttribDivisor");
+    f.DebugMessageCallback = (GLFuncs::PFNGLDEBUGMESSAGECALLBACKPROC)getProc("glDebugMessageCallback");
+    f.DebugMessageControl = (GLFuncs::PFNGLDEBUGMESSAGECONTROLPROC)getProc("glDebugMessageControl");
 
     // 关键入口缺失即视为加载失败：后续所有绘制都会静默无效，
     // 早失败比在渲染期空指针崩溃好。

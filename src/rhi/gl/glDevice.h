@@ -133,6 +133,9 @@ namespace Render::RHI::gl
         /// 绘制前的公共准备：校验状态、刷新顶点绑定与 pushConstant
         bool prepareDraw(const char* what);
         void applyPipelineState(const GlPipelineRecord& pipeline);
+        /// 当前绑定管线的记录；未绑定或句柄已失效时返回 nullptr。
+        /// 实现里每次都重新解析，**不缓存**记录指针 —— 原因见 .cpp 中的说明。
+        const GlPipelineRecord* boundPipeline();
         void flushVertexBindings();
         void flushPushConstants();
         /// 解析本次 RenderPass 的目标帧缓冲；附件为空时返回表面的默认帧缓冲
@@ -152,7 +155,6 @@ namespace Render::RHI::gl
         Extent2D m_passExtent{};
 
         PipelineHandle m_pipelineHandle{};
-        const GlPipelineRecord* m_pipeline = nullptr;
 
         VertexBinding m_vertexBindings[kMaxVertexBufferSlots]{};
         bool m_vertexBindingsDirty = false;

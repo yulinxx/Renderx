@@ -687,6 +687,17 @@ struct GLFuncs
         GLuint index, GLint size, GLenum type, GLsizei stride, const void* pointer);
     typedef void(RENDER_GLAPI* PFNGLVERTEXATTRIBDIVISORPROC)(GLuint index, GLuint divisor);
 
+    // KHR_debug（GL 4.3 核心）。驱动会在**产生错误的那一次调用里**回调，
+    // 配合 GL_DEBUG_OUTPUT_SYNCHRONOUS 就能把「哪一句 GL 调用非法」精确定位到
+    // 调用栈上 —— 没有它的话，GL 的错误要等到下一次 glGetError 才被发现，
+    // 而驱动内部崩溃则根本没有任何线索。
+    typedef void(RENDER_GLAPI* PFNGLDEBUGMESSAGEPROC)(GLenum source, GLenum type, GLuint id,
+        GLenum severity, GLsizei length, const GLchar* message, const void* userParam);
+    typedef void(RENDER_GLAPI* PFNGLDEBUGMESSAGECALLBACKPROC)(
+        PFNGLDEBUGMESSAGEPROC callback, const void* userParam);
+    typedef void(RENDER_GLAPI* PFNGLDEBUGMESSAGECONTROLPROC)(GLenum source, GLenum type,
+        GLenum severity, GLsizei count, const GLuint* ids, GLboolean enabled);
+
     PFNGLFRONTFACEPROC FrontFace;
     PFNGLCULLFACEPROC CullFace;
     PFNGLPIXELSTOREIPROC PixelStorei;
@@ -696,7 +707,31 @@ struct GLFuncs
     PFNGLUNIFORMBLOCKBINDINGPROC UniformBlockBinding;
     PFNGLVERTEXATTRIBIPOINTERPROC VertexAttribIPointer;
     PFNGLVERTEXATTRIBDIVISORPROC VertexAttribDivisor;
+    PFNGLDEBUGMESSAGECALLBACKPROC DebugMessageCallback;
+    PFNGLDEBUGMESSAGECONTROLPROC DebugMessageControl;
 };
+
+#ifndef GL_DEBUG_OUTPUT
+    #define GL_DEBUG_OUTPUT 0x92E0
+#endif
+#ifndef GL_DEBUG_OUTPUT_SYNCHRONOUS
+    #define GL_DEBUG_OUTPUT_SYNCHRONOUS 0x8242
+#endif
+#ifndef GL_DEBUG_SEVERITY_HIGH
+    #define GL_DEBUG_SEVERITY_HIGH 0x9146
+#endif
+#ifndef GL_DEBUG_SEVERITY_MEDIUM
+    #define GL_DEBUG_SEVERITY_MEDIUM 0x9147
+#endif
+#ifndef GL_DEBUG_SEVERITY_LOW
+    #define GL_DEBUG_SEVERITY_LOW 0x9148
+#endif
+#ifndef GL_DEBUG_SEVERITY_NOTIFICATION
+    #define GL_DEBUG_SEVERITY_NOTIFICATION 0x826B
+#endif
+#ifndef GL_DONT_CARE
+    #define GL_DONT_CARE 0x1100
+#endif
 
 #ifndef GL_CULL_FACE
     #define GL_CULL_FACE 0x0B44

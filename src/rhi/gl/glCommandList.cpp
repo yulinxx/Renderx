@@ -40,7 +40,6 @@ namespace Render::RHI::gl
         m_stats = FrameStats{};
         m_inRenderPass = false;
         m_pipelineHandle = PipelineHandle{};
-        m_pipeline = nullptr;
         for (auto& binding : m_vertexBindings)
         {
             binding = VertexBinding{};
@@ -139,7 +138,6 @@ namespace Render::RHI::gl
         m_inRenderPass = true;
         // 管线状态与 Pass 无关，但目标切换后需要重新下发一次，
         // 否则新目标沿用旧目标的 viewport/深度设置。
-        m_pipeline = nullptr;
         m_pipelineHandle = PipelineHandle{};
         return RhiResult::Ok;
     }
@@ -243,9 +241,21 @@ namespace Render::RHI::gl
         m_pushConstantsDirty = m_pushConstantsDirty || pipeline.pushConstantBytes > 0;
     }
 
+    const GlPipelineRecord* GlCommandList::boundPipeline()
+    {
+        // 每次都重新解析，绝不缓存记录指针。
+        //
+        // 记录存放在 SlotMap 的稠密 std::vector 里，任何一次 createGraphicsPipeline()
+        // 的 push_back 扩容都会把整块内存搬走 —— 此前缓存下来的指针立刻悬垂。
+        // 管线是按 (顶点格式, 空间, 拓扑, 量化线宽) 懒建的，所以「录制途中新建管线」
+        // 是常态而非例外：首帧画完第一条命令、给第二条解析新线宽的管线时就会发生。
+        // 世代式句柄只能防「旧句柄命中新资源」，防不住调用方存了 get() 的返回值。
+        return m_device ? m_device->pipelineRecord(m_pipelineHandle) : nullptr;
+    }
+
     void GlCommandList::bindPipeline(PipelineHandle pipeline)
     {
-        if (pipeline == m_pipelineHandle && m_pipeline)
+        if (pipeline == m_pipelineHandle && boundPipeline())
         {
             return;
         }
@@ -256,7 +266,6 @@ namespace Render::RHI::gl
             return;
         }
         m_pipelineHandle = pipeline;
-        m_pipeline = record;
         applyPipelineState(*record);
     }
 
@@ -312,7 +321,7 @@ namespace Render::RHI::gl
 
     void GlCommandList::flushVertexBindings()
     {
-        if (!m_vertexBindingsDirty || !m_pipeline)
+        if (!m_vertexBindingsDirty || !boundPipeline())
         {
             return;
         }
@@ -321,9 +330,9 @@ namespace Render::RHI::gl
         // 走经典 GL 3.3 路径（glVertexAttribPointer），不用 4.3 的
         // glBindVertexBuffer/glVertexAttribFormat：macOS 的 GL 上限是 4.1，
         // 用 4.3 入口会在 Mac 上直接拿到空指针。
-        for (uint32_t i = 0; i < m_pipeline->attributeCount; ++i)
+        for (uint32_t i = 0; i < boundPipeline()->attributeCount; ++i)
         {
-            const VertexAttribute& attr = m_pipeline->attributes[i];
+            const VertexAttribute& attr = boundPipeline()->attributes[i];
             if (attr.bufferSlot >= kMaxVertexBufferSlots)
             {
                 continue;
@@ -337,12 +346,12 @@ namespace Render::RHI::gl
 
             uint32_t stride = 0;
             bool perInstance = false;
-            for (uint32_t s = 0; s < m_pipeline->bufferLayoutCount; ++s)
+            for (uint32_t s = 0; s < boundPipeline()->bufferLayoutCount; ++s)
             {
-                if (m_pipeline->bufferLayouts[s].slot == attr.bufferSlot)
+                if (boundPipeline()->bufferLayouts[s].slot == attr.bufferSlot)
                 {
-                    stride = m_pipeline->bufferLayouts[s].stride;
-                    perInstance = m_pipeline->bufferLayouts[s].perInstance;
+                    stride = boundPipeline()->bufferLayouts[s].stride;
+                    perInstance = boundPipeline()->bufferLayouts[s].perInstance;
                     break;
                 }
             }
@@ -395,7 +404,7 @@ namespace Render::RHI::gl
             m_device->log().error("[gl] bindBindGroup: set=%u 超过上限 %u", set, kMaxDescriptorSets);
             return;
         }
-        if (!m_pipeline)
+        if (!boundPipeline())
         {
             m_device->log().error("[gl] bindBindGroup 必须在 bindPipeline 之后调用："
                                   "(set,binding) → GL 槽位的映射保存在管线里");
@@ -411,7 +420,7 @@ namespace Render::RHI::gl
         const GLFuncs& f = m_device->gl();
 
         auto findSlot = [this, set](uint32_t binding, uint32_t* outSlot, BindingType* outType) -> bool {
-            for (const GlBindingMapping& mapping : m_pipeline->bindings)
+            for (const GlBindingMapping& mapping : boundPipeline()->bindings)
             {
                 if (mapping.set == set && mapping.binding == binding)
                 {
@@ -498,7 +507,7 @@ namespace Render::RHI::gl
 
     void GlCommandList::flushPushConstants()
     {
-        if (!m_pushConstantsDirty || !m_pipeline || m_pipeline->pushConstantBytes == 0)
+        if (!m_pushConstantsDirty || !boundPipeline() || boundPipeline()->pushConstantBytes == 0)
         {
             return;
         }
@@ -510,13 +519,13 @@ namespace Render::RHI::gl
         }
 
         const uint32_t bytes =
-            m_pushConstantHighWater > m_pipeline->pushConstantBytes ? m_pipeline->pushConstantBytes
+            m_pushConstantHighWater > boundPipeline()->pushConstantBytes ? boundPipeline()->pushConstantBytes
                                                                    : m_pushConstantHighWater;
         f.BindBuffer(GL_UNIFORM_BUFFER, ubo);
         f.BufferSubData(GL_UNIFORM_BUFFER, 0, static_cast<GLsizeiptr>(bytes), m_pushConstants);
         f.BindBuffer(GL_UNIFORM_BUFFER, 0);
         f.BindBufferRange(GL_UNIFORM_BUFFER, GlDevice::kPushConstantBinding, ubo, 0,
-                          static_cast<GLsizeiptr>(m_pipeline->pushConstantBytes));
+                          static_cast<GLsizeiptr>(boundPipeline()->pushConstantBytes));
         m_pushConstantsDirty = false;
     }
 
@@ -527,7 +536,7 @@ namespace Render::RHI::gl
             m_device->log().error("[gl] %s 必须在 beginRenderPass / endRenderPass 之间调用", what);
             return false;
         }
-        if (!m_pipeline)
+        if (!boundPipeline())
         {
             m_device->log().error("[gl] %s 之前必须先 bindPipeline", what);
             return false;
@@ -547,7 +556,7 @@ namespace Render::RHI::gl
         const GLFuncs& f = m_device->gl();
         if (instanceCount <= 1)
         {
-            f.DrawArrays(m_pipeline->topology, static_cast<GLint>(firstVertex),
+            f.DrawArrays(boundPipeline()->topology, static_cast<GLint>(firstVertex),
                          static_cast<GLsizei>(vertexCount));
         }
         else if (f.DrawArraysInstanced)
@@ -557,7 +566,7 @@ namespace Render::RHI::gl
                 // glDrawArraysInstancedBaseInstance（GL 4.2）未纳入函数表
                 m_device->log().warn("[gl] draw: firstInstance=%u 不支持，已按 0 处理", firstInstance);
             }
-            f.DrawArraysInstanced(m_pipeline->topology, static_cast<GLint>(firstVertex),
+            f.DrawArraysInstanced(boundPipeline()->topology, static_cast<GLint>(firstVertex),
                                   static_cast<GLsizei>(vertexCount), static_cast<GLsizei>(instanceCount));
         }
         else
@@ -596,7 +605,7 @@ namespace Render::RHI::gl
         const GLFuncs& f = m_device->gl();
         if (instanceCount <= 1)
         {
-            f.DrawElements(m_pipeline->topology, static_cast<GLsizei>(indexCount), type, offset);
+            f.DrawElements(boundPipeline()->topology, static_cast<GLsizei>(indexCount), type, offset);
         }
         else if (f.DrawElementsInstanced)
         {
@@ -604,7 +613,7 @@ namespace Render::RHI::gl
             {
                 m_device->log().warn("[gl] drawIndexed: firstInstance=%u 不支持，已按 0 处理", firstInstance);
             }
-            f.DrawElementsInstanced(m_pipeline->topology, static_cast<GLsizei>(indexCount), type, offset,
+            f.DrawElementsInstanced(boundPipeline()->topology, static_cast<GLsizei>(indexCount), type, offset,
                                     static_cast<GLsizei>(instanceCount));
         }
         else
@@ -633,12 +642,12 @@ namespace Render::RHI::gl
         const auto indirect = reinterpret_cast<const void*>(static_cast<uintptr_t>(offsetBytes));
         if (drawCount > 1 && f.MultiDrawArraysIndirect)
         {
-            f.MultiDrawArraysIndirect(m_pipeline->topology, indirect, static_cast<GLsizei>(drawCount),
+            f.MultiDrawArraysIndirect(boundPipeline()->topology, indirect, static_cast<GLsizei>(drawCount),
                                       static_cast<GLsizei>(strideBytes));
         }
         else
         {
-            f.DrawArraysIndirect(m_pipeline->topology, indirect);
+            f.DrawArraysIndirect(boundPipeline()->topology, indirect);
             if (drawCount > 1)
             {
                 m_device->log().warn("[gl] drawIndirect: 缺少 glMultiDrawArraysIndirect，只发出了 1 次绘制");
@@ -671,12 +680,12 @@ namespace Render::RHI::gl
         const auto indirect = reinterpret_cast<const void*>(static_cast<uintptr_t>(offsetBytes));
         if (drawCount > 1 && f.MultiDrawElementsIndirect)
         {
-            f.MultiDrawElementsIndirect(m_pipeline->topology, type, indirect,
+            f.MultiDrawElementsIndirect(boundPipeline()->topology, type, indirect,
                                         static_cast<GLsizei>(drawCount), static_cast<GLsizei>(strideBytes));
         }
         else
         {
-            f.DrawElementsIndirect(m_pipeline->topology, type, indirect);
+            f.DrawElementsIndirect(boundPipeline()->topology, type, indirect);
             if (drawCount > 1)
             {
                 m_device->log().warn(
@@ -693,7 +702,7 @@ namespace Render::RHI::gl
             m_device->log().error("[gl] dispatchCompute 必须在 RenderPass 之外调用");
             return;
         }
-        if (!m_pipeline || !m_pipeline->isCompute)
+        if (!boundPipeline() || !boundPipeline()->isCompute)
         {
             m_device->log().error("[gl] dispatchCompute: 当前绑定的不是计算管线");
             return;

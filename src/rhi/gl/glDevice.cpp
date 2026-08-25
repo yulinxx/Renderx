@@ -135,6 +135,37 @@ namespace Render::RHI::gl
 
     // ==================== GlDevice：构造与能力 ====================
 
+    namespace
+    {
+        /// KHR_debug 回调：把驱动报告的问题原样落进日志。
+        ///
+        /// 配合 GL_DEBUG_OUTPUT_SYNCHRONOUS 使用时，本函数在**产生问题的那一次
+        /// GL 调用内部**被调用，因此日志里紧随其后的就是元凶。没有它的话，
+        /// GL 错误要等到下一次 glGetError 才被发现（本后端此前根本没查过），
+        /// 而驱动内部崩溃更是一点线索都没有。
+        void RENDER_GLAPI glDebugMessageThunk(GLenum source, GLenum type, GLuint id,
+            GLenum severity, GLsizei length, const GLchar* message, const void* userParam)
+        {
+            (void)source;
+            (void)length;
+            const RhiLogger* log = static_cast<const RhiLogger*>(userParam);
+            if (!log || !message)
+            {
+                return;
+            }
+            // 通知级刷屏（NVIDIA 会报缓冲区内存位置之类的琐事），降级到 debug
+            if (severity == GL_DEBUG_SEVERITY_NOTIFICATION)
+            {
+                log->debug("[gl][driver] %s", message);
+                return;
+            }
+            const char* level = severity == GL_DEBUG_SEVERITY_HIGH     ? "HIGH"
+                                : severity == GL_DEBUG_SEVERITY_MEDIUM ? "MEDIUM"
+                                                                       : "LOW";
+            log->warn("[gl][driver] %s type=0x%04X id=%u: %s", level, type, id, message);
+        }
+    }  // namespace
+
     GlDevice::GlDevice(const DeviceDesc& desc, const GLFuncs& functions)
         : m_gl(functions), m_log(desc.logCallback, desc.logUserData), m_commands(this)
     {
@@ -160,6 +191,20 @@ namespace Render::RHI::gl
         }
 
         m_log.info("[gl] 设备已创建：%s | %s", m_caps.deviceName, m_caps.driverInfo);
+        // 尽早接上驱动的诊断通道：同步模式下驱动会在出错的那一句调用里回调，
+        // 是定位「GL 用法非法」最直接的手段。取不到入口就静默跳过（老驱动/ES）。
+        if (m_gl.DebugMessageCallback && m_gl.Enable)
+        {
+            m_gl.Enable(GL_DEBUG_OUTPUT);
+            m_gl.Enable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
+            m_gl.DebugMessageCallback(&glDebugMessageThunk, &m_log);
+            if (m_gl.DebugMessageControl)
+            {
+                m_gl.DebugMessageControl(GL_DONT_CARE, GL_DONT_CARE, GL_DONT_CARE, 0, nullptr,
+                    GL_TRUE);
+            }
+            m_log.info("[gl] debug output enabled (synchronous)");
+        }
         m_log.debug("[gl] 能力：compute=%u indirect=%u multiIndirect=%u storage=%u persistentMap=%u "
                     "maxTexture=%u maxUboBindings(已用 1 个给 pushConstant)",
                     m_caps.computeShaders, m_caps.indirectDraw, m_caps.multiDrawIndirect,
@@ -669,9 +714,20 @@ namespace Render::RHI::gl
             (desc.access == MemoryAccess::CpuToGpu || desc.access == MemoryAccess::CpuToGpuCoherent);
         if (wantPersistent)
         {
+            // glBufferStorage 的 flags 只接受**存储位**：DYNAMIC_STORAGE / MAP_READ /
+            // MAP_WRITE / MAP_PERSISTENT / MAP_COHERENT / CLIENT_STORAGE。
+            //
+            // 这里绝不能塞 GL_MAP_FLUSH_EXPLICIT_BIT —— 那是 glMapBufferRange 的
+            // **访问位**，映射时才有意义（见 mapBuffer 里的 access 组装）。混进来
+            // 会让驱动报「<flags> has unknown bits set」并让整个 BufferStorage 失败，
+            // 缓冲于是一个字节的存储都没有；之后所有 map/subData 都是
+            // 「Invalid offset and/or size」，而绘制会从一块无存储的缓冲取顶点 ——
+            // NVIDIA 上直接崩在驱动里，llvmpipe 上却能跑，极难定位。
             GLbitfield flags = GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_DYNAMIC_STORAGE_BIT;
-            flags |= (desc.access == MemoryAccess::CpuToGpuCoherent) ? GL_MAP_COHERENT_BIT
-                                                                    : GL_MAP_FLUSH_EXPLICIT_BIT;
+            if (desc.access == MemoryAccess::CpuToGpuCoherent)
+            {
+                flags |= GL_MAP_COHERENT_BIT;
+            }
             m_gl.BufferStorage(record.target, static_cast<GLsizeiptr>(desc.size), nullptr, flags);
         }
         else
