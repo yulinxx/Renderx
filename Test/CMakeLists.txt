@@ -12,21 +12,20 @@ include(GoogleTest)
 # ============================================================
 
 set(RENDERX_NULL_TEST_SOURCES
+    "${CMAKE_CURRENT_SOURCE_DIR}/ArenaTests.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/SlotMapTests.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/NullBackendTests.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/CommandEncoderTests.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/RenderGraphTests.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/RuntimeSessionTests.cpp"
 )
 
-# Null backend 仅需要 rhinull.cpp，不依赖 OpenGL
-# M1: 添加 renderruntime.cpp 和 shaders.cpp 以支持 RenderRuntime 初始化
+# Null backend 仅需要 rhiNull.cpp，不依赖 OpenGL。
+# 注意：源文件名必须与磁盘上的大小写完全一致。此前这里写的是
+# rhinull.cpp / renderruntime.cpp / transientbufferpool.cpp / rhigl.cpp /
+# glloader.cpp（全小写），仅在 macOS/Windows 的大小写不敏感文件系统上
+# 侥幸解析成功，在 Linux 上会直接配置失败。
 set(RENDERX_NULL_INTERNAL_SOURCES
-    "${CMAKE_CURRENT_SOURCE_DIR}/../src/rhi/rhinull.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/../src/c_api/renderruntime.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../src/rhi/rhiNull.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/../src/shader/shaders.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/../src/core/commandEncoder.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/../src/core/renderGraph.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/../src/core/drawBatcher.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/../src/core/pipelineStateManager.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/../src/core/rendererRuntime.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/../src/core/rendererSession.cpp"
@@ -74,9 +73,9 @@ set(RENDERX_GL_TEST_SOURCES
 
 # OpenGL tests 需要完整的 GL 栈
 set(RENDERX_GL_INTERNAL_SOURCES
-    "${CMAKE_CURRENT_SOURCE_DIR}/../src/core/transientbufferpool.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/../src/rhi/rhigl.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/../src/platform/glloader.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../src/core/transientBufferPool.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../src/rhi/rhiGl.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../src/platform/glLoader.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/../src/shader/shaders.cpp"
 )
 

@@ -1,6 +1,10 @@
 #pragma once
 
-#include <render/render.h>
+// 注：此前这里 #include <render/render.h> 只为拿到 RENDER_API 宏，
+// 把一个内部平台层头文件反向依赖到了对外公共 ABI 头。
+// gl() / gl_loader_init() 是 DLL 内部符号，不应出现在导出面上，
+// 因此 RENDER_API 一并去掉（配合 CXX_VISIBILITY_PRESET hidden）。
+#include <cstddef>
 
 #ifdef _WIN32
     #ifndef WIN32_LEAN_AND_MEAN
@@ -659,5 +663,5 @@ struct GLFuncs
     PFNGLGETBOOLEANVPROC GetBooleanv;
 };
 
-extern "C" RENDER_API GLFuncs* gl();
-extern "C" RENDER_API bool gl_loader_init(void* getProcAddress);
+extern "C" GLFuncs* gl();
+extern "C" bool gl_loader_init(void* getProcAddress);

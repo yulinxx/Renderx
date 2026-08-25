@@ -15,7 +15,6 @@
 #include "rhi/rhiDevice.h"
 #include "rhi/rhiTypes.h"
 #include "render/RenderTypes.h"
-#include "c_api/renderruntime.h"
 
 using namespace Render;
 using namespace Render::RHI;
@@ -272,11 +271,8 @@ TEST(NullBackendMultiWindowTest, TwoDevicesAreIsolated)
     delete dev2;
 }
 
-// M2: 验证 RenderRuntime 单例共享
-TEST(NullBackendMultiWindowTest, RuntimeIsProcessSingleton)
-{
-    // RenderRuntime 是进程级单例，多个会话共享同一份 shader 缓存
-    RenderRuntime& rt1 = RenderRuntime::instance();
-    RenderRuntime& rt2 = RenderRuntime::instance();
-    EXPECT_EQ(&rt1, &rt2);
-}
+// 注：原 RuntimeIsProcessSingleton 用例已删除。
+// 它断言的 RenderRuntime 进程级单例本身就是多窗口的缺陷来源：
+// 单例的 initialize() 在已初始化时直接早返回，第二个窗口若使用不同
+// backend 或 shaderDir 会被静默忽略（先到先得）。该单例已随
+// src/c_api/renderRuntime.cpp 一并删除，配置改为随设备传入。

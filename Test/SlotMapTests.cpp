@@ -10,7 +10,7 @@
  */
 
 #include <gtest/gtest.h>
-#include "../src/core/slot_map.h"
+#include "../src/core/slotMap.h"
 
 #include <string>
 

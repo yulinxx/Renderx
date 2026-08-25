@@ -89,6 +89,42 @@ class SlotMap
         return static_cast<Key>(static_cast<uint64_t>(generation) << 32) | static_cast<Key>(index);
     }
 
+    /**
+     * @brief 分配一个稀疏槽位，返回其索引
+     *
+     * 世代计数器从 1 起算，因此 make_key 永远不会产生 0。
+     * 这是必要的：全代码库以 0 作为无效句柄（RHI::NullHandle、
+     * RTBufferHandle 等），而旧实现的第一个槽位 generation=0、index=0，
+     * 组合出的 key 恰好是 0，与「无效」不可区分。
+     */
+    uint32_t allocate_slot()
+    {
+        const uint32_t dense_pos = static_cast<uint32_t>(m_dense.size());
+        if (!m_freeList.empty())
+        {
+            const uint32_t sparse_idx = m_freeList.back();
+            m_freeList.pop_back();
+            bump_generation(m_sparse[sparse_idx].generation);
+            m_sparse[sparse_idx].dense_index = dense_pos;
+            return sparse_idx;
+        }
+        const uint32_t sparse_idx = static_cast<uint32_t>(m_sparse.size());
+        m_sparse.push_back({ dense_pos, kFirstGeneration });
+        return sparse_idx;
+    }
+
+    /// 世代自增，并跳过 0（32 位回绕时才会发生）
+    static void bump_generation(uint32_t& generation)
+    {
+        generation += 1;
+        if (generation == 0)
+        {
+            generation = kFirstGeneration;
+        }
+    }
+
+    static constexpr uint32_t kFirstGeneration = 1;
+
 public:
     /**
      * @brief 插入值（拷贝版本）
@@ -98,19 +134,7 @@ public:
      */
     Key insert(const Value& v)
     {
-        uint32_t sparse_idx;
-        if (!m_freeList.empty())
-        {
-            sparse_idx = m_freeList.back();
-            m_freeList.pop_back();
-            m_sparse[sparse_idx].generation += 1;
-            m_sparse[sparse_idx].dense_index = static_cast<uint32_t>(m_dense.size());
-        }
-        else
-        {
-            sparse_idx = static_cast<uint32_t>(m_sparse.size());
-            m_sparse.push_back({ static_cast<uint32_t>(m_dense.size()), 0 });
-        }
+        const uint32_t sparse_idx = allocate_slot();
         m_dense.push_back(v);
         m_dense_keys.push_back(sparse_idx);
         return make_key(m_sparse[sparse_idx].generation, sparse_idx);
@@ -120,23 +144,11 @@ public:
      * @brief 插入值（移动版本）
      *
      * @param v 要插入的值（右值引用）
-     * @return 新分配的键
+     * @return 新分配的键，保证非 0
      */
     Key insert(Value&& v)
     {
-        uint32_t sparse_idx;
-        if (!m_freeList.empty())
-        {
-            sparse_idx = m_freeList.back();
-            m_freeList.pop_back();
-            m_sparse[sparse_idx].generation += 1;
-            m_sparse[sparse_idx].dense_index = static_cast<uint32_t>(m_dense.size());
-        }
-        else
-        {
-            sparse_idx = static_cast<uint32_t>(m_sparse.size());
-            m_sparse.push_back({ static_cast<uint32_t>(m_dense.size()), 0 });
-        }
+        const uint32_t sparse_idx = allocate_slot();
         m_dense.push_back(std::move(v));
         m_dense_keys.push_back(sparse_idx);
         return make_key(m_sparse[sparse_idx].generation, sparse_idx);
@@ -168,7 +180,7 @@ public:
 
         m_dense.pop_back();
         m_dense_keys.pop_back();
-        se.generation += 1;
+        bump_generation(se.generation);
         se.dense_index = UINT32_MAX;
         m_freeList.push_back(si);
     }
@@ -292,7 +304,7 @@ public:
         m_dense_keys.clear();
         for (uint32_t i = 0; i < m_sparse.size(); ++i)
         {
-            m_sparse[i].generation += 1;
+            bump_generation(m_sparse[i].generation);
             m_sparse[i].dense_index = UINT32_MAX;
             m_freeList.push_back(i);
         }

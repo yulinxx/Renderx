@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @file rhidevice.h
  * @brief Render Hardware Interface (RHI) 设备接口定义
  *
@@ -548,24 +548,10 @@ namespace Render::RHI
      */
     IDevice* createNullDevice();
 
-    /**
-     * @brief 创建Vulkan渲染设备实例（Phase 3 新增）
-     *
-     * Vulkan 后端提供跨平台 GPU 加速渲染，支持 Windows/Linux/macOS。
-     * 需要安装 Vulkan SDK 才能启用编译。
-     *
-     * @return Vulkan设备实例指针，失败返回nullptr
-     */
-    IDevice* createVulkanDevice();
-
-    /**
-     * @brief 创建Metal渲染设备实例（Phase 3 新增）
-     *
-     * Metal 后端提供 macOS/iOS 平台的原生 GPU 渲染。
-     * 需要 Apple 平台和 Metal 框架支持。
-     *
-     * @return Metal设备实例指针，失败返回nullptr
-     */
-    IDevice* createMetalDevice();
+    // 注：createVulkanDevice / createMetalDevice 的声明已移除。
+    // 两个后端的旧实现（rhiVulkan.cpp / rhiMetal.mm）已删除——前者
+    // 从未调用 vkCreateShaderModule，管线永远是 0 个 shader stage，
+    // 不可能渲染出任何东西；后者 include 了不存在的头文件、成员类型错乱，
+    // 从未进入过编译。二者将在新 RHI（rhiGpuDevice.h）之上重建。
 
 }  // namespace Render::RHI

@@ -152,27 +152,24 @@ void main(){ frag = vec4(vColor.rgb, vColor.a); })";
             }
             else
             {
+                // 后端不可用时返回失败，不做静默回退。
+                // 旧实现在 Vulkan/Metal 未编译时悄悄换成 Null 后端，
+                // 结果是画面全黑而调用方拿不到任何错误信号；default 分支
+                // 还会把任意非法枚举值当作 OpenGL 处理。
                 switch (desc->backend)
                 {
                 case Backend::OpenGL: m_device = RHI::createGLDevice(); break;
                 case Backend::Null: m_device = RHI::createNullDevice(); break;
                 case Backend::Vulkan:
-#ifdef RENDERX_HAS_VULKAN
-                    m_device = RHI::createVulkanDevice();
-#else
-                    SY_WARNF("Runtime: Vulkan backend not compiled, falling back to Null");
-                    m_device = RHI::createNullDevice();
-#endif
-                    break;
+                    SY_ERRORF("Runtime: Vulkan backend not available in this build");
+                    return false;
                 case Backend::Metal:
-#ifdef RENDERX_HAS_METAL
-                    m_device = RHI::createMetalDevice();
-#else
-                    SY_WARNF("Runtime: Metal backend not compiled, falling back to Null");
-                    m_device = RHI::createNullDevice();
-#endif
-                    break;
-                default: m_device = RHI::createGLDevice(); break;
+                    SY_ERRORF("Runtime: Metal backend not available in this build");
+                    return false;
+                default:
+                    SY_ERRORF("Runtime: unknown backend value %d",
+                              static_cast<int>(desc->backend));
+                    return false;
                 }
 
                 if (!m_device)
@@ -222,25 +219,41 @@ void main(){ frag = vec4(vColor.rgb, vColor.a); })";
         {
             if (m_transientActive)
                 frameEnd();
-            for (auto& kv : m_buffers)
-                if (kv.second != RHI::NullHandle)
-                    m_device->destroyBuffer(kv.second);
-            m_buffers.clear();
-            for (auto& p : m_pipelines)
-                if (p != RHI::NullHandle)
-                    m_device->destroyPipeline(p);
-            m_pipelines.clear();
-            for (auto& kv : m_textures)
-                if (kv.second != RHI::NullHandle)
-                    m_device->destroyTexture(kv.second);
-            m_textures.clear();
-            m_psm.shutdown();
+
+            // Runtime 自己创建的资源始终由 Runtime 销毁（无论设备是否自有）。
             if (m_device)
+            {
+                for (auto& kv : m_buffers)
+                    if (kv.second != RHI::NullHandle)
+                        m_device->destroyBuffer(kv.second);
+                for (auto& p : m_pipelines)
+                    if (p != RHI::NullHandle)
+                        m_device->destroyPipeline(p);
+                for (auto& kv : m_textures)
+                    if (kv.second != RHI::NullHandle)
+                        m_device->destroyTexture(kv.second);
+                m_psm.shutdown();
+            }
+            m_buffers.clear();
+            m_pipelines.clear();
+            m_textures.clear();
+
+            // 关键修复：设备只在自有时才 shutdown + delete。
+            // 旧实现无条件 delete m_device，完全忽略 m_ownedDevice——
+            // 而共享模式（RuntimeDesc::existingDevice）恰恰是宿主的主路径：
+            // 宿主的 RenderDevice 仍持有同一个 IDevice，runtimeDestroy 之后
+            // 宿主再销毁自己的设备，导致同一对象被 shutdown 两次、delete 两次。
+            if (m_device && m_ownedDevice)
             {
                 m_device->shutdown();
                 delete m_device;
-                m_device = nullptr;
             }
+            m_device = nullptr;
+            m_ownedDevice = false;
+
+            m_transientBuffer = RHI::NullHandle;
+            m_transientId = 0;
+            m_transientCursor = 0;
             m_materials.clear();
             m_nextBufferId = 1;
             m_nextTextureId = 1;

@@ -53,16 +53,20 @@ if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release)
 endif()
 
-# 构建选项：是否构建共享库（默认开启）
-option(BUILD_SHARED_LIBS "Build shared libraries" ON)
+# 注意：本目标始终显式 SHARED（见 sanyi_add_shared_library），
+# 不存在静态库构建路径，因此这里不再定义 BUILD_SHARED_LIBS——
+# 该选项此前是无效的死配置（Utils.cmake 无条件 add_library(SHARED)）。
 
 # ==================== 源文件配置 ====================
 
 # 公开头文件列表（对外暴露的API头文件）
+#
+# 重构说明：legacy 的 render.h（62 个 C API）与 TessParams.h 已删除。
+# render.h 是「DLL 内做几何离散化 + 持有场景实体表」的旧模型入口；
+# TessParams.h 通过公共头共享 inline 离散化实现，是耦合而非封装。
+# 离散化职责已按 Docs/03-渲染主链/新渲染架构.md §1 归还应用层。
 set(RENDER_PUBLIC_HEADERS
-    include/render/render.h
     include/render/RenderTypes.h
-    include/render/TessParams.h
     include/render/runtime_session.h
 )
 
@@ -71,55 +75,12 @@ set(RENDER_PUBLIC_HEADERS
 file(GLOB_RECURSE RENDER_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
 )
-# 排除条件编译的后端（Vulkan/Metal 在后续条件中添加）
-list(FILTER RENDER_SOURCES EXCLUDE REGEX ".*/rhiVulkan\.cpp$")
 
-# Phase 3: Vulkan backend (optional, requires Vulkan SDK)
-option(RENDERX_ENABLE_VULKAN "Enable Vulkan backend" ON)
-if(RENDERX_ENABLE_VULKAN)
-    find_package(Vulkan QUIET)
-    if(Vulkan_FOUND)
-        list(APPEND RENDER_SOURCES
-            src/rhi/rhivulkan.cpp
-        )
-        list(APPEND RENDER_INCLUDE_DIRS ${Vulkan_INCLUDE_DIR})
-        list(APPEND RENDER_LINK_LIBS ${Vulkan_LIBRARY})
-        list(APPEND RENDER_COMPILE_DEFS RENDERX_HAS_VULKAN)
-        message(STATUS "[Renderx] Vulkan backend enabled")
-    else()
-        message(STATUS "[Renderx] Vulkan SDK not found, Vulkan backend disabled")
-    endif()
-endif()
-
-# Vulkan XCB surface support on Linux (requires libxcb development headers)
-if(UNIX AND NOT APPLE)
-    find_path(XCB_INCLUDE_DIR NAMES xcb/xcb.h)
-    if(XCB_INCLUDE_DIR)
-        list(APPEND RENDER_INCLUDE_DIRS ${XCB_INCLUDE_DIR})
-        find_library(XCB_LIBRARY NAMES xcb)
-        if(XCB_LIBRARY)
-            list(APPEND RENDER_LINK_LIBS ${XCB_LIBRARY})
-        endif()
-    endif()
-endif()
-
-# Phase 3: Metal backend (macOS/iOS only, optional like Vulkan)
-# Metal.hpp 是独立的 Metal C++ 绑定组件，可能未随 Xcode SDK 提供；
-# 未找到时跳过该后端。
-if(APPLE)
-    find_path(RENDERX_METAL_HPP_DIR "Metal/Metal.hpp")
-    if(RENDERX_METAL_HPP_DIR)
-        enable_language(OBJCXX)
-        set_source_files_properties(src/rhi/rhi_metal.mm PROPERTIES LANGUAGE OBJCXX)
-        list(APPEND RENDER_SOURCES
-            src/rhi/rhi_metal.mm
-        )
-        list(APPEND RENDER_COMPILE_DEFS RENDERX_HAS_METAL)
-        message(STATUS "[Renderx] Metal backend enabled (macOS/iOS)")
-    else()
-        message(STATUS "[Renderx] Metal C++ bindings (Metal/Metal.hpp) not found, Metal backend disabled")
-    endif()
-endif()
+# Metal / Vulkan 后端将在新 RHI（rhiGpuDevice.h）之上重建，
+# 届时按平台条件加入 src/rhi/metal/ 与 src/rhi/vulkan/ 目录。
+# 旧的 rhiVulkan.cpp / rhiMetal.mm 已删除：前者 vkCreateShaderModule
+# 从未调用（管线永远 0 个 shader stage），后者 include 了不存在的头文件、
+# 类型错乱且从未进入编译。
 
 # 统一入口要求源文件使用绝对路径（内部 source_group 用 RELATIVE_PATH 拆分），
 # 将上面的相对路径统一归一化
@@ -190,7 +151,21 @@ sanyi_add_shared_library(${PROJECT_NAME}
                 ${RENDER_LINK_LIBS}
 )
 
-# stb库头文件配置（用于文本渲染）
+# ==================== 符号可见性 ====================
+#
+# 关键修复：此前全仓库未设置任何 visibility 属性，导致平台行为严重不对称——
+# Windows/MSVC 只导出标注了 __declspec(dllexport) 的 C 函数（约 74 个），
+# 而 Linux/macOS 默认 -fvisibility=default，把 RenderWorld、GLDevice、
+# shader::*、以及编入 DLL 的 stb_truetype 全部内部符号一并导出。
+# 后果：(1) 出现「Mac 能编、Windows 链接失败」的偶然依赖；
+#       (2) stb 符号 default 可见，可能与宿主/Qt 携带的另一份 stb 串用；
+#       (3) 动态符号表膨胀。
+# 设为 hidden 后，三平台的导出面统一由 RENDER_API 宏决定。
+set_target_properties(${PROJECT_NAME} PROPERTIES
+    CXX_VISIBILITY_PRESET hidden
+    VISIBILITY_INLINES_HIDDEN ON
+)
+
 find_path(STB_TRUETYPE_INCLUDE_DIR stb_truetype.h QUIET)
 if(STB_TRUETYPE_INCLUDE_DIR)
     target_include_directories(${PROJECT_NAME} PRIVATE ${STB_TRUETYPE_INCLUDE_DIR})

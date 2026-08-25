@@ -12,7 +12,7 @@
 
 static GLFuncs g_funcs;
 
-extern "C" RENDER_API GLFuncs* gl()
+extern "C" GLFuncs* gl()
 {
     return &g_funcs;
 }
@@ -42,7 +42,7 @@ static void* default_get_proc_address(const char* name)
 #endif
 }
 
-extern "C" RENDER_API bool gl_loader_init(void* getProcAddress)
+extern "C" bool gl_loader_init(void* getProcAddress)
 {
     typedef void* (*GetProcAddrFunc)(const char*);
     GetProcAddrFunc getProc =
