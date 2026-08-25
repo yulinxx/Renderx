@@ -293,16 +293,34 @@ Phase 3 引入的统一命令收集与排序组件：
 - 几何形态（`OverlayForm`，渲染用）× 生命周期分组（`OverlayGroup`，清除用）两轴分离；支持按分组增量清除（`clearGroup` / `renderClearOverlayGroup`）
 - 合并所有子项到统一顶点缓冲区，批量渲染
 
-### 文本图集 (TextAtlas)
+### 字形图集 (Font)
 
-**文件**：`src/core/text_atlas.h` / `src/core/text_atlas.cpp`
+**文件**：`src/rt/rxFont.h` / `src/rt/rxFont.cpp`
+**公共接口**：`rxFontCreate` / `rxFontDestroy` / `rxFontMetrics` / `rxFontGlyph` / `rxFontFlushAtlas` / `rxFontAtlas`
 
-基于 stb_truetype 的字体光栅化和纹理图集管理：
+基于 stb_truetype 的字形光栅化与图集打包。**只做字形，不做文本**：
 
-- 动态加载 TTF/OTF 字体
-- Glyph 缓存与图集打包（2048×2048 像素图集）
-- 构建文本四边形（带纹理坐标和颜色）
-- 支持多种字体大小和对齐方式
+- 一个 `FontHandle` = 一份字体数据 + 一个固定像素高度 + 它专属的 R8 图集
+  （图集存位图而非矢量，换字号必须重新光栅化，多字号 = 多个句柄）
+- 懒填充：创建时不预烘任何字符，字形在首次 `rxFontGlyph` 时才光栅化
+  （CAD 图纸的字符集无法预知，预烘 ASCII 既浪费又不够用）
+- 上传按脏行增量（`rxFontFlushAtlas`），不是每帧重传整张图集
+- 图集是普通的公共 `TextureHandle`，可直接填进 `DrawCommand::texture`，
+  与其他图元一起参与 `sortKey` 排序与批次合并
+
+UTF-8 解码、字距推进、水平/垂直对齐、世界坐标→像素换算**全在调用方**
+（宿主侧参考实现：`UI/2D/Src/UI/ViewWidget/TextQuadBuilder.cpp`）。
+被替换掉的 `src/core/textAtlas` + `src/core/screenTextRenderer` 是反过来的：
+宿主递字符串、DLL 内部排版并自己 `bindPipeline` + `draw`，于是文本永远是
+独立的一批 draw call，且「对齐规则」这种业务约定被编进了渲染 DLL。
+
+顺带修掉的旧缺陷：图集用 RGBA8 存 8 位覆盖率（2048² 占 16MB，12MB 是同一份
+数据的副本，现为 R8）；字形缓存对 vector 线性扫描（现为哈希表）；`loadFont`
+不留字体副本，而 `stbtt_fontinfo` 持有原始指针（现在内部拷贝一份）。
+
+**没有 SDF 路径**：旧的 `text_sdf.frag` 对 stb_truetype 的覆盖率位图做
+`smoothstep` 把它当距离场解释，实际效果是硬阈值化、反而削掉了抗锯齿边缘。
+该 shader 与 `PushConstants::uSdfScale` 已一并删除。
 
 ### Shader 管理
 
@@ -928,15 +946,20 @@ pushConstant 块（`uView` / `uViewport` / `uPointSize` / `uSdfScale`）。
 | ScreenPoint | `screen_point_p3c3.vert` | `point_p3c3.frag` | 屏幕空间圆点 |
 | ScreenLine4 / ScreenTri4 | `screen_p3c4.vert` | `screen_p3c4.frag` | 屏幕空间图元（P3C4，带 alpha） |
 | ScreenPoint4 | `screen_point_p3c4.vert` | `point_p3c4.frag` | 屏幕空间圆点（带 alpha） |
-| ScreenTextured | `screen_tex_p2t2c4.vert` | `screen_tex_p2t2c4.frag` | 屏幕空间纹理（字形图集、位图） |
+| ScreenTextured | `screen_tex_p2t2c4.vert` | `screen_tex_p2t2c4.frag` | 屏幕空间 RGBA 纹理（位图） |
+| ScreenGlyph | `screen_tex_p2t2c4.vert` | `screen_glyph_p2t2c4.frag` | 字形四边形：图集为 R8 覆盖率，alpha 取 `.r`、rgb 取顶点色 |
 | WorldPinnedLine / WorldPinnedTri | `world_pinned_p3o2c4.vert` | `world_p3c4.frag` | 世界锚定 + 屏幕定尺寸（P3O2C4） |
+
+> `ScreenTextured` 与 `ScreenGlyph` 同为 P2T2C4 + Screen + Triangles，无法由
+> （格式, 空间, 拓扑）区分，因此字形必须显式指定 `DrawCommand::pipelineIndex`
+> （`rxPipelineGetDefault(runtime, DefaultPipeline::ScreenGlyph)`）。让 Runtime
+> 自行解析会命中 `ScreenTextured`，把 R8 当 RGBA 采样，结果是纯红色的字。
 
 尚未接入 RT 默认管线（随对应阶段启用）：
 
 | Shader | 文件 | 状态 |
 |--------|------|------|
 | Mesh3D / Mesh3DInstanced / Highlight3D | `mesh_3d.*`、`mesh_3d_instanced.vert`、`highlight_3d.*` | 仍用 `uModelMatrix`/`uViewMatrix`/`uProjMatrix` 独立 uniform，未并入 PushConstants；3D 收口阶段处理 |
-| TextSDF / TextScreen | `text_sdf.*`、`text_screen.*` | 字形图集未移植到新 RHI，`rxFontLoad` 当前返回 `ErrorUnsupportedBackend` |
 | Culling | `culling.comp` | GPU 视锥剔除，RT 当前走 CPU 的 `rxSessionQueryVisibility` |
 
 > 所有 shader 都显式标注 `layout(location = N)`：Apple 的 GLSL 编译器在缺省时会乱序分配

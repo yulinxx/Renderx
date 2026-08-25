@@ -17,7 +17,7 @@
 //   uView      0..63   （mat4，16 字节对齐）
 //   uViewport  64..71  （vec2，8 字节对齐）
 //   uPointSize 72..75
-//   uSdfScale  76..79
+//   uPad0      76..79
 // 合计 80 字节，在 RHI 的 kMaxPushConstantBytes = 128 之内。
 //
 // GL 后端把该块落地为绑定在 0 号 UBO binding point 的 uniform buffer
@@ -34,6 +34,7 @@ layout(std140) uniform PushConstants
     vec2 uViewport;
     /// 点图元直径（像素），写入 gl_PointSize
     float uPointSize;
-    /// SDF 字形的边缘锐度比例
-    float uSdfScale;
+    /// 占位，让块尺寸与 C++ 侧一致（std140 把块尺寸向上取整到 16 的倍数）。
+    /// 曾是 uSdfScale，随伪 SDF 文本路径一并作废，见 PushConstants::pad0。
+    float uPad0;
 };

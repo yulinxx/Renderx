@@ -65,10 +65,11 @@ set(RENDERX_GL_INTERNAL_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/../src/rhi/null/nullBackend.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/../src/rhi/gl/glDevice.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/../src/rhi/gl/glCommandList.cpp"
-    # RT：Runtime / Session / 增量渲染 / C API
+    # RT：Runtime / Session / 增量渲染 / 字体 / C API
     "${CMAKE_CURRENT_SOURCE_DIR}/../src/rt/rxRuntime.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/../src/rt/rxSession.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/../src/rt/rxIncremental.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../src/rt/rxFont.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/../src/c_api/rxCApi.cpp"
 )
 
@@ -78,12 +79,27 @@ target_compile_features(RenderxGLTests PRIVATE cxx_std_17)
 
 target_compile_definitions(RenderxGLTests PRIVATE RENDER_EXPORTS)
 
+# 字体用例需要一份真实 TTF。DLL 自己不做文件 IO，但测试可以——
+# 这里把路径以宏注入，避免依赖测试进程的工作目录。
+target_compile_definitions(RenderxGLTests PRIVATE
+    RENDERX_TEST_FONT_PATH="${CMAKE_CURRENT_SOURCE_DIR}/../src/res/default_screen_font.ttf"
+)
+
 target_include_directories(RenderxGLTests PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}"
     "${CMAKE_CURRENT_SOURCE_DIR}/.."
     "${CMAKE_CURRENT_SOURCE_DIR}/../include"
     "${CMAKE_CURRENT_SOURCE_DIR}/../src"
 )
+
+# rxFont.cpp 直接 include <stb_truetype.h>，测试目标也要能找到它
+if(STB_TRUETYPE_INCLUDE_DIR)
+    target_include_directories(RenderxGLTests PRIVATE ${STB_TRUETYPE_INCLUDE_DIR})
+elseif(DEFINED VCPKG_DIR)
+    file(GLOB _vcpkg_stb_incs "${VCPKG_DIR}/installed/*/include")
+    list(REMOVE_DUPLICATES _vcpkg_stb_incs)
+    target_include_directories(RenderxGLTests PRIVATE ${_vcpkg_stb_incs})
+endif()
 
 if(WIN32)
     target_link_libraries(RenderxGLTests PRIVATE opengl32)

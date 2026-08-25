@@ -46,14 +46,20 @@ namespace Render::RT::detail
      * 任何一侧改动都必须同步另一侧——std140 不会报错，只会算出错误的偏移。
      *
      * std140 偏移：uView 0..63（mat4，16 对齐）、uViewport 64..71（vec2，8 对齐）、
-     * uPointSize 72..75、uSdfScale 76..79。共 80 字节，在 RHI 的 128 上限内。
+     * uPointSize 72..75、uPad0 76..79。共 80 字节，在 RHI 的 128 上限内。
      */
     struct PushConstants
     {
         float view[16]{};      ///< 列主序；Screen 空间管线忽略此值
         float viewport[2]{};   ///< 视口像素尺寸，屏幕空间与 WorldPinned 需要
         float pointSize = 1.0f;
-        float sdfScale = 4.0f;
+        /**
+         * 显式占位，让 C++ 结构体尺寸与 std140 的「块尺寸向上取整到 16 的倍数」
+         * 一致。曾是 uSdfScale：旧文本管线名为 SDF，图集里却是 stb_truetype
+         * 的覆盖率位图，片元还对它做 smoothstep（等于硬阈值化，反而削掉了
+         * 抗锯齿边缘）。字形改走 R8 覆盖率 + 直接取 alpha 后该字段再无消费方。
+         */
+        float pad0 = 0.0f;
     };
     static_assert(sizeof(PushConstants) == 80, "PushConstants 与 shader 中的 std140 块必须一致");
 
@@ -165,7 +171,16 @@ namespace Render::RT::detail
          * 否则浮点抖动会把管线数量炸开。
          */
         float lineWidth = 1.0f;
-        std::string shaderName;  ///< 空表示按格式+空间取默认
+        std::string shaderName;  ///< 空表示按格式+空间取默认（只覆盖顶点着色器）
+        /**
+         * 片段着色器覆盖。空表示按格式取默认。
+         *
+         * 需要单独一维是因为「同格式同空间同拓扑、只有片元不同」确实存在：
+         * ScreenTextured 采样 RGBA 位图，ScreenGlyph 采样 R8 覆盖率图集，
+         * 二者都是 P2T2C4 + Screen + Triangles。若不进键，两者会命中同一条
+         * 缓存管线——先建的那条赢，另一条静默画错。
+         */
+        std::string fragmentShaderName;
 
         bool operator==(const PipelineKey& other) const;
     };
@@ -174,6 +189,10 @@ namespace Render::RT::detail
     {
         size_t operator()(const PipelineKey& key) const;
     };
+
+    /// 字形图集。定义在 rxFont.h：只有它需要 stb_truetype 的类型。
+    struct Font;
+
 
     struct Runtime
     {
@@ -221,6 +240,16 @@ namespace Render::RT::detail
         SlotMap<uint64_t, DrawList*> drawLists;
 
         /**
+         * 字体（字形光栅化器 + 专属 R8 图集）。
+         *
+         * 挂在 Runtime 而非 Session：图集是 GPU 纹理，多窗口共享一份即可。
+         * 旧实现把图集放在与窗口一对一绑定的 Runtime 上，两个窗口就是两份
+         * 2048x2048 图集。存指针的理由同 geometryStores：内部有 vector，
+         * 而地址会被 rxFontGlyph 的调用序列短期持有。
+         */
+        SlotMap<uint64_t, Font*> fonts;
+
+        /**
          * 当前处于 BeginFrame/EndFrame 之间的 Session 数量。
          *
          * 瞬态环由整个 Runtime 共享，切段必须每帧只做一次。若按 Session 切，
@@ -258,6 +287,17 @@ namespace Render::RT::detail
         void destroyDrawList(DrawListHandle handle);
         DrawList* resolveDrawList(DrawListHandle handle);
 
+        // ---- 字体 ----
+        //
+        // 实现在 rxFont.cpp：光栅化与图集打包不涉及 Runtime 的其他状态，
+        // 只用到 device 与 textures，单独一个翻译单元避免 rxRuntime.cpp
+        // 再长 400 行、也避免把 stb_truetype 拖进它的编译。
+        RxResult createFont(const FontDesc& desc, FontHandle* outFont);
+        void destroyFont(FontHandle handle);
+        Font* resolveFont(FontHandle handle);
+        /// 供 destroy() 收尾。单独一个函数是因为 rxRuntime.cpp 只有 Font 的
+        /// 前向声明，对不完整类型 delete 是未定义行为。
+        void destroyAllFonts();
         /**
          * @brief 把所有几何仓的脏区提交到 GPU
          *
@@ -272,9 +312,12 @@ namespace Render::RT::detail
         // ---- 管线 ----
         uint16_t createPipeline(const PipelineDesc& desc);
         uint16_t defaultPipeline(DefaultPipeline kind) const;
-        /// 按绘制命令的格式/空间/拓扑/线宽解析一条管线（带缓存）
+        /// 按绘制命令的格式/空间/拓扑/线宽解析一条管线（带缓存）。
+        /// fragmentShaderOverride 非空时替换按格式选出的默认片段着色器，
+        /// 用于「同格式同空间、只有片元不同」的管线（ScreenTextured vs ScreenGlyph）。
         uint16_t resolvePipeline(VertexFormat format, RenderSpace space, PrimitiveTopology topology,
-                                 float lineWidth = 1.0f);
+                                 float lineWidth = 1.0f,
+                                 const char* fragmentShaderOverride = nullptr);
         RHI::PipelineHandle rhiPipeline(uint16_t index);
 
         // ---- 表面 ----
@@ -288,6 +331,17 @@ namespace Render::RT::detail
         bool ensureDefaultPipelines();
         uint16_t createPipelineFromKey(const PipelineKey& key);
     };
+
+    // ==================== 字体：句柄级入口 ====================
+    //
+    // 这几个只做「解句柄 + 转发」，实现在 rxFont.cpp。做成自由函数而不是
+    // Runtime 的成员，是为了让 rxCApi.cpp 不必看到 Font 的定义——否则
+    // stb_truetype.h 会被拖进 C API 层的编译单元。
+
+    RxResult fontMetrics(Runtime& runtime, FontHandle font, FontMetrics* outMetrics);
+    RxResult fontGlyph(Runtime& runtime, FontHandle font, uint32_t codepoint, GlyphInfo* outGlyph);
+    RxResult fontFlushAtlas(Runtime& runtime, FontHandle font);
+    TextureHandle fontAtlas(Runtime& runtime, FontHandle font);
 
     // ==================== Surface ====================
 

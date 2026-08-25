@@ -341,24 +341,72 @@ namespace Render
             return runtime->updateMaterial(index, *desc);
         }
 
-        RxResult rxFontLoad(RuntimeHandle handle, const void* fontData, uint64_t dataSize,
-                            float pixelHeight)
+        // ==================== 字体 ====================
+        //
+        // DLL 只出字形度量与图集，排版在调用方，理由见 rxFont.h 文件头。
+
+        RxResult rxFontCreate(RuntimeHandle handle, const FontDesc* desc, FontHandle* outFont)
         {
             Runtime* runtime = checkedRuntime(handle);
             if (!runtime)
             {
                 return RxResult::ErrorInvalidHandle;
             }
-            if (!fontData || dataSize == 0 || pixelHeight <= 0.0f)
+            if (!desc || !outFont)
             {
                 return RxResult::ErrorInvalidArgument;
             }
-            // 字形图集尚未迁移到新 RHI（旧 textAtlas 依赖已删除的 rhiDevice.h）。
-            // 这里明确报不支持而不是静默成功：静默成功会让调用方以为文本可用，
-            // 最终表现为「文字不显示但没有任何错误」。
-            runtime->log.error("[rt] rxFontLoad: 字形图集尚未迁移到新 RHI，"
-                               "文本渲染将随 2D 链路改造一并接入");
-            return RxResult::ErrorUnsupportedBackend;
+            return runtime->createFont(*desc, outFont);
+        }
+
+        void rxFontDestroy(RuntimeHandle handle, FontHandle font)
+        {
+            Runtime* runtime = checkedRuntime(handle);
+            if (runtime)
+            {
+                runtime->destroyFont(font);
+            }
+        }
+
+        RxResult rxFontMetrics(RuntimeHandle handle, FontHandle font, FontMetrics* outMetrics)
+        {
+            Runtime* runtime = checkedRuntime(handle);
+            if (!runtime)
+            {
+                return RxResult::ErrorInvalidHandle;
+            }
+            return fontMetrics(*runtime, font, outMetrics);
+        }
+
+        RxResult rxFontGlyph(RuntimeHandle handle, FontHandle font, uint32_t codepoint,
+                             GlyphInfo* outGlyph)
+        {
+            Runtime* runtime = checkedRuntime(handle);
+            if (!runtime)
+            {
+                return RxResult::ErrorInvalidHandle;
+            }
+            return fontGlyph(*runtime, font, codepoint, outGlyph);
+        }
+
+        RxResult rxFontFlushAtlas(RuntimeHandle handle, FontHandle font)
+        {
+            Runtime* runtime = checkedRuntime(handle);
+            if (!runtime)
+            {
+                return RxResult::ErrorInvalidHandle;
+            }
+            return fontFlushAtlas(*runtime, font);
+        }
+
+        TextureHandle rxFontAtlas(RuntimeHandle handle, FontHandle font)
+        {
+            Runtime* runtime = checkedRuntime(handle);
+            if (!runtime)
+            {
+                return TextureHandle::Invalid;
+            }
+            return fontAtlas(*runtime, font);
         }
 
         // ==================== 持久几何仓 ====================

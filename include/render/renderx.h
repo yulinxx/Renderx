@@ -82,8 +82,11 @@
 
 // ==================== ABI 版本 ====================
 
-#define RENDERX_ABI_VERSION_MAJOR 3
-#define RENDERX_ABI_VERSION_MINOR 2
+// 4.0：字体接口从「递字符串、DLL 内部排版」改为「DLL 只出字形度量与图集，
+//      宿主自己拼四边形」。rxFontLoad 被 rxFontCreate 系列取代，签名不兼容，
+//      故抬 major。旧接口恒返回 ErrorUnsupportedBackend，无可用调用方。
+#define RENDERX_ABI_VERSION_MAJOR 4
+#define RENDERX_ABI_VERSION_MINOR 0
 #define RENDERX_ABI_VERSION \
     ((RENDERX_ABI_VERSION_MAJOR << 16) | RENDERX_ABI_VERSION_MINOR)
 
@@ -134,6 +137,8 @@ namespace Render
         enum class GeometryStoreHandle : uint64_t { Invalid = 0 };
         /// 保留式绘制列表：DLL 侧持有并复用的 DrawCommand 集合
         enum class DrawListHandle : uint64_t { Invalid = 0 };
+        /// 字体：一份字体数据 + 一个固定像素高度 + 它专属的字形图集
+        enum class FontHandle : uint64_t { Invalid = 0 };
 
         template <typename H>
         constexpr bool rxValid(H h)
@@ -297,7 +302,12 @@ namespace Render
             /// 点标记继续用 ScreenPoint 系列：点本身就是像素尺寸。
             WorldPinnedLine = 13,
             WorldPinnedTri = 14,
-            Count = 15,
+            /// 字形四边形（P2T2C4 + 屏幕空间）。与 ScreenTextured 同格式同拓扑，
+            /// 差别只在片元：字形图集是 R8 覆盖率，alpha 取 .r、rgb 取顶点色；
+            /// ScreenTextured 是 RGBA 位图，直接采样四通道。二者无法由
+            /// (格式, 空间, 拓扑) 区分，所以必须由调用方显式指定 pipelineIndex。
+            ScreenGlyph = 15,
+            Count = 16,
         };
 
         // ==================== 创建描述 ====================
@@ -412,6 +422,70 @@ namespace Render
             uint64_t rgbaBytes;
         };
         static_assert(sizeof(TextureDesc) == 24, "TextureDesc ABI size changed");
+
+        // ---------- 字体 ----------
+        //
+        // 职责切分：DLL 只做「字形光栅化 + 图集打包 + 度量查询」，
+        // 排版（UTF-8 解码、对齐、行距、旋转、世界/屏幕坐标换算）全在调用方。
+        // 这与 DrawCommand 是纯描述符的定位一致——DLL 里没有「一段文字」这个概念，
+        // 只有「一批带 UV 的四边形」。旧实现反过来（宿主递字符串、DLL 内部排版
+        // 并自己下 draw call），导致文本无法与其他图元一起参与排序与批次合并。
+
+        struct FontDesc
+        {
+            /// TTF/OTF 字节。DLL **内部拷贝一份**：stb_truetype 的 fontinfo
+            /// 持有原始数据指针，不拷贝就会在调用方释放后变成悬垂指针。
+            const void* data;
+            uint64_t dataBytes;
+            /// 光栅化像素高度。一个 FontHandle 只对应一个高度：图集里存的是
+            /// 位图而非矢量，换高度必须重新光栅化。多字号 = 多个 FontHandle。
+            float pixelHeight;
+            /// 图集尺寸，0 表示用默认值（1024）。超过 Capabilities 上限时创建失败。
+            uint32_t atlasWidth;
+            uint32_t atlasHeight;
+        };
+        static_assert(sizeof(FontDesc) == 32, "FontDesc ABI size changed");
+
+        /// 字体级度量，单位为像素，已按 FontDesc::pixelHeight 缩放
+        struct FontMetrics
+        {
+            /// 基线以上高度（正值）
+            float ascent;
+            /// 基线以下深度（**负值**，与 stb_truetype 一致）
+            float descent;
+            /// 行间额外间隙。行高 = ascent - descent + lineGap
+            float lineGap;
+            /// 回显创建时的 pixelHeight，便于调用方按需缩放
+            float pixelHeight;
+        };
+        static_assert(sizeof(FontMetrics) == 16, "FontMetrics ABI size changed");
+
+        /**
+         * @brief 单个字形在图集中的位置与排版度量
+         *
+         * 坐标约定：以**基线上的笔位置**为原点，x 向右、y 向下为正
+         * （与屏幕空间一致，见 RenderSpace::Screen）。因此四边形是
+         *   左上 = (penX + bearingX,          penY + bearingY)
+         *   右下 = (penX + bearingX + width,  penY + bearingY + height)
+         * 排完一个字形后 penX += advance。
+         */
+        struct GlyphInfo
+        {
+            /// 图集 UV，已归一化到 [0,1]
+            float u0;
+            float v0;
+            float u1;
+            float v1;
+            /// 相对笔位置的像素偏移（bearingY 通常为负：字形在基线之上）
+            float bearingX;
+            float bearingY;
+            /// 字形位图的像素尺寸。空白字符（空格）为 0，此时不必产出四边形
+            float width;
+            float height;
+            /// 水平步进（像素）
+            float advance;
+        };
+        static_assert(sizeof(GlyphInfo) == 36, "GlyphInfo ABI size changed");
 
         struct MaterialDesc
         {
@@ -720,14 +794,49 @@ namespace Render
                                              const MaterialDesc* desc);
 
         /**
-         * @brief 以内存数据加载字形图集所用字体
+         * @brief 创建字体（光栅化器 + 专属字形图集）
          *
-         * DLL 不做文件 IO。此前 renderCreateDevice 用 std::filesystem 推导
-         * 可执行文件目录并从磁盘读 default_screen_font.ttf，使 DLL 依赖运行
-         * 目录布局——在 macOS .app bundle 下极易失效。
+         * DLL 不做文件 IO——字体数据由调用方以内存注入。此前
+         * renderCreateDevice 用 std::filesystem 推导可执行文件目录并从磁盘读
+         * default_screen_font.ttf，使 DLL 依赖运行目录布局，在 macOS .app
+         * bundle 下极易失效。
+         *
+         * 图集是懒填充的：创建时不预烘任何字符，字形在首次 rxFontGlyph 时
+         * 才光栅化。CAD 场景的字符集无法预知（图纸里可能是任意 Unicode），
+         * 预烘 ASCII 既浪费又不够用。
          */
-        RENDER_API RxResult rxFontLoad(RuntimeHandle runtime, const void* fontData,
-                                       uint64_t dataSize, float pixelHeight);
+        RENDER_API RxResult rxFontCreate(RuntimeHandle runtime, const FontDesc* desc,
+                                        FontHandle* outFont);
+        RENDER_API void rxFontDestroy(RuntimeHandle runtime, FontHandle font);
+
+        RENDER_API RxResult rxFontMetrics(RuntimeHandle runtime, FontHandle font,
+                                         FontMetrics* outMetrics);
+
+        /**
+         * @brief 查字形，未光栅化则就地光栅化并写入图集
+         *
+         * 只改 CPU 侧图集影子，不碰 GPU：上传统一由 rxFontFlushAtlas 做，
+         * 否则「排一行字」会变成逐字符一次纹理上传。
+         *
+         * @return Ok；`ErrorOutOfMemory` 表示图集已满（当前实现不做逐出，
+         *         调用方应换更大的 atlasWidth/Height 重建字体）。
+         *         字体里没有该码点时返回 Ok 且 GlyphInfo 全零 —— 缺字不是错误，
+         *         调用方跳过该四边形即可，不应因此中断整行排版。
+         */
+        RENDER_API RxResult rxFontGlyph(RuntimeHandle runtime, FontHandle font,
+                                       uint32_t codepoint, GlyphInfo* outGlyph);
+
+        /**
+         * @brief 把图集脏区上传到 GPU
+         *
+         * 必须在提交引用了本字体图集的 DrawCommand **之前**调用，且应当每帧
+         * 只调一次（无脏区时是空操作）。放在 rxSessionBeginFrame 之后、
+         * 拼字形四边形之前最自然。
+         */
+        RENDER_API RxResult rxFontFlushAtlas(RuntimeHandle runtime, FontHandle font);
+
+        /// 取图集纹理，填进 DrawCommand::texture。字体销毁后该句柄立即失效。
+        RENDER_API TextureHandle rxFontAtlas(RuntimeHandle runtime, FontHandle font);
 
         // ---------- 持久几何仓：增量更新的顶点/索引存储 ----------
         //

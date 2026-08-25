@@ -129,6 +129,9 @@ set(RENDERX_SHADER_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/screen_p3c4.frag
     ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/screen_tex_p2t2c4.vert
     ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/screen_tex_p2t2c4.frag
+    # 字形四边形：顶点复用 screen_tex（同为 P2T2C4 + 屏幕空间），
+    # 片元不同——图集是 R8 覆盖率，alpha 取 .r、rgb 取顶点色。
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/screen_glyph_p2t2c4.frag
 
     # ---- 点图元 ----
     # 点必须有独立的顶点着色器：尺寸是像素量、只能写 gl_PointSize，
@@ -140,12 +143,6 @@ set(RENDERX_SHADER_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/screen_point_p3c4.vert
     ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/point_p3c3.frag
     ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/point_p3c4.frag
-
-    # ---- 文本（字体图集接入 Runtime 时启用）----
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/text_sdf.vert
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/text_sdf.frag
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/text_screen.vert
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/text_screen.frag
 
     # ---- 3D（Phase 11 收口 3D 时启用）----
     ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/mesh_3d.vert
@@ -301,6 +298,9 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
     VISIBILITY_INLINES_HIDDEN ON
 )
 
+# stb_truetype 是**必需**依赖：字形光栅化（src/rt/rxFont.cpp）没有它就编不过。
+# 此前这里是静默可选的，配不到就少个 include 目录，报错时呈现为
+# 「找不到 stb_truetype.h」而不是「依赖没装」。
 find_path(STB_TRUETYPE_INCLUDE_DIR stb_truetype.h QUIET)
 if(STB_TRUETYPE_INCLUDE_DIR)
     target_include_directories(${PROJECT_NAME} PRIVATE ${STB_TRUETYPE_INCLUDE_DIR})
@@ -313,7 +313,11 @@ elseif(DEFINED VCPKG_DIR)
     list(REMOVE_DUPLICATES _vcpkg_stb_incs)
     if(_vcpkg_stb_incs)
         target_include_directories(${PROJECT_NAME} PRIVATE ${_vcpkg_stb_incs})
+    else()
+        message(FATAL_ERROR "未找到 stb_truetype.h（字形光栅化必需）。请执行 vcpkg install stb")
     endif()
+else()
+    message(FATAL_ERROR "未找到 stb_truetype.h（字形光栅化必需）。请执行 vcpkg install stb")
 endif()
 
 # Linux平台下GCC编译器需要链接stdc++fs（用于std::filesystem）

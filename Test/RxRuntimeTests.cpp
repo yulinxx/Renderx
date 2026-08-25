@@ -13,6 +13,8 @@
 
 #include "render/renderx.h"
 
+#include <fstream>
+#include <iterator>
 #include <string>
 #include <vector>
 
@@ -306,19 +308,93 @@ TEST(RxRuntime, MaterialIndexZeroIsReserved)
     rxRuntimeDestroy(runtime);
 }
 
-TEST(RxRuntime, FontLoadReportsUnsupportedInsteadOfSilentSuccess)
+TEST(RxRuntime, FontCreateRejectsGarbageData)
 {
     LogSink sink;
     const RuntimeDesc desc = makeRuntimeDesc(&sink);
     const RuntimeHandle runtime = rxRuntimeCreate(&desc);
     ASSERT_TRUE(rxValid(runtime));
 
+    FontHandle font = FontHandle::Invalid;
     const std::vector<uint8_t> fake(64, 0);
-    // 字形图集尚未迁移到新 RHI。静默成功会让调用方以为文本可用，
-    // 最终表现为「文字不显示但没有任何错误」。
-    EXPECT_EQ(rxFontLoad(runtime, fake.data(), fake.size(), 16.0f),
-              RxResult::ErrorUnsupportedBackend);
-    EXPECT_EQ(rxFontLoad(runtime, nullptr, 0, 16.0f), RxResult::ErrorInvalidArgument);
+    FontDesc fd{};
+    fd.data = fake.data();
+    fd.dataBytes = fake.size();
+    fd.pixelHeight = 16.0f;
+    // 64 个零字节不是 TTF。这里必须报错而不是「创建成功但一个字形都出不来」——
+    // 后者表现为「文字不显示但没有任何错误」，无从下手。
+    EXPECT_EQ(rxFontCreate(runtime, &fd, &font), RxResult::ErrorInvalidArgument);
+    EXPECT_FALSE(rxValid(font));
+
+    fd.data = nullptr;
+    fd.dataBytes = 0;
+    EXPECT_EQ(rxFontCreate(runtime, &fd, &font), RxResult::ErrorInvalidArgument);
+
+    rxRuntimeDestroy(runtime);
+}
+
+TEST(RxRuntime, FontGlyphRasterizesAndFillsMetrics)
+{
+    LogSink sink;
+    const RuntimeDesc desc = makeRuntimeDesc(&sink);
+    const RuntimeHandle runtime = rxRuntimeCreate(&desc);
+    ASSERT_TRUE(rxValid(runtime));
+
+    std::ifstream file(RENDERX_TEST_FONT_PATH, std::ios::binary);
+    ASSERT_TRUE(file.good()) << "缺少测试字体：" << RENDERX_TEST_FONT_PATH;
+    const std::vector<uint8_t> ttf((std::istreambuf_iterator<char>(file)),
+                                   std::istreambuf_iterator<char>());
+    ASSERT_FALSE(ttf.empty());
+
+    FontDesc fd{};
+    fd.data = ttf.data();
+    fd.dataBytes = ttf.size();
+    fd.pixelHeight = 16.0f;
+    FontHandle font = FontHandle::Invalid;
+    ASSERT_EQ(rxFontCreate(runtime, &fd, &font), RxResult::Ok);
+    ASSERT_TRUE(rxValid(font));
+
+    FontMetrics metrics{};
+    ASSERT_EQ(rxFontMetrics(runtime, font, &metrics), RxResult::Ok);
+    EXPECT_GT(metrics.ascent, 0.0f);
+    // descent 与 stb_truetype 一致取负值：基线以下的深度
+    EXPECT_LT(metrics.descent, 0.0f);
+    EXPECT_FLOAT_EQ(metrics.pixelHeight, 16.0f);
+
+    // 图集纹理是普通的公共纹理句柄，可直接填进 DrawCommand::texture
+    EXPECT_TRUE(rxValid(rxFontAtlas(runtime, font)));
+
+    GlyphInfo glyph{};
+    ASSERT_EQ(rxFontGlyph(runtime, font, U'0', &glyph), RxResult::Ok);
+    EXPECT_GT(glyph.advance, 0.0f);
+    EXPECT_GT(glyph.width, 0.0f);
+    EXPECT_GT(glyph.height, 0.0f);
+    EXPECT_LT(glyph.u0, glyph.u1);
+    EXPECT_LT(glyph.v0, glyph.v1);
+    // bearingY 以基线为原点、y 向下为正，字形主体在基线之上，故为负
+    EXPECT_LT(glyph.bearingY, 0.0f);
+
+    // 空格有步进但没有像素：不该产出四边形
+    GlyphInfo space{};
+    ASSERT_EQ(rxFontGlyph(runtime, font, U' ', &space), RxResult::Ok);
+    EXPECT_GT(space.advance, 0.0f);
+    EXPECT_FLOAT_EQ(space.width, 0.0f);
+    EXPECT_FLOAT_EQ(space.height, 0.0f);
+
+    // 同一码点第二次查询走缓存，结果必须逐字段一致
+    GlyphInfo again{};
+    ASSERT_EQ(rxFontGlyph(runtime, font, U'0', &again), RxResult::Ok);
+    EXPECT_FLOAT_EQ(again.u0, glyph.u0);
+    EXPECT_FLOAT_EQ(again.advance, glyph.advance);
+
+    // 上传是幂等的：脏区清空后再 flush 是空操作
+    EXPECT_EQ(rxFontFlushAtlas(runtime, font), RxResult::Ok);
+    EXPECT_EQ(rxFontFlushAtlas(runtime, font), RxResult::Ok);
+
+    rxFontDestroy(runtime, font);
+    // 销毁后句柄立即失效（世代式句柄）
+    EXPECT_EQ(rxFontMetrics(runtime, font, &metrics), RxResult::ErrorInvalidHandle);
+    EXPECT_FALSE(rxValid(rxFontAtlas(runtime, font)));
 
     rxRuntimeDestroy(runtime);
 }

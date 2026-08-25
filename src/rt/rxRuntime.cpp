@@ -200,7 +200,8 @@ namespace Render::RT::detail
                depthTest == other.depthTest && depthWrite == other.depthWrite &&
                blendEnable == other.blendEnable && srcBlend == other.srcBlend &&
                dstBlend == other.dstBlend && depthFunc == other.depthFunc &&
-               lineWidth == other.lineWidth && shaderName == other.shaderName;
+               lineWidth == other.lineWidth && shaderName == other.shaderName &&
+               fragmentShaderName == other.fragmentShaderName;
     }
 
     size_t PipelineKeyHash::operator()(const PipelineKey& key) const
@@ -219,7 +220,8 @@ namespace Render::RT::detail
         // 因此按整数倍数散列即可，不必对浮点位模式做散列。
         bits ^= static_cast<uint64_t>(key.depthFunc) * 0x9E3779B97F4A7C15ull;
         bits ^= static_cast<uint64_t>(key.lineWidth / Runtime::kLineWidthQuantum) * 0xC2B2AE3D27D4EB4Full;
-        return std::hash<uint64_t>{}(bits) ^ (std::hash<std::string>{}(key.shaderName) << 1);
+        return std::hash<uint64_t>{}(bits) ^ (std::hash<std::string>{}(key.shaderName) << 1) ^
+               (std::hash<std::string>{}(key.fragmentShaderName) << 2);
     }
 
     // ==================== TransientRing ====================
@@ -523,6 +525,9 @@ namespace Render::RT::detail
             }
         }
         geometryStores.clear();
+
+        // 字体的 CPU 侧对象。图集纹理在下面的 textures 循环里统一销毁。
+        destroyAllFonts();
 
         transient.shutdown();
 
@@ -904,9 +909,11 @@ namespace Render::RT::detail
         ShaderPair pair = defaultShadersFor(key.vertexFormat, key.space, key.topology);
         if (!key.shaderName.empty())
         {
-            // 显式指定时只覆盖顶点着色器名：片段着色器仍按格式选择，
-            // 因为公共 PipelineDesc 只有一个 shaderName 字段。
             pair.vertex = key.shaderName.c_str();
+        }
+        if (!key.fragmentShaderName.empty())
+        {
+            pair.fragment = key.fragmentShaderName.c_str();
         }
         if (!pair.vertex || !pair.fragment)
         {
@@ -999,7 +1006,8 @@ namespace Render::RT::detail
     }
 
     uint16_t Runtime::resolvePipeline(VertexFormat format, RenderSpace space,
-                                      PrimitiveTopology topology, float lineWidth)
+                                      PrimitiveTopology topology, float lineWidth,
+                                      const char* fragmentShaderOverride)
     {
         PipelineKey key{};
         key.vertexFormat = format;
@@ -1011,6 +1019,10 @@ namespace Render::RT::detail
         key.srcBlend = BlendFactor::SrcAlpha;
         key.dstBlend = BlendFactor::OneMinusSrcAlpha;
         key.depthFunc = DepthFunc::LessEqual;
+        if (fragmentShaderOverride)
+        {
+            key.fragmentShaderName = fragmentShaderOverride;
+        }
 
         // 先按后端上限钳制，再量化。macOS 的 GL 与 Metal 上 maxLineWidth 是 1.0，
         // 于是所有线宽塌缩成一条管线——这正是期望行为：真正需要粗线的调用方
@@ -1058,27 +1070,35 @@ namespace Render::RT::detail
             RS space;
             PT topology;
             const char* label;
+            /// 非空则替换按格式选出的默认片段着色器
+            const char* fragmentShader;
         };
 
         // 与 renderx.h 的 DefaultPipeline 枚举一一对应。
         // 覆盖层统一走 P3C4：缩放时与图元几何一致变换，且支持半透明。
         static const Entry kEntries[] = {
-            { DP::WorldLine, VF::P3C3, RS::World, PT::LineStrip, "WorldLine" },
-            { DP::WorldTri, VF::P3C3, RS::World, PT::Triangles, "WorldTri" },
-            { DP::WorldPoint, VF::P3C3, RS::World, PT::Points, "WorldPoint" },
-            { DP::ScreenLine, VF::P3C3, RS::Screen, PT::LineStrip, "ScreenLine" },
-            { DP::ScreenTri, VF::P3C3, RS::Screen, PT::Triangles, "ScreenTri" },
-            { DP::ScreenPoint, VF::P3C3, RS::Screen, PT::Points, "ScreenPoint" },
-            { DP::ScreenTextured, VF::P2T2C4, RS::Screen, PT::Triangles, "ScreenTextured" },
-            { DP::WorldLine4, VF::P3C4, RS::World, PT::LineStrip, "WorldLine4" },
-            { DP::WorldTri4, VF::P3C4, RS::World, PT::Triangles, "WorldTri4" },
-            { DP::WorldPoint4, VF::P3C4, RS::World, PT::Points, "WorldPoint4" },
-            { DP::ScreenLine4, VF::P3C4, RS::Screen, PT::LineStrip, "ScreenLine4" },
-            { DP::ScreenTri4, VF::P3C4, RS::Screen, PT::Triangles, "ScreenTri4" },
-            { DP::ScreenPoint4, VF::P3C4, RS::Screen, PT::Points, "ScreenPoint4" },
+            { DP::WorldLine, VF::P3C3, RS::World, PT::LineStrip, "WorldLine", nullptr },
+            { DP::WorldTri, VF::P3C3, RS::World, PT::Triangles, "WorldTri", nullptr },
+            { DP::WorldPoint, VF::P3C3, RS::World, PT::Points, "WorldPoint", nullptr },
+            { DP::ScreenLine, VF::P3C3, RS::Screen, PT::LineStrip, "ScreenLine", nullptr },
+            { DP::ScreenTri, VF::P3C3, RS::Screen, PT::Triangles, "ScreenTri", nullptr },
+            { DP::ScreenPoint, VF::P3C3, RS::Screen, PT::Points, "ScreenPoint", nullptr },
+            { DP::ScreenTextured, VF::P2T2C4, RS::Screen, PT::Triangles, "ScreenTextured", nullptr },
+            { DP::WorldLine4, VF::P3C4, RS::World, PT::LineStrip, "WorldLine4", nullptr },
+            { DP::WorldTri4, VF::P3C4, RS::World, PT::Triangles, "WorldTri4", nullptr },
+            { DP::WorldPoint4, VF::P3C4, RS::World, PT::Points, "WorldPoint4", nullptr },
+            { DP::ScreenLine4, VF::P3C4, RS::Screen, PT::LineStrip, "ScreenLine4", nullptr },
+            { DP::ScreenTri4, VF::P3C4, RS::Screen, PT::Triangles, "ScreenTri4", nullptr },
+            { DP::ScreenPoint4, VF::P3C4, RS::Screen, PT::Points, "ScreenPoint4", nullptr },
             // 世界锚定 + 屏幕定尺寸（见 renderx.h RenderSpace::WorldPinned）
-            { DP::WorldPinnedLine, VF::P3O2C4, RS::WorldPinned, PT::LineStrip, "WorldPinnedLine" },
-            { DP::WorldPinnedTri, VF::P3O2C4, RS::WorldPinned, PT::Triangles, "WorldPinnedTri" },
+            { DP::WorldPinnedLine, VF::P3O2C4, RS::WorldPinned, PT::LineStrip, "WorldPinnedLine",
+              nullptr },
+            { DP::WorldPinnedTri, VF::P3O2C4, RS::WorldPinned, PT::Triangles, "WorldPinnedTri",
+              nullptr },
+            // 字形：与 ScreenTextured 同格式同空间同拓扑，只有片元不同，
+            // 因此必须显式指定片段着色器，否则两者会命中同一条缓存管线。
+            { DP::ScreenGlyph, VF::P2T2C4, RS::Screen, PT::Triangles, "ScreenGlyph",
+              "screen_glyph_p2t2c4.frag" },
         };
         static_assert(sizeof(kEntries) / sizeof(kEntries[0]) == static_cast<size_t>(DP::Count),
                       "内建管线表必须覆盖 DefaultPipeline 的全部取值");
@@ -1086,7 +1106,8 @@ namespace Render::RT::detail
         uint32_t ready = 0;
         for (const Entry& entry : kEntries)
         {
-            const uint16_t index = resolvePipeline(entry.format, entry.space, entry.topology);
+            const uint16_t index =
+                resolvePipeline(entry.format, entry.space, entry.topology, 1.0f, entry.fragmentShader);
             defaults[static_cast<size_t>(entry.kind)] = index;
             if (index != 0)
             {
