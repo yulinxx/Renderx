@@ -39,19 +39,11 @@ target_include_directories(RenderxTests PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/../src"
 )
 
-# Log 库：如果作为子目录构建，target_link_libraries 会自动传播 include 目录
-# 否则回退到显式添加头文件路径
-if(NOT TARGET Log)
-    set(LOG_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../Log/Log/Include")
-    if(EXISTS "${LOG_INCLUDE_DIR}/Log/SyLogger.h")
-        target_include_directories(RenderxTests PRIVATE ${LOG_INCLUDE_DIR})
-    endif()
-endif()
-
+# Renderx 已不依赖 Log：日志一律通过 rxLogCallback 交回宿主，
+# 因此测试目标也不需要链接业务日志库。
 target_link_libraries(RenderxTests PRIVATE
     GTest::gtest
     GTest::gtest_main
-    Log
     RenderxShaders
 )
 
@@ -73,9 +65,10 @@ set(RENDERX_GL_INTERNAL_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/../src/rhi/null/nullBackend.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/../src/rhi/gl/glDevice.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/../src/rhi/gl/glCommandList.cpp"
-    # RT：Runtime / Session / C API
+    # RT：Runtime / Session / 增量渲染 / C API
     "${CMAKE_CURRENT_SOURCE_DIR}/../src/rt/rxRuntime.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/../src/rt/rxSession.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../src/rt/rxIncremental.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/../src/c_api/rxCApi.cpp"
 )
 
@@ -92,13 +85,6 @@ target_include_directories(RenderxGLTests PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/../src"
 )
 
-if(NOT TARGET Log)
-    set(LOG_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../Log/Log/Include")
-    if(EXISTS "${LOG_INCLUDE_DIR}/Log/SyLogger.h")
-        target_include_directories(RenderxGLTests PRIVATE ${LOG_INCLUDE_DIR})
-    endif()
-endif()
-
 if(WIN32)
     target_link_libraries(RenderxGLTests PRIVATE opengl32)
 endif()
@@ -106,7 +92,6 @@ endif()
 target_link_libraries(RenderxGLTests PRIVATE
     GTest::gtest
     GTest::gtest_main
-    Log
     RenderxShaders
 )
 

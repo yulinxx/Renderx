@@ -253,11 +253,12 @@ set_target_properties(RenderxShaders PROPERTIES
     FOLDER "Render"
 )
 
-# shaderLibrary.cpp 需要 src/ 下的头文件与 Log/SyLogger.h
+# shaderLibrary.cpp 只需要 src/ 下的头文件。
+# 刻意不链接 Log：shader 查表是纯数据逻辑，引入业务日志库会让
+# 「RenderX 可脱离本仓库独立复用」重新失效——这是最后一处业务耦合。
 target_include_directories(RenderxShaders PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
 )
-target_link_libraries(RenderxShaders PUBLIC Log)
 
 # ==================== 库目标配置 ====================
 
@@ -281,7 +282,6 @@ sanyi_add_shared_library(${PROJECT_NAME}
         LINK_LIBRARIES
             PRIVATE
                 ${OPENGL_LIBRARIES}
-                Log
                 RenderxShaders
                 ${RENDER_LINK_LIBS}
 )

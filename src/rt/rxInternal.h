@@ -30,6 +30,7 @@
 #include "rhi/rhiGpuDevice.h"
 #include "rhi/rhiLog.h"
 #include "rhi/rhiSurface.h"
+#include "rt/rxIncremental.h"
 
 #include <string>
 #include <unordered_map>
@@ -209,6 +210,17 @@ namespace Render::RT::detail
         TransientRing transient;
 
         /**
+         * 持久几何仓与保留式绘制列表。
+         *
+         * 二者都是「跨帧存活」的对象，与瞬态环互补：瞬态环服务每帧全变的
+         * 数据（预览线、橡皮筋），几何仓服务帧间基本不变的常驻场景。
+         * 存指针而非值：对象内部有 vector，SlotMap 的稠密数组在扩容时会
+         * 移动元素，而 GeometryStore 的地址被 DrawList/Session 短期持有。
+         */
+        SlotMap<uint64_t, GeometryStore*> geometryStores;
+        SlotMap<uint64_t, DrawList*> drawLists;
+
+        /**
          * 当前处于 BeginFrame/EndFrame 之间的 Session 数量。
          *
          * 瞬态环由整个 Runtime 共享，切段必须每帧只做一次。若按 Session 切，
@@ -236,6 +248,26 @@ namespace Render::RT::detail
 
         uint16_t addMaterial(const MaterialDesc& desc);
         RxResult updateMaterial(uint16_t index, const MaterialDesc& desc);
+
+        // ---- 增量渲染 ----
+        GeometryStoreHandle createGeometryStore(const GeometryStoreDesc& desc);
+        void destroyGeometryStore(GeometryStoreHandle handle);
+        GeometryStore* resolveGeometryStore(GeometryStoreHandle handle);
+
+        DrawListHandle createDrawList(const DrawListDesc& desc);
+        void destroyDrawList(DrawListHandle handle);
+        DrawList* resolveDrawList(DrawListHandle handle);
+
+        /**
+         * @brief 把所有几何仓的脏区提交到 GPU
+         *
+         * 由 Session 在任何绘制之前调用。放在 Runtime 而非 Session 上是因为
+         * 几何仓由整个 Runtime 共享：多窗口时只应上传一次，
+         * 若每个 Session 各自 flush，第二个窗口会重传同一批字节。
+         *
+         * @return 本次实际上传的字节数（用于 FrameStats::geometryUploadBytes）
+         */
+        uint64_t flushGeometryStores();
 
         // ---- 管线 ----
         uint16_t createPipeline(const PipelineDesc& desc);
@@ -298,9 +330,50 @@ namespace Render::RT::detail
         RxResult beginFrame();
         RxResult allocTransient(uint64_t sizeBytes, TransientAlloc* out);
         RxResult submit(const DrawPacket& packet);
+        /**
+         * @brief 提交一个保留式绘制列表
+         *
+         * 与 submit(DrawPacket) 的区别只在命令来源：命令由 DLL 持有，
+         * 调用方不必每帧重建。剔除/排序/合批在 DrawList::resolve 内完成。
+         *
+         * @param viewBounds 世界空间 (minX,minY,maxX,maxY)；nullptr 表示不剔除
+         */
+        RxResult submitDrawList(DrawList* list, const float viewBounds[4]);
         RxResult endFrame();
+        /**
+         * @brief 从当前后备缓冲读回像素
+         *
+         * 必须在 EndFrame **之前**调用：EndFrame 之后后备缓冲已交给呈现，
+         * 内容不再保证有效。输出恒为 RGBA8、左上原点、rowPitch = width * 4。
+         */
+        RxResult readPixels(int32_t x, int32_t y, uint32_t width, uint32_t height, void* outBytes,
+                            uint64_t outByteCapacity);
         RxResult queryVisibility(const float* aabbs, uint32_t aabbCount, const float viewBounds[4],
                                  VisibilityResult* out);
+
+    private:
+        /**
+         * @brief 准备本次提交的 PushConstants 与视口
+         *
+         * @param packetViewMatrix 可为 nullptr / 全零，表示沿用 Session 的视图矩阵
+         * @param packetViewport   可为 nullptr，表示整个表面
+         * @param out              填好的 pushConstant
+         * @return 是否改动了视口（改动过的需要在提交末尾恢复）
+         */
+        bool prepareSubmitState(const float* packetViewMatrix, const float* packetViewport,
+                                PushConstants* out);
+        /**
+         * @brief 逐条绑定并绘制
+         *
+         * 两条提交路径（DrawPacket / DrawList）共用同一份冗余消除逻辑。
+         * 分成两份实现过一次就必然随时间走偏，而「少消除一次绑定」
+         * 不会报错，只是变慢——这类退化没人会注意到。
+         *
+         * @param order 命令下标数组；nullptr 表示按 0..count-1 顺序
+         */
+        void recordCommands(const DrawCommand* commands, const uint32_t* order, uint32_t count,
+                            PushConstants& push);
+
     };
 
     // ==================== 共享工具 ====================

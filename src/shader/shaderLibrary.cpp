@@ -8,8 +8,6 @@
  */
 #include "shader/shaderLibrary.h"
 
-#include "Log/SyLogger.h"
-
 #include <cstring>
 
 namespace Render::shader
@@ -74,9 +72,12 @@ namespace Render::shader
 
     bool find(const char* name, Language lang, ShaderBlob* out)
     {
+        // 本文件刻意不做任何日志：它是 RenderX 里唯一曾经硬依赖
+        // 宿主日志库（Log/SyLogger.h）的地方，而查表本身是纯数据逻辑。
+        // 失败原因由调用方结合自身上下文报告——调用方持有 RhiLogger，
+        // 最终经 rxLogCallback 回到宿主。
         if (!name)
         {
-            SY_WARNF("[shaderLibrary] find called with null name");
             return false;
         }
 
@@ -90,9 +91,9 @@ namespace Render::shader
             Language rawLang{};
             if (!parseLanguage(raw.language, &rawLang))
             {
-                // 生成器与本文件的语言标签不一致，属于构建配置错误而非运行时输入错误
-                SY_ERRORF("[shaderLibrary] unknown language tag '%s' on shader '%s'",
-                          raw.language, raw.name);
+                // 生成器与本文件的语言标签不一致，属于构建配置错误而非运行时
+                // 输入错误。这里只能跳过；调用方拿到「找不到」后会报错，
+                // 并可用 count()/nameAt()/languageAt() 打印已嵌入清单来定位。
                 continue;
             }
             if (rawLang != lang)
@@ -106,10 +107,6 @@ namespace Render::shader
             }
             return true;
         }
-
-        SY_WARNF("[shaderLibrary] shader not found: name='%s' language=%s (%llu blobs embedded)",
-                 name, languageName(lang),
-                 static_cast<unsigned long long>(generated::kShaderBlobCount));
         return false;
     }
 

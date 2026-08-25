@@ -111,6 +111,8 @@ namespace Render
             switch (result)
             {
             case RxResult::Ok: return "Ok";
+            // 正数不是失败：分配成功但底层缓冲已被替换，调用方需刷新句柄
+            case RxResult::ErrorGeometryStoreGrown: return "GeometryStoreGrown";
             case RxResult::ErrorUnknown: return "ErrorUnknown";
             case RxResult::ErrorInvalidArgument: return "ErrorInvalidArgument";
             case RxResult::ErrorInvalidHandle: return "ErrorInvalidHandle";
@@ -359,6 +361,218 @@ namespace Render
             return RxResult::ErrorUnsupportedBackend;
         }
 
+        // ==================== 持久几何仓 ====================
+        //
+        // 所有函数都要求传入 Runtime 句柄：仓与列表的所有权在 Runtime 上，
+        // 只传仓句柄就无法校验它属于哪个 Runtime——跨 Runtime 误用是
+        // 多窗口场景里最容易犯且最难查的错误。
+
+        GeometryStoreHandle rxGeometryStoreCreate(RuntimeHandle handle, const GeometryStoreDesc* desc)
+        {
+            Runtime* runtime = checkedRuntime(handle);
+            if (!runtime || !desc)
+            {
+                return GeometryStoreHandle::Invalid;
+            }
+            return runtime->createGeometryStore(*desc);
+        }
+
+        void rxGeometryStoreDestroy(RuntimeHandle handle, GeometryStoreHandle store)
+        {
+            Runtime* runtime = checkedRuntime(handle);
+            if (!runtime)
+            {
+                return;
+            }
+            runtime->destroyGeometryStore(store);
+        }
+
+        BufferHandle rxGeometryStoreGetBuffer(RuntimeHandle handle, GeometryStoreHandle store)
+        {
+            Runtime* runtime = checkedRuntime(handle);
+            if (!runtime)
+            {
+                return BufferHandle::Invalid;
+            }
+            GeometryStore* target = runtime->resolveGeometryStore(store);
+            return target ? target->publicBuffer() : BufferHandle::Invalid;
+        }
+
+        RxResult rxGeometryAlloc(RuntimeHandle handle, GeometryStoreHandle store, uint64_t sizeBytes,
+                                 GeometryBlock* out)
+        {
+            Runtime* runtime = checkedRuntime(handle);
+            if (!runtime)
+            {
+                return RxResult::ErrorInvalidHandle;
+            }
+            GeometryStore* target = runtime->resolveGeometryStore(store);
+            if (!target)
+            {
+                return RxResult::ErrorInvalidHandle;
+            }
+            return target->allocate(sizeBytes, out);
+        }
+
+        RxResult rxGeometryWrite(RuntimeHandle handle, GeometryStoreHandle store, uint64_t blockId,
+                                 uint32_t byteOffset, uint32_t sizeBytes, const void* data)
+        {
+            Runtime* runtime = checkedRuntime(handle);
+            if (!runtime)
+            {
+                return RxResult::ErrorInvalidHandle;
+            }
+            GeometryStore* target = runtime->resolveGeometryStore(store);
+            if (!target)
+            {
+                return RxResult::ErrorInvalidHandle;
+            }
+            return target->write(blockId, byteOffset, sizeBytes, data);
+        }
+
+        RxResult rxGeometryFree(RuntimeHandle handle, GeometryStoreHandle store, uint64_t blockId)
+        {
+            Runtime* runtime = checkedRuntime(handle);
+            if (!runtime)
+            {
+                return RxResult::ErrorInvalidHandle;
+            }
+            GeometryStore* target = runtime->resolveGeometryStore(store);
+            if (!target)
+            {
+                return RxResult::ErrorInvalidHandle;
+            }
+            return target->release(blockId);
+        }
+
+        RxResult rxGeometryFlush(RuntimeHandle handle, GeometryStoreHandle store)
+        {
+            Runtime* runtime = checkedRuntime(handle);
+            if (!runtime)
+            {
+                return RxResult::ErrorInvalidHandle;
+            }
+            GeometryStore* target = runtime->resolveGeometryStore(store);
+            if (!target)
+            {
+                return RxResult::ErrorInvalidHandle;
+            }
+            return target->flush();
+        }
+
+        RxResult rxGeometryStoreGetStats(RuntimeHandle handle, GeometryStoreHandle store,
+                                         GeometryStoreStats* out)
+        {
+            Runtime* runtime = checkedRuntime(handle);
+            if (!runtime)
+            {
+                return RxResult::ErrorInvalidHandle;
+            }
+            if (!out)
+            {
+                return RxResult::ErrorInvalidArgument;
+            }
+            GeometryStore* target = runtime->resolveGeometryStore(store);
+            if (!target)
+            {
+                return RxResult::ErrorInvalidHandle;
+            }
+            target->fillStats(out);
+            return RxResult::Ok;
+        }
+
+        // ==================== 保留式绘制列表 ====================
+
+        DrawListHandle rxDrawListCreate(RuntimeHandle handle, const DrawListDesc* desc)
+        {
+            Runtime* runtime = checkedRuntime(handle);
+            if (!runtime || !desc)
+            {
+                return DrawListHandle::Invalid;
+            }
+            return runtime->createDrawList(*desc);
+        }
+
+        void rxDrawListDestroy(RuntimeHandle handle, DrawListHandle list)
+        {
+            Runtime* runtime = checkedRuntime(handle);
+            if (!runtime)
+            {
+                return;
+            }
+            runtime->destroyDrawList(list);
+        }
+
+        RxResult rxDrawListUpsert(RuntimeHandle handle, DrawListHandle list, uint32_t slot,
+                                  const DrawCommand* command, const float aabb[4])
+        {
+            Runtime* runtime = checkedRuntime(handle);
+            if (!runtime)
+            {
+                return RxResult::ErrorInvalidHandle;
+            }
+            if (!command)
+            {
+                return RxResult::ErrorInvalidArgument;
+            }
+            DrawList* target = runtime->resolveDrawList(list);
+            if (!target)
+            {
+                return RxResult::ErrorInvalidHandle;
+            }
+            return target->upsert(slot, *command, aabb);
+        }
+
+        RxResult rxDrawListRemove(RuntimeHandle handle, DrawListHandle list, uint32_t slot)
+        {
+            Runtime* runtime = checkedRuntime(handle);
+            if (!runtime)
+            {
+                return RxResult::ErrorInvalidHandle;
+            }
+            DrawList* target = runtime->resolveDrawList(list);
+            if (!target)
+            {
+                return RxResult::ErrorInvalidHandle;
+            }
+            return target->remove(slot);
+        }
+
+        RxResult rxDrawListClear(RuntimeHandle handle, DrawListHandle list)
+        {
+            Runtime* runtime = checkedRuntime(handle);
+            if (!runtime)
+            {
+                return RxResult::ErrorInvalidHandle;
+            }
+            DrawList* target = runtime->resolveDrawList(list);
+            if (!target)
+            {
+                return RxResult::ErrorInvalidHandle;
+            }
+            return target->clear();
+        }
+
+        RxResult rxDrawListGetStats(RuntimeHandle handle, DrawListHandle list, DrawListStats* out)
+        {
+            Runtime* runtime = checkedRuntime(handle);
+            if (!runtime)
+            {
+                return RxResult::ErrorInvalidHandle;
+            }
+            if (!out)
+            {
+                return RxResult::ErrorInvalidArgument;
+            }
+            DrawList* target = runtime->resolveDrawList(list);
+            if (!target)
+            {
+                return RxResult::ErrorInvalidHandle;
+            }
+            target->fillStats(out);
+            return RxResult::Ok;
+        }
+
         // ==================== Surface ====================
 
         SurfaceHandle rxSurfaceCreate(RuntimeHandle handle, const SurfaceDesc* desc)
@@ -483,6 +697,24 @@ namespace Render
             return session->submit(*packet);
         }
 
+        RxResult rxSessionSubmitDrawList(SessionHandle handle, DrawListHandle list,
+                                         const float viewBounds[4])
+        {
+            Session* session = checkedSession(handle);
+            if (!session)
+            {
+                return RxResult::ErrorInvalidHandle;
+            }
+            // 列表通过 Session 自己的 Runtime 解析，因此无法用别的 Runtime
+            // 的列表句柄画到这个窗口上——那会引用到不属于本设备的缓冲。
+            DrawList* target = session->runtime ? session->runtime->resolveDrawList(list) : nullptr;
+            if (!target)
+            {
+                return RxResult::ErrorInvalidHandle;
+            }
+            return session->submitDrawList(target, viewBounds);
+        }
+
         RxResult rxSessionEndFrame(SessionHandle handle)
         {
             Session* session = checkedSession(handle);
@@ -491,6 +723,18 @@ namespace Render
                 return RxResult::ErrorInvalidHandle;
             }
             return session->endFrame();
+        }
+
+        RxResult rxSessionReadPixels(SessionHandle handle, uint32_t x, uint32_t y, uint32_t width,
+                                     uint32_t height, void* outBytes, uint64_t outByteCapacity)
+        {
+            Session* session = checkedSession(handle);
+            if (!session)
+            {
+                return RxResult::ErrorInvalidHandle;
+            }
+            return session->readPixels(static_cast<int32_t>(x), static_cast<int32_t>(y), width, height,
+                                       outBytes, outByteCapacity);
         }
 
         RxResult rxSessionQueryVisibility(SessionHandle handle, const float* aabbs, uint32_t aabbCount,

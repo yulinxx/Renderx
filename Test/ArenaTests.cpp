@@ -183,7 +183,7 @@ TEST(ArenaTest, Used_TracksAllocation)
 TEST(ArenaTest, Allocate_ZeroSize)
 {
     Arena arena(1024);
-    void* ptr = arena.allocate(0);
+    arena.allocate(0);
 
     // 零大小分配应返回有效指针或不改变状态
     EXPECT_EQ(arena.used(), 0u);

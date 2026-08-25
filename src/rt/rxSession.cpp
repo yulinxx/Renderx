@@ -19,6 +19,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <utility>
 
 namespace Render::RT::detail
 {
@@ -289,41 +290,21 @@ namespace Render::RT::detail
         return RxResult::Ok;
     }
 
-    RxResult Session::submit(const DrawPacket& packet)
+    bool Session::prepareSubmitState(const float* packetViewMatrix, const float* packetViewport,
+                                     PushConstants* out)
     {
-        if (!runtime || !surface)
-        {
-            return RxResult::ErrorInvalidHandle;
-        }
-        if (!inFrame || !cmd)
-        {
-            runtime->log.error("[rt] rxSessionSubmit: 必须在 BeginFrame/EndFrame 之间调用");
-            return RxResult::ErrorUnknown;
-        }
-        if (packet.commandCount == 0)
-        {
-            return RxResult::Ok;
-        }
-        if (!packet.commands)
-        {
-            return RxResult::ErrorInvalidArgument;
-        }
-
-        // 顶点数据必须在任何绘制之前落到 GPU。旧实现把上传散在
-        // 每条命令旁边，导致同一段瞬态内存可能在被引用后又被写。
-        runtime->transient.flush();
-
         // 视口：packet.viewport 优先（分屏/子视口场景），否则整个表面
-        const bool hasPacketViewport = packet.viewport[2] > 0.0f && packet.viewport[3] > 0.0f;
+        const bool hasPacketViewport =
+            packetViewport != nullptr && packetViewport[2] > 0.0f && packetViewport[3] > 0.0f;
         const float viewportW =
-            hasPacketViewport ? packet.viewport[2] : static_cast<float>(surface->width);
+            hasPacketViewport ? packetViewport[2] : static_cast<float>(surface->width);
         const float viewportH =
-            hasPacketViewport ? packet.viewport[3] : static_cast<float>(surface->height);
+            hasPacketViewport ? packetViewport[3] : static_cast<float>(surface->height);
         if (hasPacketViewport)
         {
             RHI::Viewport viewport{};
-            viewport.x = packet.viewport[0];
-            viewport.y = packet.viewport[1];
+            viewport.x = packetViewport[0];
+            viewport.y = packetViewport[1];
             viewport.width = viewportW;
             viewport.height = viewportH;
             cmd->setViewport(viewport);
@@ -331,31 +312,23 @@ namespace Render::RT::detail
 
         // 视图矩阵：packet 内的为本次提交的权威值；全零表示「沿用 Session 的」，
         // 这样只用 rxSessionSetViewMatrix 的调用方无需每次填 packet。
-        PushConstants push{};
-        if (isAllZero(packet.viewMatrix))
+        if (packetViewMatrix == nullptr || isAllZero(packetViewMatrix))
         {
-            std::memcpy(push.view, viewMatrix, sizeof(push.view));
+            std::memcpy(out->view, viewMatrix, sizeof(out->view));
         }
         else
         {
-            std::memcpy(push.view, packet.viewMatrix, sizeof(push.view));
-            std::memcpy(viewMatrix, packet.viewMatrix, sizeof(viewMatrix));
+            std::memcpy(out->view, packetViewMatrix, sizeof(out->view));
+            std::memcpy(viewMatrix, packetViewMatrix, sizeof(viewMatrix));
         }
-        push.viewport[0] = viewportW;
-        push.viewport[1] = viewportH;
+        out->viewport[0] = viewportW;
+        out->viewport[1] = viewportH;
+        return hasPacketViewport;
+    }
 
-        // 按 sortKey 稳定排序：同键命令保持提交顺序，覆盖层的叠放才可预测。
-        sortScratch.resize(packet.commandCount);
-        for (uint32_t i = 0; i < packet.commandCount; ++i)
-        {
-            sortScratch[i] = i;
-        }
-        const DrawCommand* commands = packet.commands;
-        std::stable_sort(sortScratch.begin(), sortScratch.end(),
-                         [commands](uint32_t a, uint32_t b) {
-                             return commands[a].sortKey < commands[b].sortKey;
-                         });
-
+    void Session::recordCommands(const DrawCommand* commands, const uint32_t* order, uint32_t count,
+                                 PushConstants& push)
+    {
         uint16_t boundPipeline = 0;
         BufferHandle boundVertexBuffer = BufferHandle::Invalid;
         uint64_t boundVertexOffset = UINT64_MAX;
@@ -363,9 +336,10 @@ namespace Render::RT::detail
         PushConstants pushed{};
         bool pushedValid = false;
 
-        for (uint32_t sortedIndex : sortScratch)
+        for (uint32_t i = 0; i < count; ++i)
         {
-            const DrawCommand& command = commands[sortedIndex];
+            const uint32_t index = order ? order[i] : i;
+            const DrawCommand& command = commands[index];
             if (command.vertexCount == 0 && command.indexCount == 0)
             {
                 continue;
@@ -374,8 +348,7 @@ namespace Render::RT::detail
             const RHI::BufferHandle vertexBuffer = runtime->resolveBuffer(command.vertexBuffer);
             if (!vertexBuffer.valid())
             {
-                runtime->log.warn("[rt] rxSessionSubmit: 第 %u 条命令的顶点缓冲句柄无效，已跳过",
-                                  sortedIndex);
+                runtime->log.warn("[rt] 第 %u 条命令的顶点缓冲句柄无效，已跳过", index);
                 continue;
             }
 
@@ -406,9 +379,8 @@ namespace Render::RT::detail
             const RHI::PipelineHandle pipeline = runtime->rhiPipeline(pipelineIndex);
             if (!pipeline.valid())
             {
-                runtime->log.warn("[rt] rxSessionSubmit: 第 %u 条命令没有可用管线"
-                                  "（fmt=%d space=%d topo=%d），已跳过",
-                                  sortedIndex, static_cast<int>(command.vertexFormat),
+                runtime->log.warn("[rt] 第 %u 条命令没有可用管线（fmt=%d space=%d topo=%d），已跳过",
+                                  index, static_cast<int>(command.vertexFormat),
                                   static_cast<int>(command.space),
                                   static_cast<int>(command.topology));
                 continue;
@@ -454,7 +426,7 @@ namespace Render::RT::detail
                 }
                 else
                 {
-                    runtime->log.warn("[rt] rxSessionSubmit: 第 %u 条命令的纹理句柄无效", sortedIndex);
+                    runtime->log.warn("[rt] 第 %u 条命令的纹理句柄无效", index);
                 }
             }
 
@@ -466,9 +438,8 @@ namespace Render::RT::detail
                 const RHI::BufferHandle indexBuffer = runtime->resolveBuffer(command.indexBuffer);
                 if (!indexBuffer.valid())
                 {
-                    runtime->log.warn("[rt] rxSessionSubmit: 第 %u 条命令声明了索引绘制"
-                                      "但索引缓冲句柄无效，已跳过",
-                                      sortedIndex);
+                    runtime->log.warn("[rt] 第 %u 条命令声明了索引绘制但索引缓冲句柄无效，已跳过",
+                                      index);
                     continue;
                 }
                 cmd->bindIndexBuffer(indexBuffer, command.indexOffset,
@@ -485,8 +456,53 @@ namespace Render::RT::detail
             stats.drawCallCount += 1;
             drawSequence += 1;
         }
+    }
 
-        if (hasPacketViewport)
+    RxResult Session::submit(const DrawPacket& packet)
+    {
+        if (!runtime || !surface)
+        {
+            return RxResult::ErrorInvalidHandle;
+        }
+        if (!inFrame || !cmd)
+        {
+            runtime->log.error("[rt] rxSessionSubmit: 必须在 BeginFrame/EndFrame 之间调用");
+            return RxResult::ErrorUnknown;
+        }
+        if (packet.commandCount == 0)
+        {
+            return RxResult::Ok;
+        }
+        if (!packet.commands)
+        {
+            return RxResult::ErrorInvalidArgument;
+        }
+
+        // 顶点数据必须在任何绘制之前落到 GPU。旧实现把上传散在
+        // 每条命令旁边，导致同一段瞬态内存可能在被引用后又被写。
+        runtime->transient.flush();
+        // 几何仓与瞬态环可以混用（常驻图元 + 预览线在同一帧），
+        // 因此这条路径也要先把仓的脏区提交。
+        stats.geometryUploadBytes += runtime->flushGeometryStores();
+
+        PushConstants push{};
+        const bool restoreViewport = prepareSubmitState(packet.viewMatrix, packet.viewport, &push);
+
+        // 按 sortKey 稳定排序：同键命令保持提交顺序，覆盖层的叠放才可预测。
+        sortScratch.resize(packet.commandCount);
+        for (uint32_t i = 0; i < packet.commandCount; ++i)
+        {
+            sortScratch[i] = i;
+        }
+        const DrawCommand* commands = packet.commands;
+        std::stable_sort(sortScratch.begin(), sortScratch.end(),
+                         [commands](uint32_t a, uint32_t b) {
+                             return commands[a].sortKey < commands[b].sortKey;
+                         });
+
+        recordCommands(commands, sortScratch.data(), packet.commandCount, push);
+
+        if (restoreViewport)
         {
             // 恢复整表面视口，避免影响同帧后续的 Submit
             RHI::Viewport full{};
@@ -496,6 +512,51 @@ namespace Render::RT::detail
         }
         return RxResult::Ok;
     }
+
+    RxResult Session::submitDrawList(DrawList* list, const float viewBounds[4])
+    {
+        if (!runtime || !surface)
+        {
+            return RxResult::ErrorInvalidHandle;
+        }
+        if (!list)
+        {
+            return RxResult::ErrorInvalidArgument;
+        }
+        if (!inFrame || !cmd)
+        {
+            runtime->log.error("[rt] rxSessionSubmitDrawList: 必须在 BeginFrame/EndFrame 之间调用");
+            return RxResult::ErrorUnknown;
+        }
+
+        // 常驻几何的脏区在这里一次性提交；瞬态环也要刷，因为同一帧里
+        // 覆盖层仍可能走瞬态路径。
+        runtime->transient.flush();
+        stats.geometryUploadBytes += runtime->flushGeometryStores();
+
+        PushConstants push{};
+        const bool restoreViewport = prepareSubmitState(nullptr, nullptr, &push);
+
+        uint32_t culled = 0;
+        uint32_t merged = 0;
+        const std::vector<DrawCommand>& resolved = list->resolve(viewBounds, culled, merged);
+        stats.culledCommandCount += culled;
+        stats.mergedDrawCount += merged;
+
+        // resolve 已按 sortKey 排好序并完成合批，这里不需要再排一次——
+        // 「每帧不重排」正是保留式列表相对 DrawPacket 的收益所在。
+        recordCommands(resolved.data(), nullptr, static_cast<uint32_t>(resolved.size()), push);
+
+        if (restoreViewport)
+        {
+            RHI::Viewport full{};
+            full.width = static_cast<float>(surface->width);
+            full.height = static_cast<float>(surface->height);
+            cmd->setViewport(full);
+        }
+        return RxResult::Ok;
+    }
+
 
     RxResult Session::endFrame()
     {
@@ -547,6 +608,115 @@ namespace Render::RT::detail
                                    RHI::resultName(presented));
             }
             return toRxResult(presented);
+        }
+        return RxResult::Ok;
+    }
+
+    RxResult Session::readPixels(int32_t x, int32_t y, uint32_t width, uint32_t height,
+                                 void* outBytes, uint64_t outByteCapacity)
+    {
+        if (!runtime || !runtime->device || !surface || !surface->rhi)
+        {
+            return RxResult::ErrorInvalidHandle;
+        }
+        if (!outBytes || width == 0 || height == 0)
+        {
+            return RxResult::ErrorInvalidArgument;
+        }
+        if (!inFrame)
+        {
+            // EndFrame 之后后备缓冲已交给呈现，内容不再保证有效。
+            // 这里报错而不是「尽力读一次」：读到上一帧或空白画面
+            // 比明确失败更难排查。
+            runtime->log.error("[rt] rxSessionReadPixels: 必须在 EndFrame 之前调用");
+            return RxResult::ErrorUnknown;
+        }
+
+        constexpr uint64_t kBytesPerPixel = 4;
+        const uint64_t required = static_cast<uint64_t>(width) * height * kBytesPerPixel;
+        if (outByteCapacity < required)
+        {
+            runtime->log.error("[rt] rxSessionReadPixels: 输出缓冲不足（需要 %llu，给了 %llu）",
+                               static_cast<unsigned long long>(required),
+                               static_cast<unsigned long long>(outByteCapacity));
+            return RxResult::ErrorInvalidArgument;
+        }
+
+        const RHI::TextureHandle color = surface->rhi->currentColorTexture();
+        if (!color.valid())
+        {
+            runtime->log.error("[rt] rxSessionReadPixels: 表面未提供颜色附件句柄");
+            return RxResult::ErrorUnsupportedBackend;
+        }
+
+        // 已录制的绘制必须先落到附件上才能读到。GL 下 readTexture 内部
+        // 会做同步读回，但命令仍可能停在驱动队列里。
+        if (cmd)
+        {
+            cmd->endRenderPass();
+        }
+        runtime->device->waitIdle();
+
+        RHI::Rect2D region{};
+        region.x = x;
+        region.y = y;
+        region.width = width;
+        region.height = height;
+
+        uint32_t rowPitch = 0;
+        const RHI::RhiResult read =
+            runtime->device->readTexture(color, region, outBytes, outByteCapacity, &rowPitch);
+
+        // 读回后必须重开 RenderPass：EndFrame 会无条件 endRenderPass，
+        // 不重开就变成未配对的 end，后端会报错并把整帧判废。
+        if (cmd)
+        {
+            RHI::RenderPassBeginDesc pass{};
+            pass.colorAttachmentCount = 1;
+            pass.colorAttachments[0].texture = {};
+            // Load 而不是 Clear：本帧已画好的内容不能被清掉
+            pass.colorAttachments[0].loadOp = RHI::LoadOp::Load;
+            pass.colorAttachments[0].storeOp = RHI::StoreOp::Store;
+            pass.hasDepthAttachment = surface->hasDepth;
+            if (surface->hasDepth)
+            {
+                pass.depthAttachment.texture = surface->rhi->depthTexture();
+                pass.depthAttachment.loadOp = RHI::LoadOp::Load;
+                pass.depthAttachment.storeOp = RHI::StoreOp::DontCare;
+            }
+            pass.extent = surface->rhi->extent();
+            pass.debugName = "RxSessionPassAfterReadback";
+            cmd->beginRenderPass(pass);
+        }
+
+        if (read != RHI::RhiResult::Ok)
+        {
+            runtime->log.error("[rt] rxSessionReadPixels: readTexture 失败（%s）",
+                               RHI::resultName(read));
+            return toRxResult(read);
+        }
+
+        // 契约是「恒 RGBA8、左上原点、rowPitch = width * 4」。
+        // 后端返回的行距不同（对齐）时按契约压紧，交换链是 BGRA 时换通道，
+        // 否则调用方要为每个后端各写一份解释代码。
+        const uint32_t tight = width * static_cast<uint32_t>(kBytesPerPixel);
+        auto* bytes = static_cast<uint8_t*>(outBytes);
+        if (rowPitch != 0 && rowPitch != tight)
+        {
+            for (uint32_t row = 1; row < height; ++row)
+            {
+                std::memmove(bytes + static_cast<size_t>(row) * tight,
+                             bytes + static_cast<size_t>(row) * rowPitch, tight);
+            }
+        }
+
+        const RHI::Format format = surface->rhi->colorFormat();
+        if (format == RHI::Format::BGRA8Unorm || format == RHI::Format::BGRA8Srgb)
+        {
+            for (uint64_t i = 0; i < required; i += kBytesPerPixel)
+            {
+                std::swap(bytes[i], bytes[i + 2]);
+            }
         }
         return RxResult::Ok;
     }

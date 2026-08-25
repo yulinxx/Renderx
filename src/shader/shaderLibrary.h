@@ -59,7 +59,11 @@ namespace Render::shader
      * @param name  文件名，含扩展名，例如 "scene_2d.vert"
      * @param lang  目标语言
      * @param out   输出，可为 nullptr（此时仅做存在性检查）
-     * @return 找到返回 true；未找到返回 false 并记录一条 Warn 日志
+     * @return 找到返回 true
+     *
+     * 本库不打印任何日志：它一度是 RenderX 中唯一硬依赖宿主日志库的位置。
+     * 失败时由调用方结合自身上下文报告，需要清单时用
+     * count()/nameAt()/languageAt() 枚举已嵌入的条目。
      */
     bool find(const char* name, Language lang, ShaderBlob* out);
 

@@ -4,7 +4,7 @@
 
 > **当前状态（2026-08-25）**
 >
-> - **公共 ABI**：`include/render/renderx.h` 是唯一公共头（32 个 `rx*` 导出，
+> - **公共 ABI**：`include/render/renderx.h` 是唯一公共头（48 个 `rx*` 导出，
 >   零 STL 跨界、全 POD、全 `static_assert` 锁尺寸、无 `bool`、句柄为
 >   `enum class : uint64_t`）。旧的 `render.h` / `RenderTypes.h` /
 >   `runtime_session.h` 已删除。
@@ -15,8 +15,13 @@
 >   **不静默回退到 Null**——回退的表现是画面全黑而调用方拿不到任何错误。
 > - **RT 层**：Runtime（1 设备 + 共享资源）/ Surface（N 窗口）/ Session（N 视口）
 >   已切到 `renderx.h`。多窗口共享 GPU 资源，不再是「多窗口 = 多设备」。
+> - **增量渲染**：`GeometryStore`（顶点常驻显存，只重写变化的块）+
+>   `DrawList`（命令由 DLL 持有，只 upsert 变化的槽位）。
+>   10 万条图元改一条时，两笔 O(n) 开销（重传顶点 / 重建命令）同时消掉。
 > - **Shader**：构建期编入二进制，运行期零文件 IO。
-> - **测试**：`RenderxTests` 34/34、`RenderxGLTests` 53/53，构建零警告。
+> - **零业务耦合**：Renderx 目录下已无任何 `Log/SyLogger.h` 引用；
+>   `otool -L` / `ldd` 结果只有 OpenGL + libc++ + libSystem，**零第一方依赖**。
+> - **测试**：`RenderxTests` 34/34、`RenderxGLTests` 68/68，构建零警告。
 >
 > **已知缺口**
 >
@@ -197,7 +202,7 @@ renderUpdateMaterial(dev, matIdx, &newMatDesc);
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│  公共 ABI：include/render/renderx.h（32 个 rx* 导出）          │
+│  公共 ABI：include/render/renderx.h（48 个 rx* 导出）          │
 ├──────────────────────────────────────────────────────────────┤
 │  RT 层：src/rt/ + src/c_api/rxCApi.cpp                        │
 │    Runtime（1 设备 + 管线缓存 / shader / 纹理 / 瞬态环）       │
@@ -322,7 +327,6 @@ Shader 在构建期转成字节数组编入 DLL，运行期没有任何文件 IO
 | 依赖库 | 说明 |
 |--------|------|
 | OpenGL | 跨平台图形 API，Windows 使用 opengl32，Linux/macOS 使用 OpenGL::GL |
-| Log | SanYi CAD 项目内部日志库（`../Log/Log/Include`） |
 | stb | Header-only 字体渲染库（stb_truetype），用于字体光栅化 |
 
 ## 渲染精度优化
@@ -724,7 +728,7 @@ add_subdirectory(Test)
 
 ## API 概要
 
-`include/render/renderx.h` 是唯一公共头，共 32 个 `rx*` 导出。
+`include/render/renderx.h` 是唯一公共头，共 48 个 `rx*` 导出。
 旧的 `render.h`（62 个 `render*` 函数）与 `runtime_session.h`（26 个函数）已删除：
 前者把图元语义、几何离散化、场景图、文本排版全部塞进了渲染 DLL；
 后者与 `renderx.h` 在 `namespace Render::RT` 里有 11 个同名但不兼容的类型。
@@ -766,9 +770,42 @@ add_subdirectory(Test)
 | `rxSessionBeginFrame` | 获取后备缓冲（GL 在此 makeCurrent）并开启 render pass。返回 `ErrorSurfaceOutOfDate` 时 resize 后重试本帧 |
 | `rxSessionAllocTransient` | 分配本帧顶点内存，只在 Begin/End 之间有效 |
 | `rxSessionSubmit` | 提交一批 `DrawCommand`；同一帧内可多次调用。DLL 按 `sortKey` 稳定排序后合批 |
+| `rxSessionSubmitDrawList` | 提交保留式绘制列表（增量渲染的每帧入口）。剔除/排序/合批在 DLL 内完成 |
 | `rxSessionEndFrame` | 结束 render pass、提交命令、呈现 |
+| `rxSessionReadPixels` | 读回当前后备缓冲（截图/视图导出）。**必须在 EndFrame 之前**；输出恒为 RGBA8、左上原点、逐行紧凑 |
 | `rxSessionQueryVisibility` | CPU 侧 AABB 与视口矩形相交（纯几何，不涉及 GPU） |
-| `rxSessionGetStats` | 本帧统计：绘制调用、三角/线/点数、管线切换、瞬态用量、GPU 内存 |
+| `rxSessionGetStats` | 本帧统计：绘制调用、三角/线/点数、管线切换、瞬态用量、剔除数、合批数、几何上传字节、GPU 内存 |
+
+### 增量渲染：几何仓与绘制列表
+
+瞬态环（`rxSessionAllocTransient`）服务「每帧都变」的数据；
+几何仓与绘制列表服务「帧间基本不变」的常驻场景。
+CAD 的负载是后者占绝大多数，10 万条图元改一条时前者要重搬 10 万条。
+
+| 函数 | 说明 |
+|------|------|
+| `rxGeometryStoreCreate` / `rxGeometryStoreDestroy` | 可增量更新的顶点/索引仓。翻倍扩容，上限由 `maxBytes` 限定 |
+| `rxGeometryStoreGetBuffer` | 取仓当前底层缓冲句柄。扩容后句柄数值保持稳定，一般不需要重取 |
+| `rxGeometryAlloc` | 分配一块。返回 `ErrorGeometryStoreGrown`（**正数，非失败**）表示分配成功且底层缓冲已替换 |
+| `rxGeometryWrite` | 写入块内数据。只登记脏区间，不立即上传 |
+| `rxGeometryFree` | 释放一块。空闲表与相邻空洞合并，避免碎片累积 |
+| `rxGeometryFlush` | 主动刷脏区。正常不需要调用——Session 提交前会自动刷；仅帧外批量建场景时用 |
+| `rxGeometryStoreGetStats` | 容量/已用/最大空洞/块数/空闲区间数/待刷脏字节/扩容次数 |
+| `rxDrawListCreate` / `rxDrawListDestroy` | DLL 侧持有的 `DrawCommand` 集合 |
+| `rxDrawListUpsert` | 按槽位写入/更新，**只在图元真正变化时调用**。可附 AABB 供 DLL 剔除 |
+| `rxDrawListRemove` / `rxDrawListClear` | 移除单槽 / 清空全部（保留已分配容量） |
+| `rxDrawListGetStats` | 条目数、上帧可见数、上帧 draw call 数、累计排序次数、内存占用 |
+
+三条容易踩的约定：
+
+- 所有几何仓/绘制列表函数都要求同时传 `RuntimeHandle`。所有权在 Runtime 上，
+  只传仓句柄无法校验它属于哪个 Runtime——跨 Runtime 误用是多窗口下
+  最容易犯且最难查的错误。
+- 槽号必须**紧凑分配**（上限 `1 << 24`）。条目按 slot 直接下标存放，
+  直接拿实体的 64 位 ID 当槽号会撑爆内存，这种情况明确报错。
+- 合批只对**列表型拓扑**（Points / Lines / Triangles）生效。
+  Strip / Loop 即使顶点连续、状态相同也绝不合并——那会把两条独立折线
+  连起来多画一段，而这种错误在密集图形里几乎看不出来。
 
 ### 工具
 

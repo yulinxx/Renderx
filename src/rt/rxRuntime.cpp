@@ -499,6 +499,29 @@ namespace Render::RT::detail
         }
         surfaces.clear();
 
+        // 绘制列表先拆：它引用几何仓里的块，反过来则不引用。
+        for (DrawList* list : drawLists)
+        {
+            if (list)
+            {
+                list->shutdown();
+                delete list;
+            }
+        }
+        drawLists.clear();
+
+        // 几何仓的 shutdown 会 device->destroyBuffer 并从 buffers 表摘除自己，
+        // 因此必须早于下面的 buffers 统一清理，否则同一个缓冲被销毁两次。
+        for (GeometryStore* store : geometryStores)
+        {
+            if (store)
+            {
+                store->shutdown();
+                delete store;
+            }
+        }
+        geometryStores.clear();
+
         transient.shutdown();
 
         if (device)
@@ -735,6 +758,101 @@ namespace Render::RT::detail
         return RxResult::Ok;
     }
 
+    // ==================== Runtime：增量渲染 ====================
+
+    GeometryStoreHandle Runtime::createGeometryStore(const GeometryStoreDesc& desc)
+    {
+        if (!device)
+        {
+            return GeometryStoreHandle::Invalid;
+        }
+        auto* store = new GeometryStore();
+        if (!store->initialize(this, desc))
+        {
+            // initialize 内部已记录具体原因
+            delete store;
+            return GeometryStoreHandle::Invalid;
+        }
+        return static_cast<GeometryStoreHandle>(geometryStores.insert(store));
+    }
+
+    GeometryStore* Runtime::resolveGeometryStore(GeometryStoreHandle handle)
+    {
+        if (handle == GeometryStoreHandle::Invalid)
+        {
+            return nullptr;
+        }
+        GeometryStore** found = geometryStores.find(static_cast<uint64_t>(handle));
+        return found ? *found : nullptr;
+    }
+
+    void Runtime::destroyGeometryStore(GeometryStoreHandle handle)
+    {
+        GeometryStore* store = resolveGeometryStore(handle);
+        if (!store)
+        {
+            log.warn("[rt] rxGeometryStoreDestroy: 句柄无效或已销毁");
+            return;
+        }
+        // 仓销毁后，任何仍引用它的 DrawCommand 都会在 resolveBuffer 时拿到
+        // 无效句柄并被跳过（带 warn），不会崩——但调用方应当先清理 DrawList。
+        store->shutdown();
+        delete store;
+        geometryStores.erase(static_cast<uint64_t>(handle));
+    }
+
+    uint64_t Runtime::flushGeometryStores()
+    {
+        uint64_t uploaded = 0;
+        for (GeometryStore* store : geometryStores)
+        {
+            if (!store)
+            {
+                continue;
+            }
+            // 先清零再 flush，于是 uploadBytesThisFrame 恰好是本次的增量。
+            // 跨帧累加会让统计随运行时长单调增长，失去意义。
+            store->resetFrameCounters();
+            store->flush();
+            uploaded += store->uploadBytesThisFrame();
+        }
+        return uploaded;
+    }
+
+    DrawListHandle Runtime::createDrawList(const DrawListDesc& desc)
+    {
+        auto* list = new DrawList();
+        if (!list->initialize(this, desc))
+        {
+            delete list;
+            return DrawListHandle::Invalid;
+        }
+        return static_cast<DrawListHandle>(drawLists.insert(list));
+    }
+
+    DrawList* Runtime::resolveDrawList(DrawListHandle handle)
+    {
+        if (handle == DrawListHandle::Invalid)
+        {
+            return nullptr;
+        }
+        DrawList** found = drawLists.find(static_cast<uint64_t>(handle));
+        return found ? *found : nullptr;
+    }
+
+    void Runtime::destroyDrawList(DrawListHandle handle)
+    {
+        DrawList* list = resolveDrawList(handle);
+        if (!list)
+        {
+            log.warn("[rt] rxDrawListDestroy: 句柄无效或已销毁");
+            return;
+        }
+        list->shutdown();
+        delete list;
+        drawLists.erase(static_cast<uint64_t>(handle));
+    }
+
     // ==================== Runtime：管线 ====================
 
     RHI::ShaderHandle Runtime::shaderByName(const char* name)
@@ -752,8 +870,10 @@ namespace Render::RT::detail
         const char* source = shader::glslSource(name);
         if (!source)
         {
-            // shaderLibrary 已记录一条 Warn（含可用条目数），这里补上使用者上下文
-            log.error("[rt] 内建 shader \"%s\" 不存在", name);
+            // shaderLibrary 本身不打印日志（保持零业务耦合），
+            // 因此这里把可用条目数一并报出来，便于区分「名字写错」
+            // 与「shader 根本没被嵌进来」。
+            log.error("[rt] 内建 shader \"%s\" 不存在（已嵌入 %u 个条目）", name, shader::count());
             return {};
         }
 

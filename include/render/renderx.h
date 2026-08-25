@@ -83,7 +83,7 @@
 // ==================== ABI 版本 ====================
 
 #define RENDERX_ABI_VERSION_MAJOR 3
-#define RENDERX_ABI_VERSION_MINOR 0
+#define RENDERX_ABI_VERSION_MINOR 1
 #define RENDERX_ABI_VERSION \
     ((RENDERX_ABI_VERSION_MAJOR << 16) | RENDERX_ABI_VERSION_MINOR)
 
@@ -108,6 +108,16 @@ namespace Render
             ErrorAbiVersionMismatch = -9,
             /// 交换链尺寸失效，调用 rxSurfaceResize 后重试本帧
             ErrorSurfaceOutOfDate = -10,
+            /**
+             * 几何仓已扩容，底层缓冲句柄被替换。
+             *
+             * 这**不是失败**——分配是成功的，但调用方手里所有旧
+             * GeometryBlock 的 `buffer` 字段都已失效，必须用
+             * rxGeometryStoreGetBuffer 重新取一次。
+             * 之所以用返回码显式告知而不是静默替换：静默替换会让调用方
+             * 拿着旧句柄提交，表现为「一部分图元突然不见了」。
+             */
+            ErrorGeometryStoreGrown = 1,
         };
 
         // ==================== 句柄 ====================
@@ -120,6 +130,10 @@ namespace Render
         enum class SessionHandle : uint64_t { Invalid = 0 };
         enum class BufferHandle : uint64_t { Invalid = 0 };
         enum class TextureHandle : uint64_t { Invalid = 0 };
+        /// 持久几何仓：可增量更新的顶点/索引存储（见「增量渲染」一节）
+        enum class GeometryStoreHandle : uint64_t { Invalid = 0 };
+        /// 保留式绘制列表：DLL 侧持有并复用的 DrawCommand 集合
+        enum class DrawListHandle : uint64_t { Invalid = 0 };
 
         template <typename H>
         constexpr bool rxValid(H h)
@@ -300,9 +314,10 @@ namespace Render
         /**
          * @brief 日志回调
          *
-         * DLL 不再硬依赖宿主的日志库（此前 17 个源文件直接
-         * #include "Log/SyLogger.h"，这是 RenderX 无法独立复用的唯一原因）。
-         * message 仅在回调期间有效。
+         * DLL 不依赖宿主的日志库。此前 17 个源文件直接
+         * #include "Log/SyLogger.h"，这是 RenderX 无法独立复用的原因；
+         * 现在整个 Renderx 目录下已无该头文件的任何引用，
+         * 日志一律通过本回调交回宿主。message 仅在回调期间有效。
          */
         using rxLogCallback = void (*)(LogLevel level, const char* message, void* userData);
 
@@ -472,6 +487,112 @@ namespace Render
         };
         static_assert(sizeof(VisibilityResult) == 16, "VisibilityResult ABI size changed");
 
+        // ==================== 增量渲染：持久几何仓 ====================
+        //
+        // 瞬态环（rxSessionAllocTransient）解决的是「每帧都变」的数据：
+        // 预览线、橡皮筋、覆盖层。它的代价是每帧全量重传。
+        //
+        // 但 CAD 场景的绝大多数图元**帧间不变**。10 万条线段里改动一条，
+        // 用瞬态环意味着重传 10 万条。几何仓就是为这种情况存在的：
+        // 顶点常驻显存，编辑只重写变化的那一块。
+        //
+        // 仓内按块（Block）细分配，块的释放走空闲表并合并相邻空洞。
+        // 写入不立即上传：脏区间累积到帧末合并后一次性提交，
+        // 避免「改了 1 万个小块 = 1 万次 writeBuffer」。
+
+        struct GeometryStoreDesc
+        {
+            /// 初始容量（字节）。0 表示用默认值 4MB。
+            uint64_t initialBytes;
+            /// 增长上限（字节）。0 表示不限（受设备显存约束）。
+            uint64_t maxBytes;
+            /// 分配粒度（字节），会向上取整到 16 的倍数。0 表示默认 256。
+            /// 粒度越大碎片越多，但空闲表越短、合并越快。
+            uint32_t granularity;
+            /// 0/1。是否用于索引数据（影响 RHI 的 usage 标记）。
+            uint8_t forIndices;
+            uint8_t _pad0[3];
+        };
+        static_assert(sizeof(GeometryStoreDesc) == 24, "GeometryStoreDesc ABI size changed");
+
+        /**
+         * @brief 几何仓中的一块
+         *
+         * `buffer` + `offset` 可直接填进 DrawCommand 的 vertexBuffer/vertexOffset。
+         *
+         * ⚠️ 仓扩容时底层缓冲会被替换，此时**所有已发出的 GeometryBlock 中的
+         * `buffer` 字段都会失效**。调用方必须在 rxGeometryAlloc 返回
+         * `ErrorGeometryStoreGrown` 后用 rxGeometryStoreGetBuffer 重新取一次句柄。
+         * 这个约定是显式的——静默替换句柄会让调用方拿着旧句柄画出空白。
+         */
+        struct GeometryBlock
+        {
+            BufferHandle buffer;
+            /// 块标识。释放与写入都用它，不要用 offset 当身份（扩容/整理后会变）。
+            uint64_t id;
+            uint32_t offset;
+            uint32_t sizeBytes;
+        };
+        static_assert(sizeof(GeometryBlock) == 24, "GeometryBlock ABI size changed");
+
+        struct GeometryStoreStats
+        {
+            uint64_t capacityBytes;
+            /// 已分配给块的字节数（含粒度对齐产生的内部浪费）
+            uint64_t usedBytes;
+            /// 空闲表中最大连续空洞，用于判断是否需要整理
+            uint64_t largestFreeBytes;
+            uint32_t blockCount;
+            uint32_t freeRangeCount;
+            /// 本帧因写入而排队的脏字节数（合并后）
+            uint64_t dirtyBytesThisFrame;
+            /// 累计扩容次数。频繁扩容说明 initialBytes 给小了。
+            uint32_t growCount;
+            uint32_t _pad0;
+        };
+        static_assert(sizeof(GeometryStoreStats) == 48, "GeometryStoreStats ABI size changed");
+
+        // ==================== 增量渲染：保留式绘制列表 ====================
+        //
+        // 每帧重建 10 万条 DrawCommand 的 CPU 开销与重传顶点同量级，
+        // 而其中绝大多数条目帧间完全相同。DrawList 让 DLL 持有这份列表，
+        // 调用方只 upsert 变化的槽位。
+        //
+        // DLL 在提交时做三件调用方做不了、或做不划算的事：
+        //   1. 视口剔除（用条目自带的 AABB，不需要调用方每帧再传一份）
+        //   2. 按 sortKey 排序——列表只在有改动时重排，不是每帧
+        //   3. 合批：相邻条目若状态相同且顶点区间连续，合成一次 draw
+        //
+        // 「状态相同 + 顶点连续」在几何仓里是常态，因为同类图元的块通常
+        // 挨着分配。这正是几何仓与绘制列表要配合使用的原因。
+
+        struct DrawListDesc
+        {
+            /// 预留槽位数。可后续增长，预留只是避免早期反复搬迁。
+            uint32_t initialCapacity;
+            /// 0/1。是否启用合批。关闭便于排查「某图元没画出来」是否合批所致。
+            uint8_t enableMerging;
+            /// 0/1。是否启用基于条目 AABB 的剔除。
+            uint8_t enableCulling;
+            uint8_t _pad0[2];
+        };
+        static_assert(sizeof(DrawListDesc) == 8, "DrawListDesc ABI size changed");
+
+        struct DrawListStats
+        {
+            /// 列表中有效条目数
+            uint32_t entryCount;
+            /// 上一次提交中通过剔除的条目数
+            uint32_t visibleCount;
+            /// 上一次提交合批后实际发出的 draw 数。
+            /// visibleCount / drawCallCount 就是合批率。
+            uint32_t drawCallCount;
+            /// 排序发生的次数。若每帧都在涨，说明调用方每帧都在改 sortKey。
+            uint32_t sortCount;
+            uint64_t capacityBytes;
+        };
+        static_assert(sizeof(DrawListStats) == 24, "DrawListStats ABI size changed");
+
         struct FrameStats
         {
             uint32_t drawCallCount;
@@ -479,11 +600,19 @@ namespace Render
             uint32_t lineCount;
             uint32_t pointCount;
             uint32_t pipelineSwitches;
+            /// 被剔除（未提交给 GPU）的命令数。与 drawCallCount 一起看
+            /// 才能判断剔除是否真的在起作用。
+            uint32_t culledCommandCount;
+            /// 合批省下的 draw 数：合批前的可见条目数 - 实际 draw 数
+            uint32_t mergedDrawCount;
             uint32_t _pad0;
             uint64_t transientBytesUsed;
+            /// 本帧几何仓实际上传的字节数（脏区合并后）。
+            /// 增量渲染是否生效，看的就是这个值是否远小于顶点总量。
+            uint64_t geometryUploadBytes;
             uint64_t gpuMemoryBytes;
         };
-        static_assert(sizeof(FrameStats) == 40, "FrameStats ABI size changed");
+        static_assert(sizeof(FrameStats) == 56, "FrameStats ABI size changed");
 
         /**
          * @brief 后端能力
@@ -586,6 +715,97 @@ namespace Render
         RENDER_API RxResult rxFontLoad(RuntimeHandle runtime, const void* fontData,
                                        uint64_t dataSize, float pixelHeight);
 
+        // ---------- 持久几何仓：增量更新的顶点/索引存储 ----------
+        //
+        // 典型用法（10 万条线段的场景，编辑一条）：
+        //
+        //   GeometryStoreHandle store = rxGeometryStoreCreate(runtime, &storeDesc);
+        //   // 建场景：每个图元一块
+        //   for (每个图元) {
+        //       GeometryBlock block{};
+        //       rxGeometryAlloc(store, bytes, &block);
+        //       rxGeometryWrite(store, block.id, 0, bytes, vertices);
+        //       记录 block;  // 之后靠它做增量更新
+        //   }
+        //   // 编辑一条：只重写那一块，其余 99999 条一个字节都不动
+        //   rxGeometryWrite(store, block.id, 0, bytes, newVertices);
+
+        RENDER_API GeometryStoreHandle rxGeometryStoreCreate(RuntimeHandle runtime,
+                                                            const GeometryStoreDesc* desc);
+        RENDER_API void rxGeometryStoreDestroy(RuntimeHandle runtime, GeometryStoreHandle store);
+
+        /// 取仓当前的底层缓冲句柄。扩容后必须重新调用（见 ErrorGeometryStoreGrown）。
+        RENDER_API BufferHandle rxGeometryStoreGetBuffer(RuntimeHandle runtime,
+                                                        GeometryStoreHandle store);
+
+        /**
+         * @brief 在仓内分配一块
+         *
+         * @return Ok；`ErrorGeometryStoreGrown` 表示分配成功但底层缓冲已被替换，
+         *         调用方需刷新此前持有的所有 GeometryBlock::buffer；
+         *         `ErrorOutOfMemory` 表示达到 maxBytes 上限。
+         */
+        RENDER_API RxResult rxGeometryAlloc(RuntimeHandle runtime, GeometryStoreHandle store,
+                                           uint64_t sizeBytes, GeometryBlock* out);
+
+        /**
+         * @brief 写入块内数据（增量更新的核心）
+         *
+         * 只标记脏区间，不立即上传。脏区间在帧末（或 rxGeometryFlush）合并后
+         * 一次性提交，因此「改 1 万个小块」不会变成 1 万次 GPU 传输。
+         *
+         * @param blockId  rxGeometryAlloc 返回的 GeometryBlock::id
+         * @param byteOffset 块内偏移
+         */
+        RENDER_API RxResult rxGeometryWrite(RuntimeHandle runtime, GeometryStoreHandle store,
+                                           uint64_t blockId, uint32_t byteOffset,
+                                           uint32_t sizeBytes, const void* data);
+
+        /// 释放一块。空闲表会与相邻空洞合并，避免碎片累积。
+        RENDER_API RxResult rxGeometryFree(RuntimeHandle runtime, GeometryStoreHandle store,
+                                          uint64_t blockId);
+
+        /// 主动把累积的脏区间刷到 GPU。正常情况下不需要调用——
+        /// Session 在提交前会自动刷；只有在帧外批量建场景时才需要。
+        RENDER_API RxResult rxGeometryFlush(RuntimeHandle runtime, GeometryStoreHandle store);
+
+        RENDER_API RxResult rxGeometryStoreGetStats(RuntimeHandle runtime, GeometryStoreHandle store,
+                                                   GeometryStoreStats* out);
+
+        // ---------- 保留式绘制列表 ----------
+        //
+        // 与几何仓配合使用：几何仓免掉重传顶点，绘制列表免掉重建命令。
+        //
+        //   DrawListHandle list = rxDrawListCreate(runtime, &listDesc);
+        //   rxDrawListUpsert(list, slot, &command, aabb);   // 只在图元变化时调
+        //   ...
+        //   rxSessionSubmitDrawList(session, list, viewBounds);  // 每帧一行
+
+        RENDER_API DrawListHandle rxDrawListCreate(RuntimeHandle runtime, const DrawListDesc* desc);
+        RENDER_API void rxDrawListDestroy(RuntimeHandle runtime, DrawListHandle list);
+
+        /**
+         * @brief 写入/更新一个槽位
+         *
+         * @param slot 调用方自行分配的槽号，用它把渲染条目关联回业务实体。
+         *             槽号不必连续；列表按需增长。
+         * @param aabb 世界空间 (minX, minY, maxX, maxY)，用于 DLL 侧剔除。
+         *             传 nullptr 表示该条目永不被剔除（覆盖层通常如此）。
+         */
+        RENDER_API RxResult rxDrawListUpsert(RuntimeHandle runtime, DrawListHandle list,
+                                             uint32_t slot, const DrawCommand* command,
+                                             const float aabb[4]);
+
+        /// 移除一个槽位。槽位可被后续 upsert 复用。
+        RENDER_API RxResult rxDrawListRemove(RuntimeHandle runtime, DrawListHandle list,
+                                             uint32_t slot);
+
+        /// 清空全部条目，保留已分配容量。
+        RENDER_API RxResult rxDrawListClear(RuntimeHandle runtime, DrawListHandle list);
+
+        RENDER_API RxResult rxDrawListGetStats(RuntimeHandle runtime, DrawListHandle list,
+                                               DrawListStats* out);
+
         // ---------- Surface：窗口表面 ----------
 
         /// 为一个窗口创建可呈现表面。同一 Runtime 可创建任意多个。
@@ -616,6 +836,20 @@ namespace Render
         /// 提交一批绘制命令。同一帧内可多次调用。
         RENDER_API RxResult rxSessionSubmit(SessionHandle session, const DrawPacket* packet);
 
+        /**
+         * @brief 提交一个保留式绘制列表（增量渲染的每帧入口）
+         *
+         * 与 rxSessionSubmit 的区别：命令由 DLL 持有，调用方不必每帧重建。
+         * DLL 内部依次做：几何仓脏区刷写 → AABB 剔除 → 按需排序 → 合批 → 绘制。
+         *
+         * @param viewBounds 世界空间 (minX, minY, maxX, maxY)。传 nullptr 关闭剔除。
+         *
+         * 同一帧内可以既提交绘制列表（常驻场景）又调 rxSessionSubmit
+         * （覆盖层、预览线等每帧都变的内容），两者的 sortKey 在各自提交内排序。
+         */
+        RENDER_API RxResult rxSessionSubmitDrawList(SessionHandle session, DrawListHandle list,
+                                                    const float viewBounds[4]);
+
         /// 结束并呈现本帧（GL: swapBuffers, Metal: presentDrawable, VK: queuePresent）
         RENDER_API RxResult rxSessionEndFrame(SessionHandle session);
 
@@ -623,6 +857,24 @@ namespace Render
                                                      uint32_t aabbCount, const float viewBounds[4],
                                                      VisibilityResult* out);
         RENDER_API RxResult rxSessionGetStats(SessionHandle session, FrameStats* out);
+
+        /**
+         * @brief 读回当前后备缓冲的像素（视图导出/截图）
+         *
+         * 必须在 rxSessionEndFrame **之前**调用——EndFrame 之后后备缓冲已交给
+         * 呈现引擎，内容不再保证有效。
+         *
+         * 输出恒为 RGBA8、**左上原点**、逐行紧凑（rowPitch = width * 4）。
+         * 各后端的原生原点不一致（GL 是左下），翻转在 DLL 内完成，
+         * 这样调用方不需要知道当前跑的是哪个后端。
+         *
+         * @param x,y      读取区域左上角（像素，左上原点）
+         * @param outBytes 至少 width * height * 4 字节
+         * @return ErrorInvalidArgument 表示区域越界或缓冲过小
+         */
+        RENDER_API RxResult rxSessionReadPixels(SessionHandle session, uint32_t x, uint32_t y,
+                                                uint32_t width, uint32_t height, void* outBytes,
+                                                uint64_t outByteCapacity);
 
         // ---------- 工具 ----------
 
