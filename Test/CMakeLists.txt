@@ -1,38 +1,32 @@
 # Renderx 渲染引擎单元测试配置
 #
 # 测试分为两个目标：
-# 1. RenderxTests：Null backend，无需 GPU/OpenGL 上下文，适用于 CI/CD
-# 2. RenderxGLTests：OpenGL backend，需要 OpenGL 上下文，仅在本地开发环境运行
+# 1. RenderxTests：纯数据结构测试，不链接任何后端，适用于 CI/CD
+# 2. RenderxGLTests：链接完整 RHI（Null + GL 后端）与 RT 层
+#
+# 为什么 RHI/RT 的契约测试在「GL」目标里跑 Null 后端：
+# rhiFactory.cpp 里 createDevice 会引用 createGlDevice，链接期必须提供
+# GL 后端与 glLoader（以及 opengl32 / 系统 GL 库）。拆成两个工厂只为测试
+# 服务会让产品代码多出一条分支，不值得。
 
 find_package(GTest REQUIRED)
 include(GoogleTest)
 
 # ============================================================
-# Target 1: RenderxTests (Null backend, no GPU required)
+# Target 1: RenderxTests (纯头文件数据结构，无后端依赖)
 # ============================================================
 
 set(RENDERX_NULL_TEST_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/ArenaTests.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/SlotMapTests.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/NullBackendTests.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/RuntimeSessionTests.cpp"
 )
 
-# Null backend 仅需要 rhiNull.cpp，不依赖 OpenGL。
-# 注意：源文件名必须与磁盘上的大小写完全一致。此前这里写的是
-# rhinull.cpp / renderruntime.cpp / transientbufferpool.cpp / rhigl.cpp /
-# glloader.cpp（全小写），仅在 macOS/Windows 的大小写不敏感文件系统上
-# 侥幸解析成功，在 Linux 上会直接配置失败。
-set(RENDERX_NULL_INTERNAL_SOURCES
-    "${CMAKE_CURRENT_SOURCE_DIR}/../src/rhi/rhiNull.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/../src/core/pipelineStateManager.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/../src/core/rendererRuntime.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/../src/core/rendererSession.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/../src/c_api/renderCApiRuntime.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/StubRHIFactories.cpp"
-)
+# 已删除：NullBackendTests.cpp / RuntimeSessionTests.cpp —— 它们测的是旧
+# RHI（rhiNull.h）与旧 RT C API（runtime_session.h），两者均已删除。
+# 等价覆盖分别落在 RhiCoreTests.cpp（新 RHI 契约）与 RxRuntimeTests.cpp
+# （renderx.h 的 rx* 接口）。
 
-add_executable(RenderxTests ${RENDERX_NULL_TEST_SOURCES} ${RENDERX_NULL_INTERNAL_SOURCES})
+add_executable(RenderxTests ${RENDERX_NULL_TEST_SOURCES})
 
 target_compile_features(RenderxTests PRIVATE cxx_std_17)
 
@@ -64,27 +58,25 @@ target_link_libraries(RenderxTests PRIVATE
 gtest_discover_tests(RenderxTests)
 
 # ============================================================
-# Target 2: RenderxGLTests (OpenGL backend, requires GPU)
+# Target 2: RenderxGLTests (完整 RHI + RT；测试本身跑 Null 后端)
 # ============================================================
 
 set(RENDERX_GL_TEST_SOURCES
-    "${CMAKE_CURRENT_SOURCE_DIR}/TransientBufferPoolTests.cpp"
-    # 新 RHI 的契约测试跑在 Null 后端上（不需要 GL 上下文），但放在本目标里：
-    # rhiFactory.cpp 会引用 createGlDevice，链接时需要 GL 后端与 glLoader，
-    # 而 RenderxTests 目标不链接 OpenGL。
     "${CMAKE_CURRENT_SOURCE_DIR}/RhiCoreTests.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/RxRuntimeTests.cpp"
 )
 
-# OpenGL tests 需要完整的 GL 栈
 set(RENDERX_GL_INTERNAL_SOURCES
-    "${CMAKE_CURRENT_SOURCE_DIR}/../src/core/transientBufferPool.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/../src/rhi/rhiGl.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/../src/platform/glLoader.cpp"
-    # 新 RHI：工厂 + Null 后端 + GL 后端
+    # RHI：工厂 + Null 后端 + GL 后端
     "${CMAKE_CURRENT_SOURCE_DIR}/../src/rhi/rhiFactory.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/../src/rhi/null/nullBackend.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/../src/rhi/gl/glDevice.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/../src/rhi/gl/glCommandList.cpp"
+    # RT：Runtime / Session / C API
+    "${CMAKE_CURRENT_SOURCE_DIR}/../src/rt/rxRuntime.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../src/rt/rxSession.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../src/c_api/rxCApi.cpp"
 )
 
 add_executable(RenderxGLTests ${RENDERX_GL_TEST_SOURCES} ${RENDERX_GL_INTERNAL_SOURCES})

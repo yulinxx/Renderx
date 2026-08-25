@@ -1,15 +1,12 @@
-// 屏幕空间点图元 / P3C3
-//
-// 与 screen_p3c3.vert 的唯一差别是写 gl_PointSize（取自共用 pushConstant 块）。
-// 需要 GL_PROGRAM_POINT_SIZE 已启用。
+// 屏幕空间点图元 / P3C4（带透明度）
 #version 330 core
 
 #include "rx_push_constants.glsl"
 
 layout(location = 0) in vec3 aPos;
-layout(location = 1) in vec3 aColor;
+layout(location = 1) in vec4 aColor;
 
-out vec3 vColor;
+out vec4 vColor;
 
 void main()
 {

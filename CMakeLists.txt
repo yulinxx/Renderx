@@ -61,17 +61,15 @@ endif()
 
 # 公开头文件列表（对外暴露的API头文件）
 #
-# 目标形态：renderx.h 是唯一公共头（零 STL、全 POD、全 static_assert）。
-# RenderTypes.h 与 runtime_session.h 是收缩中的 legacy 头，将在
-# Phase 6（Runtime/Surface/Session 切到 renderx.h）后一并删除。
-# 二者与 renderx.h 在 namespace Render::RT 中有同名类型，不能同时 include。
+# renderx.h 是**唯一**公共头（零 STL、全 POD、全 static_assert）。
 #
 # 已删除：render.h（62 个 C API，其中 4 个函数早已无定义）、
-# TessParams.h（通过公共头共享 inline 离散化实现，是耦合而非封装）。
+# TessParams.h（通过公共头共享 inline 离散化实现，是耦合而非封装）、
+# RenderTypes.h 与 runtime_session.h（旧 RT C API；其能力已由 renderx.h
+# 的 rx* 接口完整覆盖，且二者与 renderx.h 在 namespace Render::RT 中
+# 有 11 个同名但不兼容的类型，无法共存）。
 set(RENDER_PUBLIC_HEADERS
     include/render/renderx.h
-    include/render/RenderTypes.h
-    include/render/runtime_session.h
 )
 
 # 源文件列表
@@ -116,25 +114,34 @@ set(RENDER_PUBLIC_HEADERS ${RENDER_HEADERS_NORM})
 # .metallib -> Metal 库，.metal -> MSL。
 set(RENDERX_SHADER_SOURCES
     # ---- RT 默认管线（DefaultPipeline 枚举对应）----
-    # 这 11 个此前是 rendererRuntime.cpp 里的 raw string 字面量。内联在 .cpp 中
+    # 这些此前是 rendererRuntime.cpp 里的 raw string 字面量。内联在 .cpp 中
     # 的 GLSL 无法被语法高亮、无法被构建工具交叉编译成 SPIR-V / MSL，
     # 也绕过了 src/shader/ 目录的存在意义，因此提取为独立文件。
     ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/world_p3c3.vert
     ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/world_p3c3.frag
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/world_point_p3c3.frag
     ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/world_p3c4.vert
     ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/world_p3c4.frag
     # 世界锚定 + 屏幕定尺寸（RenderSpace::WorldPinned，见新渲染架构 §15）。
     # 片段复用 world_p3c4.frag。
     ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/world_pinned_p3o2c4.vert
     ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/screen_p3c3.vert
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/screen_point_p3c3.vert
     ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/screen_p3c4.vert
     ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/screen_p3c4.frag
     ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/screen_tex_p2t2c4.vert
     ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/screen_tex_p2t2c4.frag
 
-    # ---- 文本（Phase 6 字体图集接入 Runtime 时启用）----
+    # ---- 点图元 ----
+    # 点必须有独立的顶点着色器：尺寸是像素量、只能写 gl_PointSize，
+    # 无法用顶点几何表达（否则缩放时点会跟着变大）。
+    # 片段着色器与空间无关，世界/屏幕共用。
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/world_point_p3c3.vert
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/world_point_p3c4.vert
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/screen_point_p3c3.vert
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/screen_point_p3c4.vert
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/point_p3c3.frag
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/point_p3c4.frag
+
+    # ---- 文本（字体图集接入 Runtime 时启用）----
     ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/text_sdf.vert
     ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/text_sdf.frag
     ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/text_screen.vert
@@ -153,6 +160,14 @@ set(RENDERX_SHADER_SOURCES
 # 已删除：scene_2d.* / overlay.* / overlay_screen.* / bitmap.*
 # 它们只服务于已删除的 legacy 路径，且仅被 rhiGl.cpp 中一段约 125 行的
 # 字符串比较链引用——那段链在 legacy 删除后已成死代码。
+# world_point_p3c3.frag 已更名为 point_p3c3.frag：点的圆形裁剪只发生在屏幕上，
+# 与渲染空间无关，原名有误导性。
+
+# 被 #include 进上面这些 shader 的片段。它们本身不作为独立 shader 嵌入，
+# 但必须声明为构建依赖，否则修改后不会触发重新生成——这正是旧方案的老问题。
+set(RENDERX_SHADER_INCLUDES
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/rx_push_constants.glsl
+)
 
 set(RENDERX_EMBED_SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/CMake/EmbedShaders.cmake")
 set(RENDERX_GENERATED_SHADER_CPP "${CMAKE_CURRENT_BINARY_DIR}/generated/shaderBlobs.cpp")
@@ -172,7 +187,7 @@ add_custom_command(
         -P "${RENDERX_EMBED_SCRIPT}"
     # 把 shader 文件本身声明为依赖——这正是旧方案缺失的一环：
     # 此前 .vert/.frag 改动不触发任何重新构建
-    DEPENDS ${RENDERX_SHADER_SOURCES} "${RENDERX_EMBED_SCRIPT}"
+    DEPENDS ${RENDERX_SHADER_SOURCES} ${RENDERX_SHADER_INCLUDES} "${RENDERX_EMBED_SCRIPT}"
     COMMENT "[Renderx] Embedding ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/* into shaderBlobs.cpp"
     VERBATIM
 )
@@ -188,7 +203,8 @@ add_custom_command(
 list(REMOVE_ITEM RENDER_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/shader/shaderLibrary.cpp")
 
 # 让 shader 源文件出现在 IDE 工程树中（不参与编译）
-set_source_files_properties(${RENDERX_SHADER_SOURCES} PROPERTIES HEADER_FILE_ONLY TRUE)
+set_source_files_properties(${RENDERX_SHADER_SOURCES} ${RENDERX_SHADER_INCLUDES}
+    PROPERTIES HEADER_FILE_ONLY TRUE)
 
 
 # ==================== 依赖库配置 ====================

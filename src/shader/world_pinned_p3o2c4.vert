@@ -14,13 +14,11 @@
 // 分配 attribute slot（见 Docs/Mac渲染.md §9）。
 #version 330 core
 
+#include "rx_push_constants.glsl"
+
 layout(location = 0) in vec3 aAnchor;
 layout(location = 1) in vec2 aOffsetPx;
 layout(location = 2) in vec4 aColor;
-
-uniform mat4 uView;
-/// 视口像素尺寸（宽, 高），由 Session 每帧写入
-uniform vec2 uViewportSize;
 
 out vec4 vColor;
 
@@ -32,9 +30,9 @@ void main()
 
     // 退化保护：视口尺寸为 0（窗口最小化）时不做偏移，避免除零产生 NaN
     // 顶点——NaN 顶点会让整个图元消失，且没有任何报错。
-    if (uViewportSize.x > 0.0 && uViewportSize.y > 0.0)
+    if (uViewport.x > 0.0 && uViewport.y > 0.0)
     {
-        clip.xy += aOffsetPx * (2.0 / uViewportSize) * clip.w;
+        clip.xy += aOffsetPx * (2.0 / uViewport) * clip.w;
     }
 
     gl_Position = clip;

@@ -1,13 +1,14 @@
 // 屏幕空间 / P3C3
 //
 // aPos.xy 直接是像素坐标（左上原点），在此转 NDC。
-// 屏幕空间图元不随视图缩放变化，用于标尺、HUD 一类元素。
+// 屏幕空间图元不随视图平移与缩放变化（RenderSpace::Screen），
+// 用于标尺、HUD 一类元素。
 #version 330 core
+
+#include "rx_push_constants.glsl"
 
 layout(location = 0) in vec3 aPos;
 layout(location = 1) in vec3 aColor;
-
-uniform vec2 uViewport;
 
 out vec3 vColor;
 

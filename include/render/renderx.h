@@ -119,7 +119,6 @@ namespace Render
         enum class SurfaceHandle : uint64_t { Invalid = 0 };
         enum class SessionHandle : uint64_t { Invalid = 0 };
         enum class BufferHandle : uint64_t { Invalid = 0 };
-        enum class PipelineHandle : uint64_t { Invalid = 0 };
         enum class TextureHandle : uint64_t { Invalid = 0 };
 
         template <typename H>
@@ -413,8 +412,11 @@ namespace Render
             uint64_t sortKey;
             /// 透传给调用方的自定义数据，DLL 不解释
             uint64_t userData;
+            /// 顶点数据在 vertexBuffer 中的**字节**偏移。
+            /// 与 TransientAlloc::offset 同一坐标系，可直接原样填入。
             uint32_t vertexOffset;
             uint32_t vertexCount;
+            /// 索引数据在 indexBuffer 中的**字节**偏移
             uint32_t indexOffset;
             uint32_t indexCount;
             uint32_t instanceCount;
@@ -555,7 +557,14 @@ namespace Render
         RENDER_API RxResult rxBufferUpload(RuntimeHandle runtime, BufferHandle buffer,
                                            uint64_t offset, uint64_t sizeBytes, const void* data);
 
-        RENDER_API PipelineHandle rxPipelineCreate(RuntimeHandle runtime, const PipelineDesc* desc);
+        /**
+         * @brief 创建自定义管线，返回管线索引
+         *
+         * 返回值是索引而不是句柄：DrawCommand::pipelineIndex 是 uint16，
+         * 绘制路径每帧要用它做数万次查表，索引可以直接下标寻址。
+         * 0 表示创建失败（0 恒为「让 Runtime 按 DrawCommand 自行解析」）。
+         */
+        RENDER_API uint16_t rxPipelineCreate(RuntimeHandle runtime, const PipelineDesc* desc);
         RENDER_API uint16_t rxPipelineGetDefault(RuntimeHandle runtime, DefaultPipeline kind);
 
         RENDER_API TextureHandle rxTextureCreate(RuntimeHandle runtime, const TextureDesc* desc);

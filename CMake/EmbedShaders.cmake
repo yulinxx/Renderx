@@ -21,8 +21,13 @@
 #   .metallib              -> metallib   （二进制）
 #
 # 入参（通过 -D 传入）：
-#   EMBED_INPUT_LIST  以 ';' 分隔的输入文件绝对路径列表
+#   EMBED_INPUT_LIST  以 '|' 分隔的输入文件绝对路径列表
 #   EMBED_OUTPUT      输出 .cpp 的绝对路径
+#
+# 文本类 shader 支持一条极简的 `#include "name"` 指令（见 _embed_expand_includes）：
+# RT 的全部 shader 共用同一个 std140 pushConstant 块，块的字段顺序必须与
+# C++ 侧的 PushConstants 结构逐字节一致。std140 布局出错不会报编译错误，
+# 只会算出错误的偏移，因此这份声明必须只有一处，不能在 9 个文件里各抄一份。
 # ============================================================================
 
 if(NOT DEFINED EMBED_INPUT_LIST)
@@ -57,9 +62,53 @@ set(_body "")
 set(_table "")
 set(_index 0)
 
+# ----------------------------------------------------------------------------
+# 展开文本 shader 中的 `#include "name"`
+#
+# 只支持「与被包含文件同目录、双引号、单行」这一种形式，故意不做搜索路径、
+# 条件包含、宏——那属于重新实现 C 预处理器。当前唯一用途是共享
+# pushConstant 块声明（rx_push_constants.glsl）。
+#
+# 注意：同一个文件被同一 shader 包含两次会被展开两次，从而在 GLSL 编译期
+# 报重定义。这是刻意的——静默去重会掩盖 shader 里真实的书写错误。
+# ----------------------------------------------------------------------------
+function(_embed_expand_includes input_path out_text)
+    file(READ "${input_path}" _text)
+    get_filename_component(_dir "${input_path}" DIRECTORY)
+
+    # 深度上限同时充当循环包含的保护：超限即报错，而不是无限展开
+    set(_maxDepth 8)
+    foreach(_pass RANGE 1 ${_maxDepth})
+        string(REGEX MATCH "#include[ \t]*\"[^\"]+\"" _directive "${_text}")
+        if(_directive STREQUAL "")
+            break()
+        endif()
+        if(_pass EQUAL ${_maxDepth})
+            message(FATAL_ERROR
+                "EmbedShaders: ${input_path} 的 #include 嵌套超过 ${_maxDepth} 层（可能存在循环包含）")
+        endif()
+
+        string(REGEX REPLACE "#include[ \t]*\"([^\"]+)\"" "\\1" _name "${_directive}")
+        set(_includePath "${_dir}/${_name}")
+        if(NOT EXISTS "${_includePath}")
+            message(FATAL_ERROR "EmbedShaders: ${input_path} 包含的文件不存在：${_name}")
+        endif()
+        file(READ "${_includePath}" _included)
+        string(REPLACE "${_directive}" "${_included}" _text "${_text}")
+    endforeach()
+
+    set(${out_text} "${_text}" PARENT_SCOPE)
+endfunction()
+
 # EMBED_INPUT_LIST 以 '|' 分隔（见 CMakeLists.txt 中传参处的说明），还原成 CMake 列表。
 # 同时兼容以分号传入的情况。
 string(REPLACE "|" ";" _inputs "${EMBED_INPUT_LIST}")
+
+# 展开后的文本先落到临时目录再按 HEX 读取：HEX 读取对文本与二进制统一，
+# 避免 CMake 在 NUL / 非 UTF-8 字节上的处理差异。
+get_filename_component(_outdir "${EMBED_OUTPUT}" DIRECTORY)
+set(_expandDir "${_outdir}/expanded")
+file(MAKE_DIRECTORY "${_expandDir}")
 
 foreach(_input IN LISTS _inputs)
     if(NOT EXISTS "${_input}")
@@ -69,8 +118,15 @@ foreach(_input IN LISTS _inputs)
     get_filename_component(_name "${_input}" NAME)
     _embed_classify("${_input}" _language _is_text)
 
+    set(_readFrom "${_input}")
+    if(_is_text)
+        _embed_expand_includes("${_input}" _expanded)
+        set(_readFrom "${_expandDir}/${_name}")
+        file(WRITE "${_readFrom}" "${_expanded}")
+    endif()
+
     # HEX 读取对文本与二进制都安全，避免 CMake 对 NUL / 非 UTF-8 字节的处理差异
-    file(READ "${_input}" _hex HEX)
+    file(READ "${_readFrom}" _hex HEX)
     string(LENGTH "${_hex}" _hexlen)
     math(EXPR _bytes "${_hexlen} / 2")
 

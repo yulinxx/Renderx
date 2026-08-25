@@ -83,6 +83,12 @@
 #ifndef GL_CLAMP_TO_BORDER
     #define GL_CLAMP_TO_BORDER 0x812D
 #endif
+// 点大小由顶点着色器的 gl_PointSize 决定。桌面 GL 核心 profile 下必须显式
+// 开启此开关，否则只使用 glPointSize() 的全局值，shader 里写的值被静默忽略。
+// GL ES 无此枚举——ES 上点大小恒由着色器决定。
+#ifndef GL_PROGRAM_POINT_SIZE
+    #define GL_PROGRAM_POINT_SIZE 0x8642
+#endif
 
 #ifndef GL_SRGB8_ALPHA8
     #define GL_SRGB8_ALPHA8 0x8C43

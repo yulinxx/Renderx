@@ -3,11 +3,11 @@
 // 用于文本字形四边形与位图。颜色作为纹理的乘性调制。
 #version 330 core
 
+#include "rx_push_constants.glsl"
+
 layout(location = 0) in vec2 aPos;
 layout(location = 1) in vec2 aUV;
 layout(location = 2) in vec4 aColor;
-
-uniform vec2 uViewport;
 
 out vec2 vUV;
 out vec4 vColor;

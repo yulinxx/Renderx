@@ -151,6 +151,14 @@ namespace Render::RHI::gl
             m_gl.BindBuffer(GL_UNIFORM_BUFFER, 0);
         }
 
+        // 点大小必须由顶点着色器决定（gl_PointSize），否则核心 profile 下
+        // 只会使用 glPointSize() 的全局值，pushConstant 里的 uPointSize 静默无效。
+        // 这是全局开关且只影响点图元，一次性打开即可（枚举的回退定义见 glCommon.h）。
+        if (m_gl.Enable)
+        {
+            m_gl.Enable(GL_PROGRAM_POINT_SIZE);
+        }
+
         m_log.info("[gl] 设备已创建：%s | %s", m_caps.deviceName, m_caps.driverInfo);
         m_log.debug("[gl] 能力：compute=%u indirect=%u multiIndirect=%u storage=%u persistentMap=%u "
                     "maxTexture=%u maxUboBindings(已用 1 个给 pushConstant)",

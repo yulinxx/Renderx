@@ -1,63 +1,77 @@
 # RenderX Library (RenderX.dll)
 
-工业级 2D/3D 渲染库，为 SanYi CAD 项目提供高性能的渲染解决方案。
+面向 CAD 的 2D/3D 渲染 DLL。三条硬性目标：**跨平台**、**多窗口**、**零业务耦合**。
 
-> **当前定位（2026-08-10 复核 + 编译验证）**：多后端渲染运行时。`BackendType` 中的 **OpenGL / Vulkan / Metal / Null 均为已实现后端**（Vulkan 1725 行 / Metal 1076 行 / Null 249 行，见 `src/rhi/`），不再是"类型预留"。条件编译：`find_package(Vulkan QUIET)` 找到 SDK 才编入 Vulkan，无 SDK 自动跳过；Metal 依赖 Apple SDK 在 macOS 上编译。
+> **当前状态（2026-08-25）**
 >
-> **验证状态**：Vulkan 后端已于 2026-08-10 在 Windows（SDK 1.4.357）编译通过——修复了此前从未被编译暴露的 ~70 处 API 误用（swapchain/管线字段名、函数签名、缺失成员、内存屏障语义等）。当前构建 `SanYiRender_d.dll` / `SanYiCAD.exe` / `RenderxTests 15/15` 全部通过。渲染帧正确性仍需在带 HWND 的窗口下真机验证。
+> - **公共 ABI**：`include/render/renderx.h` 是唯一公共头（32 个 `rx*` 导出，
+>   零 STL 跨界、全 POD、全 `static_assert` 锁尺寸、无 `bool`、句柄为
+>   `enum class : uint64_t`）。旧的 `render.h` / `RenderTypes.h` /
+>   `runtime_session.h` 已删除。
+> - **RHI**：后端中立的命令记录模型（`ISurface` / `IGpuDevice` / `ICommandList`，
+>   `(set, binding)` 描述符槽 + pushConstants，`Capabilities` 能力查询，
+>   `RhiResult` 错误码）。**已实现后端：Null + OpenGL**。
+>   Metal / Vulkan 的 `createDevice` 明确返回 `nullptr` 并报错，
+>   **不静默回退到 Null**——回退的表现是画面全黑而调用方拿不到任何错误。
+> - **RT 层**：Runtime（1 设备 + 共享资源）/ Surface（N 窗口）/ Session（N 视口）
+>   已切到 `renderx.h`。多窗口共享 GPU 资源，不再是「多窗口 = 多设备」。
+> - **Shader**：构建期编入二进制，运行期零文件 IO。
+> - **测试**：`RenderxTests` 34/34、`RenderxGLTests` 53/53，构建零警告。
 >
-> 多窗口支持：`renderCreateDevice` 支持任意多实例，每窗口独立 `RenderDevice`，资源不共享。会话共享层 `RenderRuntime` / `RenderSession` 已落地。
+> **已知缺口**
 >
-> 已知待完善：Metal 目录尚无 `.metal` shader 源文件；Metal 后端需在 macOS 上编译验证；Vulkan 运行时渲染帧待真机验证。
+> - 文本：字形图集未移植到新 RHI，`rxFontLoad` 返回 `ErrorUnsupportedBackend`。
+> - 3D：`mesh_3d.*` 仍用独立 uniform，未并入 PushConstants 块。
+> - 宿主：`UI/` 与 `Main/` 自 legacy 删除起无法构建，随 2D/3D 改造阶段修复。
 >
-> 性能约束：当前热路径仍存在每帧全量同步和 GPU 回读，大规模图元场景需进一步优化。
+> 完整目标设计与决策依据见 `Docs/03-渲染主链/新渲染架构.md`。
 
 ## 功能描述
 
-RenderX 是一个面向 CAD 应用的专业渲染库，核心功能包括：
+- **纯描述符提交**：DLL 只回答「怎么画」——接收顶点字节流 + `DrawCommand`
+  描述符，按 `sortKey` 排序合批后提交 GPU。
+- **三档渲染空间**：`World`（跟随平移与缩放）、`Screen`（都不跟随）、
+  `WorldPinned`（跟随平移、不跟随缩放，用于场景内定尺寸标记）。
+- **多窗口**：一个 Runtime 拥有一个 GPU 设备与全部共享资源，
+  N 个 Surface 对应 N 个窗口，提交与呈现分离。
+- **瞬态顶点环**：双段轮转 + 帧末上传，容量不足时开临时缓冲而非回绕覆盖。
+- **管线缓存**：按 (顶点格式, 空间, 拓扑, 深度/混合状态, 线宽, shader) 缓存，
+  每组状态只建一次。
+- **Shader 内嵌**：构建期转字节数组编入 DLL，不依赖运行目录布局。
+- **日志注入**：DLL 不依赖任何日志库，出口由宿主通过 `rxLogCallback` 注入。
 
-- **2D 渲染管线**：支持点、线、折线、多边形等基本图元的高效渲染，采用间接绘制（Indirect Draw）减少 CPU-GPU 通信开销
-- **3D 网格渲染**：支持 3D 网格注册、实例化渲染、GPU 视锥剔除，适用于 CAD 模型可视化
-- **叠加层渲染**：提供十字准星、捕捉指示器、预览线、选择框、选择手柄等交互 UI 元素的渲染
-- **文本渲染**：基于 stb_truetype 的字体光栅化，支持世界坐标和屏幕坐标两种文本渲染模式
-- **Shader 管理**：运行时从文件加载 GLSL Shader，支持 2D 场景、3D 网格、叠加层、SDF 文本、高亮等多种着色器
-- **GPU 剔除**：使用 Compute Shader 实现 GPU 驱动的视锥剔除，大幅提升大规模场景的渲染性能
-- **渲染图（RenderGraph）**：显式 Pass 编排与调度，支持 2D/3D 两种渲染模式的自动切换
-- **管线状态缓存**：通过 PipelineStateManager 缓存和复用 RHI 管线，减少状态切换开销
+**不做、也不应该做的事**：几何离散化（圆/弧/椭圆/贝塞尔 → 折线）、场景图、
+实体语义、图层、选择集、捕捉、单位制、拾取、文本布局排版、文件 IO。
+这些都属于应用层——详见 `renderx.h` 头部的「职责边界」。
 
 ## 使用方法
 
-### 创建渲染上下文
+完整的最小流程见下文「API 概要 / 最小使用流程」。要点：
 
 ```c
-#include "render/render.h"
-#include "render/RenderTypes.h"
+#include "render/renderx.h"   // 唯一公共头
 
-// 1. 准备设备描述
-DeviceDesc desc;
-desc.backend = BackendType::OpenGL;
-desc.debugLayer = 0;
-desc.nativeWindowHandle = hWnd;  // 平台相关的窗口句柄
-desc.width = 1920;
-desc.height = 1080;
+// Runtime（设备 + 共享资源）→ Surface（窗口）→ Session（视口）
+RuntimeHandle runtime = rxRuntimeCreate(&runtimeDesc);   // abiVersion 必填
+SurfaceHandle surface = rxSurfaceCreate(runtime, &surfaceDesc);
+SessionHandle session = rxSessionCreate(&sessionDesc);
 
-// 2. 创建渲染设备
-RenderDevice* dev = renderCreateDevice(&desc);
-if (!dev) {
-    // 创建失败处理
-}
+// 每帧：BeginFrame → AllocTransient/Submit（可多次）→ EndFrame
 
-// 3. 设置视图模式（2D 或 3D）
-renderSetViewMode(dev, ViewMode::Mode2D);
-
-// 4. 设置清屏颜色（可选，默认浅灰色）
-renderSetClearColor(dev, 0.94f, 0.94f, 0.94f, 1.0f);
-
-// 5. 销毁设备
-renderDestroyDevice(dev);
+rxSessionDestroy(session);
+rxSurfaceDestroy(runtime, surface);
+rxRuntimeDestroy(runtime);
 ```
 
+销毁顺序是契约：Session 早于 Surface，Surface 早于 Runtime。
+违反时 DLL 会记录错误并拒绝销毁（例如表面上还绑着 Session），而不是留下半死对象。
+
 ### 渲染流程
+
+> ⚠️ **以下两节（渲染流程 / 图元操作）描述的是已删除的 legacy `render*` API**，
+> 保留仅为对照历史。当前正确的用法见「API 概要」。
+> 这两节会随宿主（`UI/`）切到 `rx*` 接口时一并重写——现在重写只能是对
+> 尚不存在的宿主代码的猜测。
 
 ```c
 // 每帧渲染的典型流程
@@ -179,29 +193,38 @@ renderUpdateMaterial(dev, matIdx, &newMatDesc);
 
 ## 设计框架
 
-RenderX 采用分层架构设计，各模块职责清晰、松耦合：
+当前分层（与代码同步）：
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    C API Facade                          │
-│            (render.h / RenderTypes.h)                  │
-├─────────────────────────────────────────────────────────┤
-│                    RenderDevice                          │
-├──────────────┬──────────────┬───────────────────────────┤
-│  RenderWorld │  RenderGraph │    CommandEncoder          │
-│  (图元管理)  │  (Pass 调度) │  (统一命令编码/排序)       │
-├──────────────┼──────────────┼───────────────────────────┤
-│  BatchQueue  │ OverlayQueue │ PipelineStateManager       │
-│  (2D 批处理) │ (叠加层)    │    (管线缓存)              │
-├──────────────┼──────────────┼───────────────────────────┤
-│  TextAtlas   │ MeshManager  │ PersistentEntityManager   │
-│  (文本图集)  │ (3D 网格)    │    (GPU 剔除)             │
-├──────────────┴──────────────┴───────────────────────────┤
-│       RHI Device (OpenGL / Vulkan / Metal / Null)          │
-├─────────────────────────────────────────────────────────┤
-│                    Shader Manager                         │
-└─────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│  公共 ABI：include/render/renderx.h（32 个 rx* 导出）          │
+├──────────────────────────────────────────────────────────────┤
+│  RT 层：src/rt/ + src/c_api/rxCApi.cpp                        │
+│    Runtime（1 设备 + 管线缓存 / shader / 纹理 / 瞬态环）       │
+│      ├─ Surface ×N（窗口表面 + 交换链）                        │
+│      └─ Session ×N（视口相机 + 提交）                          │
+├──────────────────────────────────────────────────────────────┤
+│  RHI：src/rhi/（后端中立的命令记录模型）                       │
+│    IGpuDevice / ISurface / ICommandList                       │
+│    (set, binding) 描述符槽 + pushConstants + Capabilities      │
+├──────────────────────────────────────────────────────────────┤
+│  后端：null/（已实现）  gl/（已实现）  metal/ vulkan/（待建）   │
+├──────────────────────────────────────────────────────────────┤
+│  Shader 库：src/shader/ → 构建期嵌入（CMake/EmbedShaders.cmake）│
+└──────────────────────────────────────────────────────────────┘
 ```
+
+> ⚠️ **以下小节（C API Facade / RenderWorld / RenderGraph / CommandEncoder /
+> BatchQueue / OverlayQueue / TextAtlas）描述的是已删除的 legacy 实现**，
+> 保留仅为对照历史。其中：
+> - `render.h` / `RenderTypes.h` / `runtime_session.h`、`RenderWorld`、
+>   `RenderGraph`、`CommandEncoder`、`BatchQueue`、`OverlayQueue`、
+>   `PipelineStateManager`、`PersistentEntityManager` 均已删除；
+> - `TextAtlas` 已删除，待随 2D 链路改造移植到新 RHI；
+> - 排序合批的职责现在在 `Session::submit`（`src/rt/rxSession.cpp`），
+>   管线缓存在 `Runtime::createPipelineFromKey`（`src/rt/rxRuntime.cpp`）。
+>
+> 「Shader 管理」小节仍然有效。
 
 ### C API Facade
 
@@ -652,21 +675,36 @@ option(BUILD_SHARED_LIBS "Build shared libraries" ON)
 ### Shader 嵌入（不再有文件复制）
 
 Shader 在构建期编入 DLL，构建后输出目录中不再有 `.vert/.frag/.comp` 文件，运行期也不再读盘。
-详见上文「Shader 管理」。当前嵌入 21 个文件：
+详见上文「Shader 管理」。当前嵌入 27 个文件：
 
 | 类别 | 文件名 |
 |------|--------|
-| 世界空间图元 | `world_p3c3.vert`、`world_p3c3.frag`、`world_point_p3c3.frag`、`world_p3c4.vert`、`world_p3c4.frag` |
-| 屏幕空间图元 | `screen_p3c3.vert`、`screen_point_p3c3.vert`、`screen_p3c4.vert`、`screen_p3c4.frag` |
+| 世界空间图元 | `world_p3c3.vert`、`world_p3c3.frag`、`world_p3c4.vert`、`world_p3c4.frag` |
+| 屏幕空间图元 | `screen_p3c3.vert`、`screen_p3c4.vert`、`screen_p3c4.frag` |
+| 世界锚定定尺寸 | `world_pinned_p3o2c4.vert`（片段复用 `world_p3c4.frag`） |
+| 点图元 | `world_point_p3c3.vert`、`world_point_p3c4.vert`、`screen_point_p3c3.vert`、`screen_point_p3c4.vert`、`point_p3c3.frag`、`point_p3c4.frag` |
 | 屏幕空间纹理 | `screen_tex_p2t2c4.vert`、`screen_tex_p2t2c4.frag` |
 | 3D 网格 | `mesh_3d.vert`、`mesh_3d.frag`、`mesh_3d_instanced.vert` |
 | 文本 | `text_sdf.vert`、`text_sdf.frag`、`text_screen.vert`、`text_screen.frag` |
 | 高亮 | `highlight_3d.vert`、`highlight_3d.frag` |
 | GPU 剔除 | `culling.comp` |
 
+此外 `rx_push_constants.glsl` 是**被 include 的片段**，不作为独立 shader 嵌入，
+但声明为构建依赖。它是全部 RT shader 共用的 std140 pushConstant 块的唯一声明处
+（`uView` / `uViewport` / `uPointSize` / `uSdfScale`，共 80 字节），
+与 C++ 侧 `Render::RT::detail::PushConstants` 逐字节对应并有 `static_assert` 锁定。
+展开由 `CMake/EmbedShaders.cmake` 在构建期完成（单文件、双引号、同目录）。
+之所以不允许各 shader 各抄一份：std140 布局不匹配不产生编译错误，只会算出错误偏移。
+
+点图元必须有独立的顶点着色器：点尺寸是像素量，只能写 `gl_PointSize`，
+不能用顶点几何表达（否则缩放时点会跟着变大）。GL 后端在设备创建时统一开启
+`GL_PROGRAM_POINT_SIZE`——桌面核心 profile 下不开这个开关，
+shader 里写的 `gl_PointSize` 会被静默忽略。
+
 已删除：`scene_2d.*`、`overlay.*`、`overlay_screen.*`、`bitmap.*`——它们只服务于已删除的
 legacy 渲染路径。世界/屏幕空间图元的 shader 是从 `rendererRuntime.cpp` 中 11 段内联
-GLSL 字符串字面量提取出来的独立文件。
+GLSL 字符串字面量提取出来的独立文件。`world_point_p3c3.frag` 已更名为 `point_p3c3.frag`：
+点的圆形裁剪只发生在屏幕上，与渲染空间无关。
 
 ### 字体文件
 
@@ -686,149 +724,180 @@ add_subdirectory(Test)
 
 ## API 概要
 
-### C API 函数列表
+`include/render/renderx.h` 是唯一公共头，共 32 个 `rx*` 导出。
+旧的 `render.h`（62 个 `render*` 函数）与 `runtime_session.h`（26 个函数）已删除：
+前者把图元语义、几何离散化、场景图、文本排版全部塞进了渲染 DLL；
+后者与 `renderx.h` 在 `namespace Render::RT` 里有 11 个同名但不兼容的类型。
 
-#### 设备管理
-
-| 函数 | 说明 |
-|------|------|
-| `renderCreateDevice` | 创建渲染设备 |
-| `renderDestroyDevice` | 销毁渲染设备 |
-| `renderResize` | 调整渲染目标尺寸 |
-| `renderGetNativeContext` | 获取原生渲染上下文 |
-
-#### 2D 图元管理
+### 版本与后端
 
 | 函数 | 说明 |
 |------|------|
-| `renderAddEntity` | 添加 2D 图元 |
-| `renderModifyEntity` | 修改 2D 图元 |
-| `renderRemoveEntity` | 删除 2D 图元 |
-| `renderSetEntityVisibility` | 设置图元可见性 |
-| `renderApplyUpdates` | 批量应用图元更新 |
+| `rxGetAbiVersion` | 返回 DLL 编译时的 ABI 版本，与头里的 `RENDERX_ABI_VERSION` 比对 |
+| `rxResultName` / `rxBackendName` | 结果码 / 后端名的字符串化 |
+| `rxIsBackendAvailable` | 某后端在当前构建与当前机器上是否可用 |
 
-#### 3D 网格管理
+### Runtime：进程内的 GPU 与共享资源
 
 | 函数 | 说明 |
 |------|------|
-| `renderRegisterMesh` | 注册 3D 网格 |
-| `renderUnregisterMesh` | 注销 3D 网格 |
-| `renderAddInstance` | 添加 3D 网格实例 |
-| `renderModifyInstance` | 修改 3D 网格实例 |
-| `renderRemoveInstance` | 删除 3D 网格实例 |
+| `rxRuntimeCreate` / `rxRuntimeDestroy` | 一个 Runtime = 一个 GPU 设备 + 全部共享资源。ABI 版本不匹配直接失败 |
+| `rxRuntimeGetCapabilities` | 后端能力查询（线宽上限、纹理上限、计算/间接绘制支持等），必须先查再决定渲染策略 |
+| `rxBufferCreate` / `rxBufferDestroy` / `rxBufferUpload` | 长期存活的缓冲。世代式句柄，销毁后旧句柄立即失效 |
+| `rxPipelineCreate` | 自定义管线，返回 `uint16` 索引（0 = 失败）。相同状态命中缓存返回同一索引 |
+| `rxPipelineGetDefault` | 取 15 条内建管线之一的索引 |
+| `rxTextureCreate` / `rxTextureDestroy` / `rxTextureUpdate` | RGBA8 纹理。销毁时其绑定组一并失效 |
+| `rxMaterialAdd` / `rxMaterialUpdate` | 线宽/点大小/颜色。索引 0 保留为「无材质」 |
+| `rxFontLoad` | 以内存数据注入字体（DLL 不做文件 IO）。**当前返回 `ErrorUnsupportedBackend`**，见下 |
 
-#### 材质管理
-
-| 函数 | 说明 |
-|------|------|
-| `renderAddMaterial` | 添加材质 |
-| `renderUpdateMaterial` | 更新材质 |
-
-#### 视图管理
+### Surface：窗口表面
 
 | 函数 | 说明 |
 |------|------|
-| `renderSetView2D` | 设置 2D 视图参数 |
-| `renderSetView3D` | 设置 3D 视图参数 |
-| `renderSetViewMode` | 切换 2D/3D 视图模式 |
-| `renderSetClearColor` | 设置清屏颜色 |
-| `renderSetCameraCenter` | 设置相机中心（用于相机相对渲染，解决大坐标精度问题） |
+| `rxSurfaceCreate` / `rxSurfaceDestroy` | 同一 Runtime 可创建任意多个，共享全部 GPU 资源。这是多窗口的正确形态 |
+| `rxSurfaceResize` | 重建交换链。尺寸为 0（最小化）时安全跳过 |
 
-#### 叠加层
+### Session：一个视口的相机与提交
 
 | 函数 | 说明 |
 |------|------|
-| `renderSetOverlay` | 设置叠加层数据（十字准星、捕捉指示器） |
-| `renderSubmitOverlay` | 提交单个叠加层图元 |
-| `renderSubmitOverlays` | 批量提交叠加层图元 |
-| `renderClearOverlays` | 清除所有叠加层图元 |
-| `renderClearOverlayGroup` | 按生命周期分组清除叠加层图元 |
-| `renderSetPreviewLines` | 设置预览线（已废弃，改用 `renderSubmitOverlay`） |
-| `renderSetControlLines` | 设置控制线（已废弃） |
-| `renderSetPointMarkers` | 设置点标记（已废弃） |
-| `renderSetSelectionBox` | 设置选择框（已废弃） |
-| `renderSetSelectionRect` | 设置选择预览矩形（已废弃） |
-| `renderSetSelectionHandles` | 设置选择手柄（已废弃） |
+| `rxSessionCreate` / `rxSessionDestroy` | 1 Session 绑 1 Surface；同一表面上的第二个 Session 会被拒绝 |
+| `rxSessionSetClearColor` / `rxSessionSetViewMatrix` | 清屏色与视图矩阵（列主序 4x4） |
+| `rxSessionBeginFrame` | 获取后备缓冲（GL 在此 makeCurrent）并开启 render pass。返回 `ErrorSurfaceOutOfDate` 时 resize 后重试本帧 |
+| `rxSessionAllocTransient` | 分配本帧顶点内存，只在 Begin/End 之间有效 |
+| `rxSessionSubmit` | 提交一批 `DrawCommand`；同一帧内可多次调用。DLL 按 `sortKey` 稳定排序后合批 |
+| `rxSessionEndFrame` | 结束 render pass、提交命令、呈现 |
+| `rxSessionQueryVisibility` | CPU 侧 AABB 与视口矩形相交（纯几何，不涉及 GPU） |
+| `rxSessionGetStats` | 本帧统计：绘制调用、三角/线/点数、管线切换、瞬态用量、GPU 内存 |
 
-#### 几何提交（统一 API）
+### 工具
 
 | 函数 | 说明 |
 |------|------|
-| `renderSubmitGeometry` | 提交单个几何图元 |
-| `renderSubmitGeometries` | 批量提交几何图元 |
+| `rxMakeSortKey` | `layer(8) \| transparent(8) \| depth(16) \| seq(16)`，高位优先。覆盖层约定 `layer=200, transparent=1` |
 
-> 早期分散的 `renderEmitPolyline / renderEmitCircle / renderEmitArc / renderEmitEllipse / renderEmitText / renderEmitImage / renderEmitTriangleSoup` 兼容包装器已移除，统一走 `renderSubmitGeometry`。
+### 最小使用流程
 
-#### 场景环境
+```cpp
+#include "render/renderx.h"
+using namespace Render::RT;
 
-| 函数 | 说明 |
-|------|------|
-| `renderSetSceneEnvEx` | 设置场景环境层（网格背景、标尺、参考线），支持像素坐标和三角面 |
-| `renderSetBitmap` | 设置位图图像 |
-| `renderClearBitmap` | 清除位图图像 |
+RuntimeDesc rd{};
+rd.abiVersion = RENDERX_ABI_VERSION;   // 必填，否则创建失败
+rd.backend = Backend::Auto;
+rd.logCallback = &myLogSink;           // DLL 不依赖任何日志库，出口由宿主注入
+RuntimeHandle runtime = rxRuntimeCreate(&rd);
 
-#### 文本渲染
+SurfaceDesc sd{};
+sd.windowKind = NativeWindowKind::ForeignGlContext;  // Qt QOpenGLWidget 场景
+sd.width = w; sd.height = h;
+SurfaceHandle surface = rxSurfaceCreate(runtime, &sd);
 
-| 函数 | 说明 |
-|------|------|
-| `renderSetTexts` | 设置文本列表（世界坐标） |
-| `renderSetScreenTexts` | 设置屏幕空间文本 |
-| `renderLoadScreenFont` | 加载屏幕字体 |
+SessionDesc ssd{};
+ssd.runtime = runtime; ssd.surface = surface;
+SessionHandle session = rxSessionCreate(&ssd);
 
-#### 帧渲染与统计
+// ---- 每帧 ----
+if (rxSessionBeginFrame(session) == RxResult::Ok)
+{
+    TransientAlloc alloc{};
+    rxSessionAllocTransient(session, vertexBytes, &alloc);
+    std::memcpy(alloc.cpuPtr, vertices, vertexBytes);
 
-| 函数 | 说明 |
-|------|------|
-| `renderFrame` | 执行一帧渲染 |
-| `renderGetStats` | 获取渲染统计信息 |
-| `renderGetEntityCount` | 获取图元数量 |
-| `renderGetGPUMemoryUsage` | 获取 GPU 内存使用量 |
-| `renderBeginScene` | 开始场景（内部使用） |
-| `renderEndScene` | 结束场景（内部使用） |
+    DrawCommand cmd{};
+    cmd.vertexBuffer = alloc.buffer;
+    cmd.vertexOffset = alloc.offset;      // 字节偏移，与 alloc.offset 同一坐标系
+    cmd.vertexCount  = vertexCount;
+    cmd.topology     = PrimitiveTopology::LineStrip;
+    cmd.space        = RenderSpace::World;
+    cmd.vertexFormat = VertexFormat::P3C4;
+    cmd.indexType    = IndexType::None;
+    cmd.sortKey      = rxMakeSortKey(10, 0, 0, seq++);
+
+    DrawPacket packet{};
+    packet.commands = &cmd;
+    packet.commandCount = 1;
+    std::memcpy(packet.viewMatrix, viewMatrix, sizeof(viewMatrix));
+    rxSessionSubmit(session, &packet);
+
+    rxSessionEndFrame(session);
+}
+```
+
+### 三档渲染空间
+
+| `RenderSpace` | 跟随平移 | 跟随缩放 | 顶点格式 | 用途 |
+|---------------|----------|----------|----------|------|
+| `World` | 是 | 是 | P3C3 / P3C4 | 常规图元 |
+| `Screen` | 否 | 否 | P3C3 / P3C4 / P2T2C4 | HUD、标尺、屏幕角标 |
+| `WorldPinned` | 是 | **否** | P3O2C4（锚点 + 像素偏移） | 场景内定尺寸标记：箭头、符号、标注框、引线端点 |
+
+`WorldPinned` 的换算在顶点着色器内完成（`clip.xy += offsetPx * (2.0/uViewport) * clip.w`，
+乘 `clip.w` 抵消透视除法，因此偏移恒等于 N 个像素）。
+**拾取判定必须用同一公式**，否则视觉与命中区会随缩放错位。详见
+`Docs/03-渲染主链/新渲染架构.md` §15。
+
+### 当前缺口
+
+- **文本**：字形图集尚未移植到新 RHI，`rxFontLoad` 明确返回 `ErrorUnsupportedBackend`
+  并记录错误，不静默成功。
+- **3D（P3N3）**：`mesh_3d.*` 仍用独立 uniform，未并入 PushConstants 块；
+  `VertexFormat::P3N3` 的管线解析会明确失败并报错，不提供半实现路径。
+- **Metal / Vulkan**：`RHI::createDevice` 对这两个后端返回 `nullptr` 并报错，
+  不静默回退到 Null（回退的表现是画面全黑而调用方拿不到任何错误）。
 
 ### 渲染流程说明
 
 ```
-renderFrame 内部流程（2D 模式）:
+rxSessionBeginFrame
+  ├─ ISurface::acquireNextImage()      GL 后端在此 makeCurrent（宿主不需要自己做）
+  ├─ IGpuDevice::beginFrame()          取本帧命令记录器
+  ├─ TransientRing::beginFrame()       双段轮转（按 Runtime 计数，每帧只切一次）
+  └─ ICommandList::beginRenderPass()   clear 在此一次性给定
 
-┌────────────────────────────────────────────────────────────┐
-│ 1. GPU 剔除阶段                                            │
-│    ├─ syncWorldToPersistentManager()                       │
-│    ├─ computeViewBounds()                                  │
-│    ├─ executeCulling() → culling.comp                      │
-│    └─ readBackGpuVisibility() 或 CPU 四叉树回退             │
-├────────────────────────────────────────────────────────────┤
-│ 2. BatchQueue.submit() → 构建间接绘制命令                  │
-├────────────────────────────────────────────────────────────┤
-│ 3. RenderGraph 执行 Pass 序列：                             │
-│    ├─ Pass 0: FrameSetup        (清屏/混合/深度状态)       │
-│    ├─ Pass 1: SceneEnv          (网格背景渲染)             │
-│    ├─ Pass 2: World2DCollect    (2D 图元命令收集)          │
-│    ├─ Pass 3: OverlayCollect    (叠加层命令收集)           │
-│    ├─ Pass 4: CommandExecute    (命令排序与统一执行)       │
-│    └─ Pass 5: Text              (文本渲染)                 │
-├────────────────────────────────────────────────────────────┤
-│ 4. 屏幕文本渲染                                             │
-└────────────────────────────────────────────────────────────┘
+rxSessionSubmit（同一帧可多次）
+  ├─ TransientRing::flush()            顶点数据必须在任何绘制之前落到 GPU
+  ├─ 按 sortKey 稳定排序               同键保持提交顺序，覆盖层叠放才可预测
+  └─ 逐条：bindPipeline → pushConstants → bindVertexBuffer
+           → bindBindGroup(纹理) → draw / drawIndexed
+
+rxSessionEndFrame
+  ├─ ICommandList::endRenderPass()
+  ├─ IGpuDevice::submitFrame()         只提交，不呈现
+  └─ ISurface::present()               GL: swapBuffers / Metal: presentDrawable / VK: queuePresent
 ```
+
+「提交」与「呈现」分离是多窗口共享资源的前提：N 个 Session 可以各自录制并提交后
+再统一呈现，设备不与任何一个窗口绑死。
+
+绑定状态在帧内做冗余消除：管线、顶点缓冲（含偏移）、纹理绑定组、pushConstant
+块各自只在变化时重新提交；换管线后统一重推一次，而不是逐后端推理哪些绑定还有效。
 
 ### Shader 列表
 
-| Shader 名称 | 类型 | 文件 | 用途 |
-|-------------|------|------|------|
-| WorldLine / WorldTriangle | 顶点+片段 | `world_p3c3.vert/frag` | 世界空间图元（P3C3），支持相机相对渲染（`uCameraCenter` uniform） |
-| WorldPoint | 片段 | `world_point_p3c3.frag` | 世界空间圆点（在片段中做圆形裁剪） |
-| WorldLine4 / WorldTriangle4 | 顶点+片段 | `world_p3c4.vert/frag` | 世界空间图元（P3C4，带 alpha） |
-| ScreenLine / ScreenTriangle | 顶点+片段 | `screen_p3c3.vert` + `world_p3c3.frag` | 屏幕空间图元（P3C3） |
-| ScreenPoint | 顶点 | `screen_point_p3c3.vert` | 屏幕空间点 |
-| ScreenLine4 / ScreenTriangle4 | 顶点+片段 | `screen_p3c4.vert/frag` | 屏幕空间图元（P3C4，带 alpha） |
-| ScreenTex | 顶点+片段 | `screen_tex_p2t2c4.vert/frag` | 屏幕空间纹理（文本图集、位图） |
-| Mesh3D | 顶点+片段 | `mesh_3d.vert/frag` | 3D 网格渲染 |
-| Mesh3DInstanced | 顶点 | `mesh_3d_instanced.vert` | 3D 网格实例化渲染 |
-| TextSDF | 顶点+片段 | `text_sdf.vert/frag` | SDF 文本渲染 |
-| TextScreen | 顶点+片段 | `text_screen.vert/frag` | 屏幕空间文本渲染 |
-| Highlight3D | 顶点+片段 | `highlight_3d.vert/frag` | 3D 高亮渲染 |
-| Culling | 计算 | `culling.comp` | GPU 视锥剔除 |
+所有 RT shader 通过 `#include "rx_push_constants.glsl"` 共用同一个 std140
+pushConstant 块（`uView` / `uViewport` / `uPointSize` / `uSdfScale`）。
+
+| 内建管线 | 顶点 | 片段 | 用途 |
+|----------|------|------|------|
+| WorldLine / WorldTri | `world_p3c3.vert` | `world_p3c3.frag` | 世界空间图元（P3C3） |
+| WorldPoint | `world_point_p3c3.vert` | `point_p3c3.frag` | 世界空间圆点（像素定尺寸，片段做圆形裁剪） |
+| WorldLine4 / WorldTri4 | `world_p3c4.vert` | `world_p3c4.frag` | 世界空间图元（P3C4，带 alpha） |
+| WorldPoint4 | `world_point_p3c4.vert` | `point_p3c4.frag` | 世界空间圆点（带 alpha） |
+| ScreenLine / ScreenTri | `screen_p3c3.vert` | `world_p3c3.frag` | 屏幕空间图元（P3C3） |
+| ScreenPoint | `screen_point_p3c3.vert` | `point_p3c3.frag` | 屏幕空间圆点 |
+| ScreenLine4 / ScreenTri4 | `screen_p3c4.vert` | `screen_p3c4.frag` | 屏幕空间图元（P3C4，带 alpha） |
+| ScreenPoint4 | `screen_point_p3c4.vert` | `point_p3c4.frag` | 屏幕空间圆点（带 alpha） |
+| ScreenTextured | `screen_tex_p2t2c4.vert` | `screen_tex_p2t2c4.frag` | 屏幕空间纹理（字形图集、位图） |
+| WorldPinnedLine / WorldPinnedTri | `world_pinned_p3o2c4.vert` | `world_p3c4.frag` | 世界锚定 + 屏幕定尺寸（P3O2C4） |
+
+尚未接入 RT 默认管线（随对应阶段启用）：
+
+| Shader | 文件 | 状态 |
+|--------|------|------|
+| Mesh3D / Mesh3DInstanced / Highlight3D | `mesh_3d.*`、`mesh_3d_instanced.vert`、`highlight_3d.*` | 仍用 `uModelMatrix`/`uViewMatrix`/`uProjMatrix` 独立 uniform，未并入 PushConstants；3D 收口阶段处理 |
+| TextSDF / TextScreen | `text_sdf.*`、`text_screen.*` | 字形图集未移植到新 RHI，`rxFontLoad` 当前返回 `ErrorUnsupportedBackend` |
+| Culling | `culling.comp` | GPU 视锥剔除，RT 当前走 CPU 的 `rxSessionQueryVisibility` |
 
 > 所有 shader 都显式标注 `layout(location = N)`：Apple 的 GLSL 编译器在缺省时会乱序分配
 > attribute slot，导致颜色/坐标错位（见 `Docs/Mac渲染.md` §9）。

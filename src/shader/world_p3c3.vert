@@ -5,10 +5,10 @@
 // 在缺省时会给出与声明顺序不一致的槽位（见 Docs/Mac渲染.md §9）。
 #version 330 core
 
+#include "rx_push_constants.glsl"
+
 layout(location = 0) in vec3 aPos;
 layout(location = 1) in vec3 aColor;
-
-uniform mat4 uView;
 
 out vec3 vColor;
 
