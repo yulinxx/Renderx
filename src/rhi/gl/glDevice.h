@@ -254,6 +254,9 @@ namespace Render::RHI::gl
         GLFuncs m_gl{};
         RhiLogger m_log;
         Capabilities m_caps{};
+        /// 上下文是否为前向兼容（forward-compatible）：其中宽线已被移除，
+        /// glLineWidth 只接受精确的 1.0，且 GL_ALIASED_LINE_WIDTH_RANGE 仍会谎报 [1,10]
+        bool m_forwardCompatible = false;
         GlCommandList m_commands;
 
         std::vector<GlSurface*> m_surfaces;

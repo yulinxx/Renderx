@@ -90,6 +90,13 @@ typedef long long GLint64;
 #ifndef GL_ALIASED_LINE_WIDTH_RANGE
     #define GL_ALIASED_LINE_WIDTH_RANGE 0x846E
 #endif
+// 上下文标志：用于识别前向兼容上下文（其中宽线已被移除，glLineWidth 只接受 1.0）
+#ifndef GL_CONTEXT_FLAGS
+    #define GL_CONTEXT_FLAGS 0x821E
+#endif
+#ifndef GL_CONTEXT_FLAG_FORWARD_COMPATIBLE_BIT
+    #define GL_CONTEXT_FLAG_FORWARD_COMPATIBLE_BIT 0x00000001
+#endif
 #ifndef GL_MULTISAMPLE
     #define GL_MULTISAMPLE 0x809D
 #endif
@@ -728,6 +735,10 @@ struct GLFuncs
 #endif
 #ifndef GL_DEBUG_SEVERITY_NOTIFICATION
     #define GL_DEBUG_SEVERITY_NOTIFICATION 0x826B
+#endif
+// 驱动闲聊类消息（非问题），日志里按 debug 处理
+#ifndef GL_DEBUG_TYPE_OTHER
+    #define GL_DEBUG_TYPE_OTHER 0x8251
 #endif
 #ifndef GL_DONT_CARE
     #define GL_DONT_CARE 0x1100

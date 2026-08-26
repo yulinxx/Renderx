@@ -159,6 +159,14 @@ namespace Render::RHI::gl
                 log->debug("[gl][driver] %s", message);
                 return;
             }
+            // GL_DEBUG_TYPE_OTHER 是驱动的闲聊（"driver allocated storage for
+            // renderbuffer 1" 之类），不是问题。它却常带 LOW 严重度，按 warn 打出来会
+            // 稀释真正的告警 —— 日志里的 warning 必须条条值得看，否则等于没有告警。
+            if (type == GL_DEBUG_TYPE_OTHER)
+            {
+                log->debug("[gl][driver] %s", message);
+                return;
+            }
             const char* level = severity == GL_DEBUG_SEVERITY_HIGH     ? "HIGH"
                                 : severity == GL_DEBUG_SEVERITY_MEDIUM ? "MEDIUM"
                                                                        : "LOW";
@@ -303,7 +311,35 @@ namespace Render::RHI::gl
         {
             m_caps.maxLineWidth = 1.0f;
         }
+
+        // 前向兼容上下文（forward-compatible）里宽线已被移除：唯一合法值是精确的 1.0，
+        // 传 1.0 以外的任何值都会得到 GL_INVALID_VALUE。
+        //
+        // 坑在于 GL_ALIASED_LINE_WIDTH_RANGE 仍然照旧返回 [1, 10]（NVIDIA 就是这样），
+        // 于是"按 caps 夹一下"这种防御完全失效 —— 表现为每帧一条
+        // 「GL_INVALID_VALUE ... Operation is not valid from a preview context」
+        // （"preview context" 是 NVIDIA 对前向兼容上下文的措辞），而画面看着还正常。
+        //
+        // 上下文是否前向兼容由宿主决定：Qt 在请求 GL >= 3.0 且未设置
+        // QSurfaceFormat::DeprecatedFunctions 时会加上 FORWARD_COMPATIBLE 位。
+        // 这里不猜宿主怎么配，直接查 GL_CONTEXT_FLAGS 得到事实，并把 caps 修正成
+        // 真实能力 —— 之后所有走 caps 夹取的代码就自动只发 1.0。
+        if (m_gl.GetIntegerv)
+        {
+            GLint contextFlags = 0;
+            m_gl.GetIntegerv(GL_CONTEXT_FLAGS, &contextFlags);
+            m_forwardCompatible = (contextFlags & GL_CONTEXT_FLAG_FORWARD_COMPATIBLE_BIT) != 0;
+            if (m_forwardCompatible && m_caps.maxLineWidth > 1.0f)
+            {
+                m_log.info("[gl] forward-compatible context: wide lines unavailable, "
+                           "clamping maxLineWidth %.1f -> 1.0 (host may set "
+                           "QSurfaceFormat::DeprecatedFunctions to keep wide lines)",
+                    static_cast<double>(m_caps.maxLineWidth));
+                m_caps.maxLineWidth = 1.0f;
+            }
+        }
     }
+
 
     // ==================== 表面 ====================
 
