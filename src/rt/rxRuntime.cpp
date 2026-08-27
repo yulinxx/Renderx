@@ -135,6 +135,13 @@ namespace Render::RT::detail
             layout.attributes[2] = attr(2, 20, AT::Float4);
             layout.attributeCount = 3;
             break;
+        case VertexFormat::P3T2C4:
+            // 世界坐标 + UV + 颜色调制，用于世界空间贴图
+            layout.attributes[0] = attr(0, 0, AT::Float3);
+            layout.attributes[1] = attr(1, 12, AT::Float2);
+            layout.attributes[2] = attr(2, 20, AT::Float4);
+            layout.attributeCount = 3;
+            break;
         }
         return layout;
     }
@@ -152,7 +159,24 @@ namespace Render::RT::detail
             return { "world_pinned_p3o2c4.vert", "world_p3c4.frag" };
 
         case VertexFormat::P2T2C4:
+            if (!isScreen)
+            {
+                // P2T2C4 的顶点着色器把位置当像素坐标（screen_tex_p2t2c4.vert），
+                // 世界空间请用 P3T2C4。此前这里无条件返回屏幕变体、忽略 space，
+                // 于是 (P2T2C4, World) 会静默建出一条管线却画在错误位置——
+                // 不是编译错误，是画错，排查代价远高于直接不给 shader。
+                return {};
+            }
             return { "screen_tex_p2t2c4.vert", "screen_tex_p2t2c4.frag" };
+
+        case VertexFormat::P3T2C4:
+            if (isScreen || isPinned)
+            {
+                // 世界空间专用：顶点已含世界坐标，屏幕/定尺寸语义无对应着色器
+                return {};
+            }
+            // 片元与 P2T2C4 共用：只吃 vUV/vColor，与空间无关
+            return { "world_tex_p3t2c4.vert", "screen_tex_p2t2c4.frag" };
 
         case VertexFormat::P3C4:
             if (isPinned)
@@ -958,7 +982,8 @@ namespace Render::RT::detail
         textureSlot.binding = 0;
         textureSlot.type = RHI::BindingType::SampledTexture;
         textureSlot.glName = "uTex";
-        const bool needsTexture = key.vertexFormat == VertexFormat::P2T2C4;
+        const bool needsTexture =
+            key.vertexFormat == VertexFormat::P2T2C4 || key.vertexFormat == VertexFormat::P3T2C4;
 
         RHI::GraphicsPipelineDesc desc{};
         desc.vertexShader = vs;
@@ -1115,6 +1140,9 @@ namespace Render::RT::detail
             // 因此必须显式指定片段着色器，否则两者会命中同一条缓存管线。
             { DP::ScreenGlyph, VF::P2T2C4, RS::Screen, PT::Triangles, "ScreenGlyph",
               "screen_glyph_p2t2c4.frag" },
+            // 世界空间贴图（位图实体）：顶点是世界坐标，随视图平移/缩放变换。
+            // 片元与 ScreenTextured 相同，但空间不同，因此是独立的一条。
+            { DP::WorldTextured, VF::P3T2C4, RS::World, PT::Triangles, "WorldTextured", nullptr },
         };
         static_assert(sizeof(kEntries) / sizeof(kEntries[0]) == static_cast<size_t>(DP::Count),
                       "内建管线表必须覆盖 DefaultPipeline 的全部取值");

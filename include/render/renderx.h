@@ -241,6 +241,10 @@ namespace Render
             /// 世界锚点 float3 + 像素偏移 float2 + 颜色 float4，36 字节。
             /// 专用于 RenderSpace::WorldPinned。
             P3O2C4 = 4,
+            /// 位置 float3 + UV float2 + 颜色 float4，36 字节。
+            /// 世界空间贴图（位图实体）：顶点已在 CPU 侧完成变换，
+            /// 因此旋转/倾斜无需 DLL 额外能力。颜色为纹理的乘性调制。
+            P3T2C4 = 5,
         };
 
         /// 返回某顶点格式的步长（字节）。调用方据此计算偏移，
@@ -254,6 +258,7 @@ namespace Render
             case VertexFormat::P3N3: return 24;
             case VertexFormat::P2T2C4: return 32;
             case VertexFormat::P3O2C4: return 36;
+            case VertexFormat::P3T2C4: return 36;
             }
             return 0;
         }
@@ -307,7 +312,12 @@ namespace Render
             /// ScreenTextured 是 RGBA 位图，直接采样四通道。二者无法由
             /// (格式, 空间, 拓扑) 区分，所以必须由调用方显式指定 pipelineIndex。
             ScreenGlyph = 15,
-            Count = 16,
+            /// 世界空间贴图（P3T2C4 + 世界空间 + 三角形）。位图实体走这条：
+            /// 顶点在 CPU 侧已完成世界变换，着色器只做 uView 投影 + 采样 RGBA。
+            /// 与 ScreenTextured 的区别是空间——后者把顶点当像素坐标，
+            /// 贴图不会随视图缩放/平移。
+            WorldTextured = 16,
+            Count = 17,
         };
 
         // ==================== 创建描述 ====================

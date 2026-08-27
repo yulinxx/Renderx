@@ -697,7 +697,7 @@ option(BUILD_SHARED_LIBS "Build shared libraries" ON)
 ### Shader 嵌入（不再有文件复制）
 
 Shader 在构建期编入 DLL，构建后输出目录中不再有 `.vert/.frag/.comp` 文件，运行期也不再读盘。
-详见上文「Shader 管理」。当前嵌入 27 个文件：
+详见上文「Shader 管理」。当前嵌入 28 个文件：
 
 | 类别 | 文件名 |
 |------|--------|
@@ -706,6 +706,7 @@ Shader 在构建期编入 DLL，构建后输出目录中不再有 `.vert/.frag/.
 | 世界锚定定尺寸 | `world_pinned_p3o2c4.vert`（片段复用 `world_p3c4.frag`） |
 | 点图元 | `world_point_p3c3.vert`、`world_point_p3c4.vert`、`screen_point_p3c3.vert`、`screen_point_p3c4.vert`、`point_p3c3.frag`、`point_p3c4.frag` |
 | 屏幕空间纹理 | `screen_tex_p2t2c4.vert`、`screen_tex_p2t2c4.frag` |
+| 世界空间纹理 | `world_tex_p3t2c4.vert`（片段复用 `screen_tex_p2t2c4.frag`） |
 | 3D 网格 | `mesh_3d.vert`、`mesh_3d.frag`、`mesh_3d_instanced.vert` |
 | 文本 | `text_sdf.vert`、`text_sdf.frag`、`text_screen.vert`、`text_screen.frag` |
 | 高亮 | `highlight_3d.vert`、`highlight_3d.frag` |
@@ -886,7 +887,7 @@ if (rxSessionBeginFrame(session) == RxResult::Ok)
 
 | `RenderSpace` | 跟随平移 | 跟随缩放 | 顶点格式 | 用途 |
 |---------------|----------|----------|----------|------|
-| `World` | 是 | 是 | P3C3 / P3C4 | 常规图元 |
+| `World` | 是 | 是 | P3C3 / P3C4 / **P3T2C4** | 常规图元、世界空间贴图（位图） |
 | `Screen` | 否 | 否 | P3C3 / P3C4 / P2T2C4 | HUD、标尺、屏幕角标 |
 | `WorldPinned` | 是 | **否** | P3O2C4（锚点 + 像素偏移） | 场景内定尺寸标记：箭头、符号、标注框、引线端点 |
 
@@ -897,12 +898,13 @@ if (rxSessionBeginFrame(session) == RxResult::Ok)
 
 ### 当前缺口
 
-- **文本**：字形图集尚未移植到新 RHI，`rxFontLoad` 明确返回 `ErrorUnsupportedBackend`
-  并记录错误，不静默成功。
 - **3D（P3N3）**：`mesh_3d.*` 仍用独立 uniform，未并入 PushConstants 块；
   `VertexFormat::P3N3` 的管线解析会明确失败并报错，不提供半实现路径。
 - **Metal / Vulkan**：`RHI::createDevice` 对这两个后端返回 `nullptr` 并报错，
   不静默回退到 Null（回退的表现是画面全黑而调用方拿不到任何错误）。
+- **纹理配置**：`TextureDesc` 只有宽/高/像素三项，格式恒为 RGBA8Unorm、
+  采样器恒为 `defaultSampler`（GL_LINEAR / CLAMP）。sRGB、mipmap、
+  各向异性、最近邻采样都还没有表达位；需要时再扩字段，不预留空洞。
 
 ### 渲染流程说明
 
@@ -946,14 +948,20 @@ pushConstant 块（`uView` / `uViewport` / `uPointSize` / `uSdfScale`）。
 | ScreenPoint | `screen_point_p3c3.vert` | `point_p3c3.frag` | 屏幕空间圆点 |
 | ScreenLine4 / ScreenTri4 | `screen_p3c4.vert` | `screen_p3c4.frag` | 屏幕空间图元（P3C4，带 alpha） |
 | ScreenPoint4 | `screen_point_p3c4.vert` | `point_p3c4.frag` | 屏幕空间圆点（带 alpha） |
-| ScreenTextured | `screen_tex_p2t2c4.vert` | `screen_tex_p2t2c4.frag` | 屏幕空间 RGBA 纹理（位图） |
+| ScreenTextured | `screen_tex_p2t2c4.vert` | `screen_tex_p2t2c4.frag` | 屏幕空间 RGBA 纹理（HUD 贴图） |
 | ScreenGlyph | `screen_tex_p2t2c4.vert` | `screen_glyph_p2t2c4.frag` | 字形四边形：图集为 R8 覆盖率，alpha 取 `.r`、rgb 取顶点色 |
 | WorldPinnedLine / WorldPinnedTri | `world_pinned_p3o2c4.vert` | `world_p3c4.frag` | 世界锚定 + 屏幕定尺寸（P3O2C4） |
+| WorldTextured | `world_tex_p3t2c4.vert` | `screen_tex_p2t2c4.frag` | 世界空间 RGBA 纹理（位图实体，P3T2C4） |
 
 > `ScreenTextured` 与 `ScreenGlyph` 同为 P2T2C4 + Screen + Triangles，无法由
 > （格式, 空间, 拓扑）区分，因此字形必须显式指定 `DrawCommand::pipelineIndex`
 > （`rxPipelineGetDefault(runtime, DefaultPipeline::ScreenGlyph)`）。让 Runtime
 > 自行解析会命中 `ScreenTextured`，把 R8 当 RGBA 采样，结果是纯红色的字。
+>
+> `WorldTextured` 与 `ScreenTextured` 靠**顶点格式**区分（P3T2C4 / P2T2C4），
+> 不靠空间：`defaultShadersFor` 对「P2T2C4 + 非 Screen」和「P3T2C4 + 非 World」
+> 一律返回空并拒绝建管线。此前 P2T2C4 无条件返回屏幕变体，
+> `(P2T2C4, World)` 能成功建出一条跑着屏幕顶点着色器的管线——不报错，只画错。
 
 尚未接入 RT 默认管线（随对应阶段启用）：
 

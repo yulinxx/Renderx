@@ -208,8 +208,58 @@ TEST(RxRuntime, AllDefaultPipelinesAreAvailable)
     // WorldPinned 是本轮新增的第三档渲染空间，单列一条断言以防被顺带删掉
     EXPECT_NE(rxPipelineGetDefault(runtime, DefaultPipeline::WorldPinnedLine), 0);
     EXPECT_NE(rxPipelineGetDefault(runtime, DefaultPipeline::WorldPinnedTri), 0);
+    // 世界空间贴图：位图实体的唯一通道
+    EXPECT_NE(rxPipelineGetDefault(runtime, DefaultPipeline::WorldTextured), 0);
 
     rxRuntimeDestroy(runtime);
+}
+
+TEST(RxRuntime, WorldTexturedDiffersFromScreenTextured)
+{
+    LogSink sink;
+    const RuntimeDesc desc = makeRuntimeDesc(&sink);
+    const RuntimeHandle runtime = rxRuntimeCreate(&desc);
+    ASSERT_TRUE(rxValid(runtime));
+
+    // 两者片元相同但顶点着色器不同（一个乘 uView、一个把位置当像素坐标），
+    // 必须是两条独立管线。若哪天顶点格式判据写错而落到同一条，贴图会画在
+    // 屏幕坐标上、不随视图变换——是静默画错而非报错，所以在此设一道断言。
+    EXPECT_NE(rxPipelineGetDefault(runtime, DefaultPipeline::WorldTextured),
+              rxPipelineGetDefault(runtime, DefaultPipeline::ScreenTextured));
+
+    rxRuntimeDestroy(runtime);
+}
+
+TEST(RxRuntime, TexturedFormatsRejectMismatchedSpace)
+{
+    LogSink sink;
+    const RuntimeDesc desc = makeRuntimeDesc(&sink);
+    const RuntimeHandle runtime = rxRuntimeCreate(&desc);
+    ASSERT_TRUE(rxValid(runtime));
+
+    // rxPipelineCreate 没有 space 字段，一律按 World 建（见 Runtime::createPipeline）。
+    // P2T2C4 的顶点着色器只有屏幕空间实现，所以这条组合必须失败返回 0，
+    // 而不是静默建出一条把世界坐标当像素坐标用的管线。
+    // 屏幕空间贴图请走 rxPipelineGetDefault(ScreenTextured/ScreenGlyph)。
+    PipelineDesc screenFmt{};
+    screenFmt.topology = PrimitiveTopology::Triangles;
+    screenFmt.vertexFormat = VertexFormat::P2T2C4;
+    EXPECT_EQ(rxPipelineCreate(runtime, &screenFmt), 0);
+
+    // P3T2C4 是世界空间格式，同一条路径应当成功
+    PipelineDesc worldFmt{};
+    worldFmt.topology = PrimitiveTopology::Triangles;
+    worldFmt.vertexFormat = VertexFormat::P3T2C4;
+    EXPECT_NE(rxPipelineCreate(runtime, &worldFmt), 0);
+
+    rxRuntimeDestroy(runtime);
+}
+
+TEST(RxRuntime, P3T2C4StrideMatchesLayout)
+{
+    // 顶点结构在宿主侧手写（BitmapQuadBuilder 的 BVertex），
+    // stride 对不上会让整批顶点错位，这条锁住 ABI。
+    EXPECT_EQ(rxVertexStride(VertexFormat::P3T2C4), 36u);
 }
 
 TEST(RxRuntime, DefaultPipelinesAreDeduplicated)

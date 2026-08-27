@@ -129,6 +129,9 @@ set(RENDERX_SHADER_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/screen_p3c4.frag
     ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/screen_tex_p2t2c4.vert
     ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/screen_tex_p2t2c4.frag
+    # 世界空间贴图（位图实体）：顶点是世界坐标，随视图变换。
+    # 片元复用 screen_tex_p2t2c4.frag —— 它只用 vUV/vColor，与空间无关。
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/world_tex_p3t2c4.vert
     # 字形四边形：顶点复用 screen_tex（同为 P2T2C4 + 屏幕空间），
     # 片元不同——图集是 R8 覆盖率，alpha 取 .r、rgb 取顶点色。
     ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/screen_glyph_p2t2c4.frag
