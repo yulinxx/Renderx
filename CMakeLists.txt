@@ -135,6 +135,10 @@ set(RENDERX_SHADER_SOURCES
     # 字形四边形：顶点复用 screen_tex（同为 P2T2C4 + 屏幕空间），
     # 片元不同——图集是 R8 覆盖率，alpha 取 .r、rgb 取顶点色。
     ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/screen_glyph_p2t2c4.frag
+    # 世界空间字形：顶点复用 world_tex_p3t2c4.vert（同为 P3T2C4 + 世界空间），
+    # 片元不同——图集是 R8 **距离场**而非覆盖率，靠 fwidth 求导做缩放无关的
+    # 抗锯齿，一张图集因此能服务所有缩放（见 FontDesc::sdfPadding）。
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/world_glyph_sdf_p3t2c4.frag
 
     # ---- 点图元 ----
     # 点必须有独立的顶点着色器：尺寸是像素量、只能写 gl_PointSize，

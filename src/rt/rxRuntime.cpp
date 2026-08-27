@@ -1143,6 +1143,10 @@ namespace Render::RT::detail
             // 世界空间贴图（位图实体）：顶点是世界坐标，随视图平移/缩放变换。
             // 片元与 ScreenTextured 相同，但空间不同，因此是独立的一条。
             { DP::WorldTextured, VF::P3T2C4, RS::World, PT::Triangles, "WorldTextured", nullptr },
+            // 世界空间字形（文字实体）：与 WorldTextured 同格式同空间同拓扑，
+            // 只有片元不同（距离场而非 RGBA），因此同样必须显式指定片段着色器。
+            { DP::WorldGlyphSdf, VF::P3T2C4, RS::World, PT::Triangles, "WorldGlyphSdf",
+              "world_glyph_sdf_p3t2c4.frag" },
         };
         static_assert(sizeof(kEntries) / sizeof(kEntries[0]) == static_cast<size_t>(DP::Count),
                       "内建管线表必须覆盖 DefaultPipeline 的全部取值");

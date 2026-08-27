@@ -210,6 +210,7 @@ TEST(RxRuntime, AllDefaultPipelinesAreAvailable)
     EXPECT_NE(rxPipelineGetDefault(runtime, DefaultPipeline::WorldPinnedTri), 0);
     // 世界空间贴图：位图实体的唯一通道
     EXPECT_NE(rxPipelineGetDefault(runtime, DefaultPipeline::WorldTextured), 0);
+    EXPECT_NE(rxPipelineGetDefault(runtime, DefaultPipeline::WorldGlyphSdf), 0);
 
     rxRuntimeDestroy(runtime);
 }
@@ -226,6 +227,28 @@ TEST(RxRuntime, WorldTexturedDiffersFromScreenTextured)
     // 屏幕坐标上、不随视图变换——是静默画错而非报错，所以在此设一道断言。
     EXPECT_NE(rxPipelineGetDefault(runtime, DefaultPipeline::WorldTextured),
               rxPipelineGetDefault(runtime, DefaultPipeline::ScreenTextured));
+
+    rxRuntimeDestroy(runtime);
+}
+
+TEST(RxRuntime, WorldGlyphSdfDiffersFromWorldTextured)
+{
+    LogSink sink;
+    const RuntimeDesc desc = makeRuntimeDesc(&sink);
+    const RuntimeHandle runtime = rxRuntimeCreate(&desc);
+    ASSERT_TRUE(rxValid(runtime));
+
+    const uint16_t sdf = rxPipelineGetDefault(runtime, DefaultPipeline::WorldGlyphSdf);
+
+    // 管线索引非 0 同时也证明了 world_glyph_sdf_p3t2c4.frag 真的编译通过——
+    // GLSL 的语法/语义错误只在建管线时才暴露，编译期查不出来。
+    EXPECT_NE(sdf, 0);
+
+    // 两者 (格式, 空间, 拓扑) 完全相同，只有片元不同：一个把 R8 当距离场，
+    // 一个当 RGBA 采样。若落到同一条管线，文字会变成纯红色块——静默画错，
+    // 所以在此设断言。与 ScreenGlyph / ScreenTextured 同理。
+    EXPECT_NE(sdf, rxPipelineGetDefault(runtime, DefaultPipeline::WorldTextured));
+    EXPECT_NE(sdf, rxPipelineGetDefault(runtime, DefaultPipeline::ScreenGlyph));
 
     rxRuntimeDestroy(runtime);
 }
@@ -449,7 +472,58 @@ TEST(RxRuntime, FontGlyphRasterizesAndFillsMetrics)
     rxRuntimeDestroy(runtime);
 }
 
-// ==================== 表面与会话归属 ====================
+TEST(RxRuntime, FontSdfModeOutsetsGlyphByPadding)
+{
+    LogSink sink;
+    const RuntimeDesc desc = makeRuntimeDesc(&sink);
+    const RuntimeHandle runtime = rxRuntimeCreate(&desc);
+    ASSERT_TRUE(rxValid(runtime));
+
+    std::ifstream file(RENDERX_TEST_FONT_PATH, std::ios::binary);
+    ASSERT_TRUE(file.good()) << "缺少测试字体：" << RENDERX_TEST_FONT_PATH;
+    const std::vector<uint8_t> ttf((std::istreambuf_iterator<char>(file)),
+                                   std::istreambuf_iterator<char>());
+    ASSERT_FALSE(ttf.empty());
+
+    constexpr uint32_t kPadding = 8;
+
+    // 同一字体、同一字号、同一码点，只改 sdfPadding
+    FontDesc coverageDesc{};
+    coverageDesc.data = ttf.data();
+    coverageDesc.dataBytes = ttf.size();
+    coverageDesc.pixelHeight = 32.0f;
+    FontHandle coverageFont = FontHandle::Invalid;
+    ASSERT_EQ(rxFontCreate(runtime, &coverageDesc, &coverageFont), RxResult::Ok);
+
+    FontDesc sdfDesc = coverageDesc;
+    sdfDesc.sdfPadding = kPadding;
+    FontHandle sdfFont = FontHandle::Invalid;
+    ASSERT_EQ(rxFontCreate(runtime, &sdfDesc, &sdfFont), RxResult::Ok);
+
+    GlyphInfo coverage{};
+    GlyphInfo sdf{};
+    ASSERT_EQ(rxFontGlyph(runtime, coverageFont, U'0', &coverage), RxResult::Ok);
+    ASSERT_EQ(rxFontGlyph(runtime, sdfFont, U'0', &sdf), RxResult::Ok);
+    ASSERT_GT(coverage.width, 0.0f);
+    ASSERT_GT(sdf.width, 0.0f);
+
+    // 距离场向四周各外扩 padding 像素：四边形因此比墨迹大一圈。
+    // 这一圈不能省——轮廓外侧的距离值正是抗锯齿过渡所需的数据，
+    // 裁掉就退化成硬边（旧实现的症状之一）。
+    EXPECT_FLOAT_EQ(sdf.width, coverage.width + 2.0f * kPadding);
+    EXPECT_FLOAT_EQ(sdf.height, coverage.height + 2.0f * kPadding);
+    // bearing 同步左上外移，否则字会整体偏移 padding 个像素
+    EXPECT_FLOAT_EQ(sdf.bearingX, coverage.bearingX - static_cast<float>(kPadding));
+    EXPECT_FLOAT_EQ(sdf.bearingY, coverage.bearingY - static_cast<float>(kPadding));
+    // 步进只取决于字体的水平度量，与图集内容无关，必须一致：
+    // 若这里也被 padding 撑大，字距会随 padding 变化。
+    EXPECT_FLOAT_EQ(sdf.advance, coverage.advance);
+
+    rxFontDestroy(runtime, sdfFont);
+    rxFontDestroy(runtime, coverageFont);
+    rxRuntimeDestroy(runtime);
+}
+
 
 TEST(RxRuntime, ZeroSizedSurfaceIsRejected)
 {

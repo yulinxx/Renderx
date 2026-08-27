@@ -317,7 +317,18 @@ namespace Render
             /// 与 ScreenTextured 的区别是空间——后者把顶点当像素坐标，
             /// 贴图不会随视图缩放/平移。
             WorldTextured = 16,
-            Count = 17,
+            /// 世界空间字形（P3T2C4 + 世界空间 + 三角形）。文字实体走这条。
+            ///
+            /// 与 WorldTextured 同格式同空间同拓扑，差别只在片元：图集是 R8
+            /// **距离场**，靠 fwidth 求导得到缩放无关的抗锯齿宽度。因此和
+            /// ScreenGlyph / ScreenTextured 那一对同理，**必须显式指定
+            /// pipelineIndex** —— 让 Runtime 自行解析会命中 WorldTextured，
+            /// 把距离场当 RGBA 采样，结果是纯红色的字。
+            ///
+            /// 用它的字体必须以 FontDesc::sdfPadding > 0 创建，否则图集里是
+            /// 覆盖率而非距离场，边缘会被 smoothstep 硬阈值化。
+            WorldGlyphSdf = 17,
+            Count = 18,
         };
 
         // ==================== 创建描述 ====================
@@ -447,12 +458,35 @@ namespace Render
             /// 持有原始数据指针，不拷贝就会在调用方释放后变成悬垂指针。
             const void* data;
             uint64_t dataBytes;
-            /// 光栅化像素高度。一个 FontHandle 只对应一个高度：图集里存的是
-            /// 位图而非矢量，换高度必须重新光栅化。多字号 = 多个 FontHandle。
+            /// 光栅化像素高度。
+            ///
+            /// 覆盖率模式（sdfPadding == 0）下这就是最终显示高度，换高度必须
+            /// 重新光栅化，多字号 = 多个 FontHandle。
+            /// SDF 模式（sdfPadding > 0）下这只是**距离场的采样精度**：距离场
+            /// 可任意缩放，一个 FontHandle 足以覆盖所有显示尺寸。
             float pixelHeight;
             /// 图集尺寸，0 表示用默认值（1024）。超过 Capabilities 上限时创建失败。
             uint32_t atlasWidth;
             uint32_t atlasHeight;
+            /**
+             * @brief SDF 模式的边缘留白（像素）。0 = 覆盖率位图模式。
+             *
+             * 大于 0 时字形用 `stbtt_GetGlyphSDF` 生成**有符号距离场**：像素值
+             * 128 表示恰好在轮廓上，每偏离 1 像素变化 `128 / sdfPadding` 级灰度。
+             * 配合片元着色器里的 `fwidth` 求导，抗锯齿宽度自动跟随屏幕上的实际
+             * 缩放 —— 这才是「一张图集服务所有缩放」的成立条件。
+             *
+             * 留白就是可表达的最大距离：太小则放大后边缘出现截断台阶，太大则
+             * 浪费图集面积并降低有效精度。8 是常用值。
+             *
+             * 注意：这与被删掉的旧 `text_sdf.frag` 不是一回事。那份代码对**覆盖率
+             * 位图**做 smoothstep 并当作距离场解释，实际是硬阈值化，反而削掉了
+             * 抗锯齿边缘（见 src/rt/rxFont.h 文件头）。距离场必须在光栅化阶段
+             * 真的生成出来，不能在采样阶段假装。
+             *
+             * 本字段占用的是结构体原有的尾部填充，故 sizeof 不变。
+             */
+            uint32_t sdfPadding;
         };
         static_assert(sizeof(FontDesc) == 32, "FontDesc ABI size changed");
 

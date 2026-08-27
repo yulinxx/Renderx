@@ -18,8 +18,20 @@
  * - 字形缓存是哈希表，而非对 vector 做线性扫描。
  * - 字体字节在 DLL 内留副本：stbtt_fontinfo 持有原始数据指针，
  *   不留副本则调用方一释放就是悬垂指针（旧 textAtlas 正是如此）。
- * - 没有「SDF」路径。旧的 text_sdf.frag 对覆盖率位图做 smoothstep，
- *   把它当距离场解释，实际效果是硬阈值化、反而削掉了抗锯齿边缘。
+ *
+ * ## 两种图集内容：覆盖率 与 SDF
+ *
+ * `FontDesc::sdfPadding == 0` 时图集存**覆盖率**（`stbtt_MakeGlyphBitmap`），
+ * 像素值就是该点被字形覆盖的比例。屏幕空间文字用这个：显示尺寸等于光栅化
+ * 尺寸，一一对应，最锐利。
+ *
+ * `sdfPadding > 0` 时图集存**有符号距离场**（`stbtt_GetGlyphSDF`），
+ * 128 表示恰在轮廓上。世界空间文字用这个：显示尺寸随缩放连续变化，
+ * 距离场可任意插值，一个句柄覆盖所有尺寸，不必按缩放档位重建图集。
+ *
+ * 曾经存在的 `text_sdf.frag` 与此**不是一回事**，它对覆盖率位图做 smoothstep
+ * 并当作距离场解释 —— 那等于硬阈值化，反而削掉了抗锯齿边缘。距离场必须在
+ * 光栅化阶段真的生成，不能在采样阶段假装。这也是那条路径当初被删掉的原因。
  */
 #pragma once
 
@@ -47,9 +59,13 @@ namespace Render::RT::detail
 
         uint32_t atlasWidth = 0;
         uint32_t atlasHeight = 0;
-        /// R8 覆盖率，行优先、行间无填充（步长恒为 atlasWidth）
+        /// R8 内容，行优先、行间无填充（步长恒为 atlasWidth）。
+        /// 覆盖率或距离场，取决于 sdfPadding，见文件头。
         std::vector<uint8_t> pixels;
         TextureHandle texture = TextureHandle::Invalid;
+
+        /// 0 = 覆盖率位图；>0 = SDF 模式的边缘留白（像素）
+        uint32_t sdfPadding = 0;
 
         /// 行式打包游标：从左到右填一行，填满换行
         uint32_t cursorX = 0;

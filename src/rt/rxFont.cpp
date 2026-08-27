@@ -79,7 +79,12 @@ namespace Render::RT::detail
 
         font->atlasWidth = width;
         font->atlasHeight = height;
+        font->sdfPadding = desc.sdfPadding;
         // 清零 = 全透明。未写过的区域被采样到时应当完全不可见。
+        //
+        // SDF 模式下 0 同样是安全的默认：0 距离轮廓最远（在字形外侧），
+        // 片元里 d - 0.5 为负 → alpha 0。若这里填 128（"恰在轮廓上"），
+        // 未写过的区域会变成半透明的糊块。
         font->pixels.assign(static_cast<size_t>(width) * height, 0);
 
         RHI::TextureDesc texDesc{};
@@ -108,8 +113,9 @@ namespace Render::RT::detail
         device->writeTexture(rhiTexture, 0, full, font->pixels.data(), font->pixels.size());
 
         *outFont = static_cast<FontHandle>(fonts.insert(font));
-        log.info("[rt] 字体就绪：pixelHeight=%.1f 图集 %ux%u（R8，%.2f MB）",
+        log.info("[rt] 字体就绪：pixelHeight=%.1f 图集 %ux%u（R8 %s，%.2f MB）",
                  static_cast<double>(desc.pixelHeight), width, height,
+                 desc.sdfPadding != 0 ? "距离场" : "覆盖率",
                  static_cast<double>(font->pixels.size()) / (1024.0 * 1024.0));
         return RxResult::Ok;
     }
@@ -241,11 +247,55 @@ namespace Render::RT::detail
             return RxResult::Ok;
         }
 
+        // 光栅化产物的尺寸与相对笔位置的偏移。两种模式的差别集中在这一段：
+        // 覆盖率模式直接用 GetGlyphBitmapBox 的结果；SDF 模式必须先生成，
+        // 因为距离场向四周各外扩 padding 像素，尺寸与偏移都和墨迹范围不同。
+        int glyphW = 0;
+        int glyphH = 0;
+        int offX = 0;
+        int offY = 0;
+        /// 仅 SDF 模式非空，用完必须 stbtt_FreeSDF（stb 内部 malloc）
+        unsigned char* sdfPixels = nullptr;
+
+        if (font.sdfPadding != 0)
+        {
+            const int padding = static_cast<int>(font.sdfPadding);
+            // onedge_value=128：恰在轮廓上的像素值，于是片元里减 0.5 即得符号距离。
+            // pixel_dist_scale=128/padding：偏离 1 像素变化多少级灰度。
+            // 两者共同决定可表达的距离范围恰为 ±padding 像素 —— 超出即饱和，
+            // 表现为放大到极限时边缘出现台阶，所以 padding 不能太小。
+            sdfPixels = stbtt_GetGlyphSDF(&font.info, font.scale, glyphIndex, padding, 128,
+                                          128.0f / static_cast<float>(padding), &glyphW, &glyphH,
+                                          &offX, &offY);
+            if (!sdfPixels || glyphW <= 0 || glyphH <= 0)
+            {
+                // 距离场生成失败：按缺字处理并缓存，不中断整行排版，也不每帧重试。
+                if (sdfPixels)
+                {
+                    stbtt_FreeSDF(sdfPixels, nullptr);
+                }
+                font.glyphs.emplace(codepoint, info);
+                *outGlyph = info;
+                return RxResult::Ok;
+            }
+        }
+        else
+        {
+            glyphW = bitmapW;
+            glyphH = bitmapH;
+            offX = x0;
+            offY = y0;
+        }
+
         uint32_t atlasX = 0;
         uint32_t atlasY = 0;
-        if (!packGlyph(font, static_cast<uint32_t>(bitmapW), static_cast<uint32_t>(bitmapH), atlasX,
+        if (!packGlyph(font, static_cast<uint32_t>(glyphW), static_cast<uint32_t>(glyphH), atlasX,
                        atlasY))
         {
+            if (sdfPixels)
+            {
+                stbtt_FreeSDF(sdfPixels, nullptr);
+            }
             if (!font.warnedFull)
             {
                 font.warnedFull = true;
@@ -258,24 +308,41 @@ namespace Render::RT::detail
             return RxResult::ErrorOutOfMemory;
         }
 
-        // 直接光栅化进 CPU 影子，步长是整张图集的宽度
-        stbtt_MakeGlyphBitmap(&font.info, &font.pixels[static_cast<size_t>(atlasY) * font.atlasWidth + atlasX],
-                              bitmapW, bitmapH, static_cast<int>(font.atlasWidth), font.scale,
-                              font.scale, glyphIndex);
-        font.markDirtyRows(atlasY, atlasY + static_cast<uint32_t>(bitmapH));
+        if (sdfPixels)
+        {
+            // 距离场由 stb 生成在紧凑缓冲里，逐行搬进图集（图集步长是整张宽度）
+            for (int row = 0; row < glyphH; ++row)
+            {
+                std::memcpy(&font.pixels[(static_cast<size_t>(atlasY) + row) * font.atlasWidth + atlasX],
+                            sdfPixels + static_cast<size_t>(row) * glyphW,
+                            static_cast<size_t>(glyphW));
+            }
+            stbtt_FreeSDF(sdfPixels, nullptr);
+        }
+        else
+        {
+            // 覆盖率位图可直接光栅化进 CPU 影子，步长是整张图集的宽度
+            stbtt_MakeGlyphBitmap(&font.info,
+                                  &font.pixels[static_cast<size_t>(atlasY) * font.atlasWidth + atlasX],
+                                  glyphW, glyphH, static_cast<int>(font.atlasWidth), font.scale,
+                                  font.scale, glyphIndex);
+        }
+        font.markDirtyRows(atlasY, atlasY + static_cast<uint32_t>(glyphH));
 
         const float invW = 1.0f / static_cast<float>(font.atlasWidth);
         const float invH = 1.0f / static_cast<float>(font.atlasHeight);
         info.u0 = static_cast<float>(atlasX) * invW;
         info.v0 = static_cast<float>(atlasY) * invH;
-        info.u1 = static_cast<float>(atlasX + static_cast<uint32_t>(bitmapW)) * invW;
-        info.v1 = static_cast<float>(atlasY + static_cast<uint32_t>(bitmapH)) * invH;
-        // x0/y0 是相对**基线上笔位置**的偏移，y 向下为正，
-        // 因此 y0 通常是负值（字形主体在基线之上）。与 GlyphInfo 的约定一致。
-        info.bearingX = static_cast<float>(x0);
-        info.bearingY = static_cast<float>(y0);
-        info.width = static_cast<float>(bitmapW);
-        info.height = static_cast<float>(bitmapH);
+        info.u1 = static_cast<float>(atlasX + static_cast<uint32_t>(glyphW)) * invW;
+        info.v1 = static_cast<float>(atlasY + static_cast<uint32_t>(glyphH)) * invH;
+        // offX/offY 是相对**基线上笔位置**的偏移，y 向下为正，
+        // 因此 offY 通常是负值（字形主体在基线之上）。与 GlyphInfo 的约定一致。
+        // SDF 模式下这两个值已含 padding 外扩，四边形因此比墨迹大一圈 ——
+        // 这是必须的：距离场在轮廓外侧仍有有效数据，裁掉就没有抗锯齿过渡了。
+        info.bearingX = static_cast<float>(offX);
+        info.bearingY = static_cast<float>(offY);
+        info.width = static_cast<float>(glyphW);
+        info.height = static_cast<float>(glyphH);
 
         font.glyphs.emplace(codepoint, info);
         *outGlyph = info;
