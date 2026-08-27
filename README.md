@@ -21,13 +21,11 @@
 > - **Shader**：构建期编入二进制，运行期零文件 IO。
 > - **零业务耦合**：Renderx 目录下已无任何 `Log/SyLogger.h` 引用；
 >   `otool -L` / `ldd` 结果只有 OpenGL + libc++ + libSystem，**零第一方依赖**。
-> - **测试**：`RenderxTests` 34/34、`RenderxGLTests` 68/68，构建零警告。
+> - **测试**：`RenderxTests` 34/34、`RenderxGLTests` 74/74，构建零警告。
 >
 > **已知缺口**
 >
-> - 文本：字形图集未移植到新 RHI，`rxFontLoad` 返回 `ErrorUnsupportedBackend`。
 > - 3D：`mesh_3d.*` 仍用独立 uniform，未并入 PushConstants 块。
-> - 宿主：`UI/` 与 `Main/` 自 legacy 删除起无法构建，随 2D/3D 改造阶段修复。
 >
 > 完整目标设计与决策依据见 `Docs/03-渲染主链/新渲染架构.md`。
 
@@ -301,7 +299,13 @@ Phase 3 引入的统一命令收集与排序组件：
 基于 stb_truetype 的字形光栅化与图集打包。**只做字形，不做文本**：
 
 - 一个 `FontHandle` = 一份字体数据 + 一个固定像素高度 + 它专属的 R8 图集
-  （图集存位图而非矢量，换字号必须重新光栅化，多字号 = 多个句柄）
+- 图集有两种内容，由 `FontDesc::sdfPadding` 选择：
+  - `0`：**覆盖率**位图（`stbtt_MakeGlyphBitmap`）。像素高度即显示字号，换字号
+    必须另建句柄。屏幕定尺寸文字用这一种。
+  - `>0`：**距离场**（`stbtt_GetGlyphSDF`，字形四周外扩 `sdfPadding` 像素，
+    `GlyphInfo::bearing*` 已含该外扩，`advance` 不受影响）。距离场尺度无关，
+    此时 `pixelHeight` 只是距离场的采样精度，一个句柄可服务所有显示大小 ——
+    世界空间文字（随缩放变化）用这一种。
 - 懒填充：创建时不预烘任何字符，字形在首次 `rxFontGlyph` 时才光栅化
   （CAD 图纸的字符集无法预知，预烘 ASCII 既浪费又不够用）
 - 上传按脏行增量（`rxFontFlushAtlas`），不是每帧重传整张图集
@@ -309,7 +313,8 @@ Phase 3 引入的统一命令收集与排序组件：
   与其他图元一起参与 `sortKey` 排序与批次合并
 
 UTF-8 解码、字距推进、水平/垂直对齐、世界坐标→像素换算**全在调用方**
-（宿主侧参考实现：`UI/2D/Src/UI/ViewWidget/TextQuadBuilder.cpp`）。
+（宿主侧参考实现：屏幕文字 `UI/2D/Src/UI/ViewWidget/TextQuadBuilder.cpp`，
+世界文字 `UI/2D/Src/UI/ViewWidget/WorldTextQuadBuilder.cpp`）。
 被替换掉的 `src/core/textAtlas` + `src/core/screenTextRenderer` 是反过来的：
 宿主递字符串、DLL 内部排版并自己 `bindPipeline` + `draw`，于是文本永远是
 独立的一批 draw call，且「对齐规则」这种业务约定被编进了渲染 DLL。
@@ -318,9 +323,11 @@ UTF-8 解码、字距推进、水平/垂直对齐、世界坐标→像素换算*
 数据的副本，现为 R8）；字形缓存对 vector 线性扫描（现为哈希表）；`loadFont`
 不留字体副本，而 `stbtt_fontinfo` 持有原始指针（现在内部拷贝一份）。
 
-**没有 SDF 路径**：旧的 `text_sdf.frag` 对 stb_truetype 的覆盖率位图做
+**距离场必须在光栅化阶段真的生成**：旧的 `text_sdf.frag` 对覆盖率位图做
 `smoothstep` 把它当距离场解释，实际效果是硬阈值化、反而削掉了抗锯齿边缘。
-该 shader 与 `PushConstants::uSdfScale` 已一并删除。
+该 shader 与 `PushConstants::uSdfScale` 已一并删除，取而代之的是
+`sdfPadding` + `world_glyph_sdf_p3t2c4.frag`（抗锯齿窗口取 `fwidth(d)`，
+即距离场在屏幕上的每像素梯度，而非固定常量）。
 
 ### Shader 管理
 
@@ -697,7 +704,8 @@ option(BUILD_SHARED_LIBS "Build shared libraries" ON)
 ### Shader 嵌入（不再有文件复制）
 
 Shader 在构建期编入 DLL，构建后输出目录中不再有 `.vert/.frag/.comp` 文件，运行期也不再读盘。
-详见上文「Shader 管理」。当前嵌入 28 个文件：
+详见上文「Shader 管理」。当前嵌入 25 个文件（以 `CMakeLists.txt` 的
+`RENDERX_SHADER_SOURCES` 为准）：
 
 | 类别 | 文件名 |
 |------|--------|
@@ -707,8 +715,9 @@ Shader 在构建期编入 DLL，构建后输出目录中不再有 `.vert/.frag/.
 | 点图元 | `world_point_p3c3.vert`、`world_point_p3c4.vert`、`screen_point_p3c3.vert`、`screen_point_p3c4.vert`、`point_p3c3.frag`、`point_p3c4.frag` |
 | 屏幕空间纹理 | `screen_tex_p2t2c4.vert`、`screen_tex_p2t2c4.frag` |
 | 世界空间纹理 | `world_tex_p3t2c4.vert`（片段复用 `screen_tex_p2t2c4.frag`） |
+| 字形（屏幕） | `screen_glyph_p2t2c4.frag`（顶点复用 `screen_tex_p2t2c4.vert`）：R8 **覆盖率**图集 |
+| 字形（世界） | `world_glyph_sdf_p3t2c4.frag`（顶点复用 `world_tex_p3t2c4.vert`）：R8 **距离场**图集 |
 | 3D 网格 | `mesh_3d.vert`、`mesh_3d.frag`、`mesh_3d_instanced.vert` |
-| 文本 | `text_sdf.vert`、`text_sdf.frag`、`text_screen.vert`、`text_screen.frag` |
 | 高亮 | `highlight_3d.vert`、`highlight_3d.frag` |
 | GPU 剔除 | `culling.comp` |
 
@@ -952,6 +961,7 @@ pushConstant 块（`uView` / `uViewport` / `uPointSize` / `uSdfScale`）。
 | ScreenGlyph | `screen_tex_p2t2c4.vert` | `screen_glyph_p2t2c4.frag` | 字形四边形：图集为 R8 覆盖率，alpha 取 `.r`、rgb 取顶点色 |
 | WorldPinnedLine / WorldPinnedTri | `world_pinned_p3o2c4.vert` | `world_p3c4.frag` | 世界锚定 + 屏幕定尺寸（P3O2C4） |
 | WorldTextured | `world_tex_p3t2c4.vert` | `screen_tex_p2t2c4.frag` | 世界空间 RGBA 纹理（位图实体，P3T2C4） |
+| WorldGlyphSdf | `world_tex_p3t2c4.vert` | `world_glyph_sdf_p3t2c4.frag` | 世界空间字形：图集为 R8 **距离场**，用 `fwidth(d)` 做缩放无关抗锯齿 |
 
 > `ScreenTextured` 与 `ScreenGlyph` 同为 P2T2C4 + Screen + Triangles，无法由
 > （格式, 空间, 拓扑）区分，因此字形必须显式指定 `DrawCommand::pipelineIndex`
@@ -962,6 +972,11 @@ pushConstant 块（`uView` / `uViewport` / `uPointSize` / `uSdfScale`）。
 > 不靠空间：`defaultShadersFor` 对「P2T2C4 + 非 Screen」和「P3T2C4 + 非 World」
 > 一律返回空并拒绝建管线。此前 P2T2C4 无条件返回屏幕变体，
 > `(P2T2C4, World)` 能成功建出一条跑着屏幕顶点着色器的管线——不报错，只画错。
+>
+> `WorldGlyphSdf` 与 `WorldTextured` 是同一种碰撞（同为 P3T2C4 + World +
+> Triangles），纪律相同：世界文字必须显式填
+> `rxPipelineGetDefault(runtime, DefaultPipeline::WorldGlyphSdf)`，
+> 否则 R8 距离场被当 RGBA 采样，同样画成纯红。
 
 尚未接入 RT 默认管线（随对应阶段启用）：
 
