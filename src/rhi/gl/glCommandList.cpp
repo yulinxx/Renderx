@@ -262,9 +262,14 @@ namespace Render::RHI::gl
         GlPipelineRecord* record = m_device->pipelineRecord(pipeline);
         if (!record)
         {
-            m_device->log().error("[gl] bindPipeline: 管线句柄无效");
+            m_device->log().error("[gl] bindPipeline: invalid pipeline handle");
+            // 必须清掉当前绑定：否则 m_pipelineHandle 还指着上一条管线，
+            // 后续 draw 会拿旧管线（旧 program / 旧 VAO / 旧顶点布局）照画不误，
+            // 画面上表现为"图元错位或用错着色器"，却一条错误日志都没有。
+            m_pipelineHandle = PipelineHandle{};
             return;
         }
+
         m_pipelineHandle = pipeline;
         applyPipelineState(*record);
     }
@@ -541,10 +546,19 @@ namespace Render::RHI::gl
             m_device->log().error("[gl] %s 之前必须先 bindPipeline", what);
             return false;
         }
+        // program==0 说明管线记录是空壳（链接失败后被复用的槽位、或句柄已失效）。
+        // 用 program 0 发 draw 在核心 profile 下只会得到 GL_INVALID_OPERATION：
+        // 几何体静默消失，而调用方以为自己画出去了。这里必须挡住并留下日志。
+        if (boundPipeline()->program == 0)
+        {
+            m_device->log().error("[gl] %s: bound pipeline has no linked program (program=0), draw skipped", what);
+            return false;
+        }
         flushVertexBindings();
         flushPushConstants();
         return true;
     }
+
 
     void GlCommandList::draw(uint32_t vertexCount, uint32_t instanceCount, uint32_t firstVertex,
                              uint32_t firstInstance)
@@ -707,6 +721,14 @@ namespace Render::RHI::gl
             m_device->log().error("[gl] dispatchCompute: 当前绑定的不是计算管线");
             return;
         }
+        // 同 prepareDraw：program==0 的空壳管线派发出去只会静默失败
+        if (boundPipeline()->program == 0)
+        {
+            m_device->log().error(
+                "[gl] dispatchCompute: bound pipeline has no linked program (program=0), dispatch skipped");
+            return;
+        }
+
         if (groupsX == 0 || groupsY == 0 || groupsZ == 0)
         {
             return;
