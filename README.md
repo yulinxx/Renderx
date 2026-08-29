@@ -415,7 +415,7 @@ void main()
 ┌─────────────────────────────────────────────────────────────────┐
 │                        CPU 端（每帧）                             │
 │                                                                 │
-│  1. ViewCamera2D::computeViewMatrix() 计算视图矩阵（含平移）      │
+│  1. Camera2D::computeViewMatrix() 计算视图矩阵（含平移）          │
 │  2. 提取相机中心：camX = -viewMatrix[6] / viewMatrix[0]          │
 │                    camY = -viewMatrix[7] / viewMatrix[4]         │
 │  3. renderSetCameraCenter(dev, camX, camY) 存储相机中心           │
