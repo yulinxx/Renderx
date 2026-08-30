@@ -241,6 +241,19 @@ namespace Render::RT::detail
         surface->width = extent.width;
         surface->height = extent.height;
 
+        // 3D 光照参数上传。必须在 beginRenderPass 之前：Vulkan 不允许在
+        // RenderPass 内做缓冲拷贝。每帧无条件重传而不是「脏了才传」——
+        // 光照 UBO 由整个 Runtime 共享，多窗口下每个 Session 的参数不同，
+        // 按脏标记跳过会让第二个窗口沿用第一个窗口的光照。
+        //
+        // 这里也是 ensureLighting3DResources 的唯一触发点：绑定组不存在时
+        // recordCommands 会跳过绑定，3D 网格读到全零 UBO（无光、曝光 0）后
+        // 一律渲染成黑色 —— 在深色背景上就是「模型看不见」。
+        if (lighting3DEnabled)
+        {
+            runtime->uploadLighting3D(frameUniforms);
+        }
+
         RHI::RenderPassBeginDesc pass{};
         pass.colorAttachmentCount = 1;
         // 无效纹理句柄 = 使用交换链当前后备缓冲
@@ -722,16 +735,9 @@ namespace Render::RT::detail
         // 不重开就变成未配对的 end，后端会报错并把整帧判废。
         if (cmd)
         {
-        // 3D 光照参数上传。必须在 beginRenderPass 之前：Vulkan 不允许在
-        // RenderPass 内做缓冲拷贝。每帧无条件重传而不是「脏了才传」——
-        // 光照 UBO 由整个 Runtime 共享，多窗口下每个 Session 的参数不同，
-        // 按脏标记跳过会让第二个窗口沿用第一个窗口的光照。
-        if (lighting3DEnabled)
-        {
-            runtime->uploadLighting3D(frameUniforms);
-        }
-
-        RHI::RenderPassBeginDesc pass{};
+            // 光照 UBO 不用在这里重传：本帧的内容在 BeginFrame 里已经写好，
+            // 帧内没有任何接口能改它（setLighting3D 只写 CPU 侧的 frameUniforms）。
+            RHI::RenderPassBeginDesc pass{};
             pass.colorAttachmentCount = 1;
             pass.colorAttachments[0].texture = {};
             // Load 而不是 Clear：本帧已画好的内容不能被清掉

@@ -1061,6 +1061,16 @@ pushConstant 块（`uView` / `uViewport` / `uPointSize` / `uSdfScale`）。
 声明这个块，Runtime 按管线记账（`pipelineNeedsLighting3D`）决定是否绑定绑定组——
 无条件绑定会让 2D 管线每次换管线都收到一条「未声明 binding 1」的警告。
 
+上传时机固定在 `BeginFrame` 里、`beginRenderPass` **之前**（Vulkan 不允许在
+render pass 内做缓冲拷贝），而且每帧无条件重传——光照 UBO 由整个 Runtime 共享，
+按脏标记跳过会让第二个窗口沿用第一个窗口的光照。
+
+这里也是光照绑定组的唯一懒创建点。绑定组不存在时 `recordCommands` 只 warn 一句
+`lighting uniforms are unavailable` 就跳过绑定，网格于是读到全零 UBO
+（无光 + 曝光 0）而一律画成纯黑：深色背景下的表现是「模型看不见」，
+但不吃光照的 `Highlight3D` 选中线框照常显示，很容易被误判成「几何没上传」。
+锁这条时机的用例是 `BeginFrameUploadsLighting3DBeforeAnyMeshDraw`。
+
 **3. 材质是 per-draw 的**
 
 `MaterialDesc` 的 `color` / `ambient` / `specular` / `shininess` 写进 pushConstant

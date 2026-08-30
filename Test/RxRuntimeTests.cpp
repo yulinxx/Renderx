@@ -1437,6 +1437,66 @@ TEST_F(RxIncrementalFixture, DrawListRejectsForeignAndDestroyedHandles)
               RxResult::ErrorInvalidHandle);
 }
 
+// ==================== 3D 光照上传时机 ====================
+
+TEST_F(RxIncrementalFixture, BeginFrameUploadsLighting3DBeforeAnyMeshDraw)
+{
+    // 回归：光照 UBO 的上传曾被误放在 rxSessionReadPixels 的「重开 RenderPass」
+    // 分支里，正常渲染路径一次都不会走到。后果是绑定组从未创建，
+    // recordCommands 跳过绑定，mesh_3d_p3n3.frag 读到全零 UBO
+    // （无光 + 曝光 0）后把网格画成纯黑 —— 深色背景上就是「模型看不见」，
+    // 而选中高亮走不吃光照的 Highlight3D，反而正常显示。
+    Lighting3DDesc lighting{};
+    lighting.ambientColor[0] = 1.0f;
+    lighting.ambientColor[1] = 1.0f;
+    lighting.ambientColor[2] = 1.0f;
+    lighting.ambientEnabled = 1;
+    lighting.ambientIntensity = 0.3f;
+    lighting.key.enabled = 1;
+    lighting.key.direction[1] = 1.0f;
+    lighting.key.color[0] = 1.0f;
+    lighting.key.color[1] = 1.0f;
+    lighting.key.color[2] = 1.0f;
+    lighting.key.intensity = 1.0f;
+    lighting.exposure = 1.0f;
+    rxSessionSetLighting3D(session, &lighting);
+
+    const BufferHandle buffer = makeVertexBuffer(runtime, 4096);
+    ASSERT_TRUE(rxValid(buffer));
+
+    ASSERT_EQ(rxSessionBeginFrame(session), RxResult::Ok);
+
+    sink.warnings.clear();
+    sink.errors.clear();
+
+    DrawCommand command{};
+    command.vertexBuffer = buffer;
+    command.vertexCount = 3;
+    command.topology = PrimitiveTopology::Triangles;
+    command.space = RenderSpace::World;
+    command.vertexFormat = VertexFormat::P3N3;
+    command.indexType = IndexType::None;
+    command.pipelineIndex = rxPipelineGetDefault(runtime, DefaultPipeline::Mesh3D);
+    ASSERT_NE(command.pipelineIndex, 0);
+
+    DrawPacket packet{};
+    packet.commands = &command;
+    packet.commandCount = 1;
+    ASSERT_EQ(rxSessionSubmit(session, &packet), RxResult::Ok);
+
+    // 断言的是「绑定组已就绪」，而不是像素值：Null 后端不出图，
+    // 但缺绑定组这条路径会留下唯一一条可辨识的告警。
+    for (const std::string& warning : sink.warnings)
+    {
+        EXPECT_EQ(warning.find("lighting uniforms are unavailable"), std::string::npos)
+            << "光照 UBO 必须在 BeginFrame 里就绑好：" << warning;
+    }
+    EXPECT_TRUE(sink.errors.empty());
+
+    EXPECT_EQ(rxSessionEndFrame(session), RxResult::Ok);
+    rxBufferDestroy(runtime, buffer);
+}
+
 // ==================== 像素读回 ====================
 
 TEST_F(RxIncrementalFixture, ReadPixelsRequiresOpenFrameAndSufficientCapacity)
