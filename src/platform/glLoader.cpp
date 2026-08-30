@@ -145,6 +145,7 @@ extern "C" bool gl_loader_load(GLFuncs* out, void* getProcAddress)
     f.DepthMask = (PFNGLDEPTHMASKPROC)getProc("glDepthMask");
     f.DepthFunc = (PFNGLDEPTHFUNCPROC)getProc("glDepthFunc");
     f.PolygonMode = (PFNGLPOLYGONMODEPROC)getProc("glPolygonMode");
+    f.PolygonOffset = (PFNGLPOLYGONOFFSETPROC)getProc("glPolygonOffset");
     f.GetIntegerv = (PFNGLGETINTEGERVPROC)getProc("glGetIntegerv");
     f.GetFloatv = (PFNGLGETFLOATVPROC)getProc("glGetFloatv");
     f.Hint = (PFNGLHINTPROC)getProc("glHint");

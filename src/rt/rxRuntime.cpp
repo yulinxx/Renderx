@@ -243,6 +243,8 @@ namespace Render::RT::detail
                blendEnable == other.blendEnable && srcBlend == other.srcBlend &&
                dstBlend == other.dstBlend && depthFunc == other.depthFunc &&
                lineWidth == other.lineWidth && fillMode == other.fillMode &&
+               depthBiasConstant == other.depthBiasConstant &&
+               depthBiasSlope == other.depthBiasSlope &&
                shaderName == other.shaderName &&
                fragmentShaderName == other.fragmentShaderName;
     }
@@ -264,6 +266,10 @@ namespace Render::RT::detail
         bits ^= static_cast<uint64_t>(key.depthFunc) * 0x9E3779B97F4A7C15ull;
         bits ^= static_cast<uint64_t>(key.fillMode) * 0xD6E8FEB86659FD93ull;
         bits ^= static_cast<uint64_t>(key.lineWidth / Runtime::kLineWidthQuantum) * 0xC2B2AE3D27D4EB4Full;
+        // 深度偏移的取值都是个位数小整数（GL 的 units/factor 惯例），
+        // 按整数散列即可，不必对浮点位模式做散列。
+        bits ^= static_cast<uint64_t>(key.depthBiasConstant * 16.0f) * 0xFF51AFD7ED558CCDull;
+        bits ^= static_cast<uint64_t>(key.depthBiasSlope * 16.0f) * 0xC4CEB9FE1A85EC53ull;
         return std::hash<uint64_t>{}(bits) ^ (std::hash<std::string>{}(key.shaderName) << 1) ^
                (std::hash<std::string>{}(key.fragmentShaderName) << 2);
     }
@@ -1053,6 +1059,8 @@ namespace Render::RT::detail
         // 不支持时退化为实心——比整条管线建不出来要好。
         desc.raster.fillMode = key.fillMode == FillMode::Wireframe ? RHI::FillMode::Wireframe
                                                                   : RHI::FillMode::Solid;
+        desc.raster.depthBiasConstant = key.depthBiasConstant;
+        desc.raster.depthBiasSlope = key.depthBiasSlope;
         desc.depthStencil.depthTestEnable = key.depthTest != 0;
         desc.depthStencil.depthWriteEnable = key.depthWrite != 0;
         desc.depthStencil.depthCompare = toRhiCompareOp(key.depthFunc);
@@ -1099,6 +1107,10 @@ namespace Render::RT::detail
         key.dstBlend = desc.dstBlend;
         key.depthFunc = desc.depthFunc;
         key.fillMode = desc.fillMode;
+        // 深度偏移与 fillMode 同属管线固定状态，必须进缓存键，
+        // 否则同格式同拓扑的「有偏移」与「无偏移」两条管线会塌缩成一条。
+        key.depthBiasConstant = desc.depthBiasConstant;
+        key.depthBiasSlope = desc.depthBiasSlope;
         key.lineWidth = 1.0f;
         key.shaderName = desc.shaderName ? desc.shaderName : "";
         return createPipelineFromKey(key);
@@ -1125,6 +1137,8 @@ namespace Render::RT::detail
         key.dstBlend = BlendFactor::OneMinusSrcAlpha;
         key.depthFunc = state.depthFunc;
         key.fillMode = state.fillMode;
+        key.depthBiasConstant = state.depthBiasConstant;
+        key.depthBiasSlope = state.depthBiasSlope;
         if (fragmentShaderOverride)
         {
             key.fragmentShaderName = fragmentShaderOverride;
@@ -1270,6 +1284,13 @@ namespace Render::RT::detail
         // - Wireframe：顶点是三角形，靠填充模式画出每个面的三条边
         static const PipelineStateHint kHighlight3DState{ 1, 0, DepthFunc::LessEqual,
                                                           FillMode::Wireframe };
+        // 变换手柄（gizmo）：开深度测试、不写深度、实心 + 深度偏移 1/1。
+        // - 不写深度：手柄之间不该互相遮挡，前后关系由提交顺序决定
+        // - 深度偏移：手柄常常与网格表面共面，LessEqual 也压不住 z-fighting，
+        //   靠 polygon offset 把手柄整体往观察者方向推一格（宿主原来就是
+        //   glEnable(GL_POLYGON_OFFSET_FILL) + glPolygonOffset(1, 1)）
+        static const PipelineStateHint kGizmo3DState{ 1, 0, DepthFunc::LessEqual, FillMode::Solid,
+                                                      1.0f, 1.0f };
 
         // 与 renderx.h 的 DefaultPipeline 枚举一一对应。
         // 覆盖层统一走 P3C4：缩放时与图元几何一致变换，且支持半透明。
@@ -1314,6 +1335,10 @@ namespace Render::RT::detail
             // 之间连出多余斜线，这是宿主原 glPolygonMode(GL_LINE) 的等价迁移。
             { DP::Highlight3D, VF::P3C4, RS::World, PT::Triangles, "Highlight3D", nullptr,
               &kHighlight3DState },
+            // 变换手柄：同样复用 P3C4 世界着色器，全部三角形（线段也billboard成
+            // 四边形，因为 macOS 的 maxLineWidth 是 1.0）。与 Highlight3D 同格式
+            // 同拓扑，靠 fillMode + 深度偏移区分成两条管线。
+            { DP::Gizmo3D, VF::P3C4, RS::World, PT::Triangles, "Gizmo3D", nullptr, &kGizmo3DState },
         };
         static_assert(sizeof(kEntries) / sizeof(kEntries[0]) == static_cast<size_t>(DP::Count),
                       "内建管线表必须覆盖 DefaultPipeline 的全部取值");

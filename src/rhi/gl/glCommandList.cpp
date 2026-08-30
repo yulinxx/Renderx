@@ -234,6 +234,23 @@ namespace Render::RHI::gl
             if (width > m_device->capabilities().maxLineWidth) { width = m_device->capabilities().maxLineWidth; }
             f.LineWidth(width);
         }
+        // 深度偏移：两个系数都为 0 就整体关掉，避免给 2D 管线留下"开着但偏移 0"
+        // 的状态——GL 的 POLYGON_OFFSET_FILL 是全局开关，不关会传染给下一条管线。
+        if (f.PolygonOffset)
+        {
+            const bool biasEnabled =
+                pipeline.raster.depthBiasConstant != 0.0f || pipeline.raster.depthBiasSlope != 0.0f;
+            if (biasEnabled)
+            {
+                f.Enable(GL_POLYGON_OFFSET_FILL);
+                // GL 的参数顺序是 (factor=斜率, units=常量)，与 RasterState 的字段顺序相反
+                f.PolygonOffset(pipeline.raster.depthBiasSlope, pipeline.raster.depthBiasConstant);
+            }
+            else
+            {
+                f.Disable(GL_POLYGON_OFFSET_FILL);
+            }
+        }
 
         m_stats.pipelineSwitches += 1;
         // 顶点属性依附于本管线的 VAO，切管线后必须重挂缓冲

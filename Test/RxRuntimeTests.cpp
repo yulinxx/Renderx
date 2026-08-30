@@ -368,9 +368,11 @@ TEST(RxRuntime, Default3DPipelinesAreDistinct)
     const uint16_t mesh = rxPipelineGetDefault(runtime, DefaultPipeline::Mesh3D);
     const uint16_t wire = rxPipelineGetDefault(runtime, DefaultPipeline::Mesh3DWire);
     const uint16_t highlight = rxPipelineGetDefault(runtime, DefaultPipeline::Highlight3D);
+    const uint16_t gizmo = rxPipelineGetDefault(runtime, DefaultPipeline::Gizmo3D);
     EXPECT_NE(mesh, 0);
     EXPECT_NE(wire, 0);
     EXPECT_NE(highlight, 0);
+    EXPECT_NE(gizmo, 0);
 
     // 线框只有 fillMode 与实心不同。fillMode 必须进管线缓存键，
     // 否则两者命中同一条管线——先建的赢，另一条静默画错。
@@ -380,6 +382,41 @@ TEST(RxRuntime, Default3DPipelinesAreDistinct)
     // 只有深度状态与填充模式不同，因此必须是独立的一条。
     EXPECT_NE(highlight, rxPipelineGetDefault(runtime, DefaultPipeline::WorldTri4))
         << "深度状态/填充模式未进管线键：3D 高亮与 2D 覆盖三角形塌缩成同一条管线";
+
+    // 手柄与高亮同格式同空间同拓扑，只有 fillMode 与深度偏移不同；
+    // 手柄与 WorldTri4 则只差深度状态与偏移。两条都必须独立。
+    EXPECT_NE(gizmo, highlight) << "3D 手柄与高亮塌缩成同一条管线";
+    EXPECT_NE(gizmo, rxPipelineGetDefault(runtime, DefaultPipeline::WorldTri4))
+        << "深度偏移未进管线键：3D 手柄与 2D 覆盖三角形塌缩成同一条管线";
+
+    rxRuntimeDestroy(runtime);
+}
+
+TEST(RxRuntime, DepthBiasEntersPipelineKey)
+{
+    LogSink sink;
+    const RuntimeDesc desc = makeRuntimeDesc(&sink);
+    const RuntimeHandle runtime = rxRuntimeCreate(&desc);
+    ASSERT_TRUE(rxValid(runtime));
+
+    // 深度偏移是管线固定状态（Vulkan 的 VkPipelineRasterizationStateCreateInfo、
+    // Metal 的 setDepthBias:），运行时改不了，因此必须进缓存键。
+    PipelineDesc plain{};
+    plain.topology = PrimitiveTopology::Triangles;
+    plain.vertexFormat = VertexFormat::P3C4;
+    plain.depthTest = 1;
+
+    PipelineDesc biased = plain;
+    biased.depthBiasConstant = 1.0f;
+    biased.depthBiasSlope = 1.0f;
+
+    const uint16_t plainIndex = rxPipelineCreate(runtime, &plain);
+    const uint16_t biasedIndex = rxPipelineCreate(runtime, &biased);
+    EXPECT_NE(plainIndex, 0);
+    EXPECT_NE(biasedIndex, 0);
+    EXPECT_NE(plainIndex, biasedIndex) << "depthBias 未进管线键：有偏移与无偏移塌缩成一条";
+    // 同一组状态重复请求仍要命中缓存
+    EXPECT_EQ(rxPipelineCreate(runtime, &biased), biasedIndex);
 
     rxRuntimeDestroy(runtime);
 }

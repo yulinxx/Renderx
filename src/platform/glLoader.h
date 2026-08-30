@@ -460,6 +460,7 @@ typedef void(RENDER_GLAPI* PFNGLCOLORMASKPROC)(GLboolean red, GLboolean green, G
 typedef void(RENDER_GLAPI* PFNGLDEPTHMASKPROC)(GLboolean flag);
 typedef void(RENDER_GLAPI* PFNGLDEPTHFUNCPROC)(GLenum func);
 typedef void(RENDER_GLAPI* PFNGLPOLYGONMODEPROC)(GLenum face, GLenum mode);
+typedef void(RENDER_GLAPI* PFNGLPOLYGONOFFSETPROC)(GLfloat factor, GLfloat units);
 typedef void(RENDER_GLAPI* PFNGLGETINTEGERVPROC)(GLenum pname, GLint* data);
 typedef void(RENDER_GLAPI* PFNGLGETFLOATVPROC)(GLenum pname, GLfloat* data);
 typedef void(RENDER_GLAPI* PFNGLHINTPROC)(GLenum target, GLenum mode);
@@ -612,6 +613,7 @@ struct GLFuncs
     PFNGLDEPTHMASKPROC DepthMask;
     PFNGLDEPTHFUNCPROC DepthFunc;
     PFNGLPOLYGONMODEPROC PolygonMode;
+    PFNGLPOLYGONOFFSETPROC PolygonOffset;
     PFNGLGETINTEGERVPROC GetIntegerv;
     PFNGLGETFLOATVPROC GetFloatv;
     PFNGLHINTPROC Hint;

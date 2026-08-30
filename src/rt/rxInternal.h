@@ -229,6 +229,9 @@ namespace Render::RT::detail
         uint8_t depthWrite = 0;
         DepthFunc depthFunc = DepthFunc::LessEqual;
         FillMode fillMode = FillMode::Solid;
+        /// 深度偏移。两者都为 0 表示关闭，见 PipelineDesc::depthBiasConstant。
+        float depthBiasConstant = 0.0f;
+        float depthBiasSlope = 0.0f;
     };
 
     /// 管线缓存键：同一组状态只建一条管线
@@ -256,6 +259,9 @@ namespace Render::RT::detail
          * 都写在管线对象里，录制期不可改，因此线框必须是另一条管线。
          */
         FillMode fillMode = FillMode::Solid;
+        /// 深度偏移。与 fillMode 同理属于管线固定状态，故进缓存键。
+        float depthBiasConstant = 0.0f;
+        float depthBiasSlope = 0.0f;
         std::string shaderName;  ///< 空表示按格式+空间取默认（只覆盖顶点着色器）
         /**
          * 片段着色器覆盖。空表示按格式取默认。

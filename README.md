@@ -923,7 +923,7 @@ if (rxSessionBeginFrame(session) == RxResult::Ok)
 
 - **3D 离屏渲染**：尚无 render-to-texture 目标 API，因此 `captureOffscreen`
   这类需求仍留在宿主侧。3D 的**上屏**路径已完整（Mesh3D / Mesh3DWire /
-  Highlight3D 三条内建管线 + `rxSessionSetLighting3D`）。
+  Highlight3D / Gizmo3D 四条内建管线 + `rxSessionSetLighting3D`）。
 - **Metal / Vulkan**：`RHI::createDevice` 对这两个后端返回 `nullptr` 并报错，
   不静默回退到 Null（回退的表现是画面全黑而调用方拿不到任何错误）。
 - **纹理配置**：`TextureDesc` 只有宽/高/像素三项，格式恒为 RGBA8Unorm、
@@ -977,6 +977,8 @@ pushConstant 块（`uView` / `uViewport` / `uPointSize` / `uSdfScale`）。
 | WorldPinnedLine / WorldPinnedTri | `world_pinned_p3o2c4.vert` | `world_p3c4.frag` | 世界锚定 + 屏幕定尺寸（P3O2C4） |
 | WorldTextured | `world_tex_p3t2c4.vert` | `screen_tex_p2t2c4.frag` | 世界空间 RGBA 纹理（位图实体，P3T2C4） |
 | WorldGlyphSdf | `world_tex_p3t2c4.vert` | `world_glyph_sdf_p3t2c4.frag` | 世界空间字形：图集为 R8 **距离场**，用 `fwidth(d)` 做缩放无关抗锯齿 |
+| Mesh3D / Mesh3DWire | `mesh_3d_p3n3.vert` | `mesh_3d_p3n3.frag` | 3D 网格（P3N3）：光照在 DLL 内算，两条只差 `fillMode` |
+| Highlight3D / Gizmo3D | `world_p3c4.vert` | `world_p3c4.frag` | 3D 覆盖层：复用 2D 的 P3C4 世界着色器，只差深度状态 / `fillMode` / 深度偏移 |
 
 > `ScreenTextured` 与 `ScreenGlyph` 同为 P2T2C4 + Screen + Triangles，无法由
 > （格式, 空间, 拓扑）区分，因此字形必须显式指定 `DrawCommand::pipelineIndex`
@@ -1020,15 +1022,26 @@ pushConstant 块（`uView` / `uViewport` / `uPointSize` / `uSdfScale`）。
 | 网格实体 | `P3N3`（位置 + 法线，stride 24） | `Mesh3D` | 测试开、写入开、`LessEqual` |
 | 线框 | `P3N3` | `Mesh3DWire` | 同上，`fillMode = Wireframe` |
 | 选中高亮 | `P3C4` | `Highlight3D` | 测试开、**写入关**、`LessEqual` |
+| 变换手柄 | `P3C4` | `Gizmo3D` | 测试开、**写入关**、`LessEqual`、深度偏移 1/1 |
 | 地面网格 / 坐标轴 / 橡皮筋 | `P3C3` / `P3C4` | 直接复用 2D 的 `WorldLine*` / `ScreenLine*` | 关深度 |
 
-`fillMode` 属于**管线固定状态**：Vulkan 的 `VK_POLYGON_MODE_LINE` 与 Metal 的
-`MTLTriangleFillModeLines` 都写在管线对象里，录制期不可改。因此线框不能是
-`DrawCommand` 上的一个开关，必须是另一条管线——`Mesh3DWire` 就是为此存在的。
-它已进入管线缓存键，`RxRuntime.WireframePipelineDedupesByFillMode` 锁住这点。
+`fillMode` 与**深度偏移**都属于**管线固定状态**：Vulkan 的 `VK_POLYGON_MODE_LINE`、
+`VkPipelineRasterizationStateCreateInfo::depthBiasConstantFactor` 与 Metal 的
+`MTLTriangleFillModeLines`、`setDepthBias:slopeScale:clamp:` 都写在管线对象里，
+录制期不可改。因此线框不能是 `DrawCommand` 上的一个开关，必须是另一条管线——
+`Mesh3DWire` 就是为此存在的。两者都已进入管线缓存键，
+`RxRuntime.WireframePipelineDedupesByFillMode` 与 `RxRuntime.DepthBiasEntersPipelineKey`
+锁住这点。GL 后端另需注意 `GL_POLYGON_OFFSET_FILL` 是全局开关，
+零偏移的管线必须显式 `Disable`，否则会漏到下一条管线上。
 
 高亮为什么要 `LessEqual` 且不写深度：高亮线贴在面上，同深度处 `Less` 会被面片
 自己遮掉；而写深度会让后画的网格被高亮线挡住。
+
+手柄为什么要深度偏移：手柄常与网格表面共面，`LessEqual` 也压不住 z-fighting，
+靠 `depthBiasConstant/Slope = 1/1` 把手柄整体往观察者方向推一格（等价于宿主原来的
+`glEnable(GL_POLYGON_OFFSET_FILL)` + `glPolygonOffset(1, 1)`）。手柄之间不写深度，
+前后关系由提交顺序决定，因此不透明与半透明手柄可以共用这一条管线。手柄的线段
+一律 billboard 成四边形——macOS 的 `maxLineWidth` 是 1.0，粗线只能靠三角化。
 
 **2. 光照在 DLL 内算**
 

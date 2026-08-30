@@ -86,7 +86,11 @@
 //      - PipelineDesc 增加 fillMode（线框模式属于管线固定状态，
 //        Vulkan/Metal 都不能在录制期改，因此必须落到管线而非 DrawCommand）
 //      - MaterialDesc 增加 3D 材质三色与高光指数
-//      - DefaultPipeline 追加 Mesh3D / Mesh3DWire / Highlight3D，Count 变化
+//      - PipelineDesc 增加 depthBiasConstant / depthBiasSlope（同理是管线固定
+//        状态：Vulkan 在 VkPipelineRasterizationStateCreateInfo，Metal 是
+//        setDepthBias:slopeScale:clamp:）
+//      - DefaultPipeline 追加 Mesh3D / Mesh3DWire / Highlight3D / Gizmo3D，
+//        Count 变化
 //      同时新增 rxSessionSetLighting3D。3D 光照放在 DLL 内：光照是渲染职责，
 //      且顶点只需上传一次——若在宿主烘焙进顶点色，相机每动一次就要重传全部顶点，
 //      并且视点相关的镜面高光根本无法正确表达。
@@ -380,7 +384,23 @@ namespace Render
              * 就是 1.0，粗线只能靠三角化。
              */
             Highlight3D = 20,
-            Count = 21,
+            /**
+             * 3D 变换 gizmo（P3C4 + 世界空间 + 三角形）。
+             *
+             * 与 Highlight3D 的区别：实心填充 + 深度偏移。
+             * gizmo 的手柄（箭头锥、旋转环、缩放方块、半透明平面）全部是
+             * 三角网，线段也用「相机对齐加宽四边形」三角化——因为 macOS 的
+             * maxLineWidth 是 1.0，宽线只能这么做。
+             *
+             * 深度状态：测试开、不写深度、LessEqual，外加 depthBias 1/1。
+             * 单靠 LessEqual 不足以消除与模型表面的 z-fighting，见
+             * PipelineDesc::depthBiasConstant。
+             *
+             * 半透明平面手柄与不透明手柄用同一条管线，靠提交顺序区分
+             * （先不透明后半透明），这与 2D 覆盖层的做法一致。
+             */
+            Gizmo3D = 21,
+            Count = 22,
         };
 
         // ==================== 创建描述 ====================
@@ -482,12 +502,25 @@ namespace Render
             DepthFunc depthFunc;
             /// 多边形填充模式。线框必须落到管线，见 FillMode 的说明。
             FillMode fillMode;
-            uint8_t _pad0[7];
+            uint8_t _pad0[3];
+            /**
+             * 深度偏移常量项与斜率项。两者都为 0 表示关闭。
+             *
+             * 用途：让贴在模型表面上画的辅助几何（3D gizmo）不与模型 z-fighting。
+             * 单靠 depthFunc = LessEqual 不够——那只解决「同深度也要通过测试」，
+             * 而 z-fighting 的成因是两者深度值在浮点精度内来回抖动。
+             *
+             * 与线宽/填充模式同理，这是管线固定状态：Vulkan 写在
+             * VkPipelineRasterizationStateCreateInfo 里，Metal 是
+             * setDepthBias:slopeScale:clamp:，都不能在录制期逐命令改。
+             */
+            float depthBiasConstant;
+            float depthBiasSlope;
             /// 内建 shader 名（见 DLL 内置 shader 库）。
             /// 空指针表示按 vertexFormat + space 使用默认 shader。
             const char* shaderName;
         };
-        static_assert(sizeof(PipelineDesc) == 24, "PipelineDesc ABI size changed");
+        static_assert(sizeof(PipelineDesc) == 32, "PipelineDesc ABI size changed");
 
         struct TextureDesc
         {

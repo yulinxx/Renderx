@@ -522,6 +522,19 @@ namespace Render::RHI
         /// 线宽。GL 之外的后端普遍不支持 >1；
         /// 见 Capabilities::maxLineWidth，超出时应改用三角化线段。
         float lineWidth = 1.0f;
+        /**
+         * 深度偏移（polygon offset / depth bias）。两者都为 0 表示关闭。
+         *
+         * 用途是让贴在模型表面上画的辅助几何（3D gizmo）不与模型 z-fighting。
+         * 单靠 depthFunc = LessEqual 不够：LessEqual 只解决「同深度也要通过测试」，
+         * 而 z-fighting 的成因是两者深度值在浮点精度内来回抖动。
+         *
+         * constant 对应 GL 的 units、Vulkan 的 depthBiasConstantFactor；
+         * slope 对应 GL 的 factor、Vulkan 的 depthBiasSlopeFactor。
+         * Metal 走 setDepthBias:slopeScale:clamp:。
+         */
+        float depthBiasConstant = 0.0f;
+        float depthBiasSlope = 0.0f;
     };
 
     /**
