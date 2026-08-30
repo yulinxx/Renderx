@@ -1264,10 +1264,12 @@ namespace Render::RT::detail
         // 线框：同上，只是填充模式不同。线框必须是独立管线，见 FillMode。
         static const PipelineStateHint kMesh3DWireState{ 1, 1, DepthFunc::LessEqual,
                                                          FillMode::Wireframe };
-        // 选中高亮：LessEqual 且不写深度。要求「与网格同深度处也画得出来」
-        // （高亮线就贴在面上，Less 会被自己遮掉），又不能污染深度缓冲，
-        // 否则后画的网格会被高亮线挡住。
-        static const PipelineStateHint kHighlight3DState{ 1, 0, DepthFunc::LessEqual, FillMode::Solid };
+        // 选中高亮：LessEqual、不写深度、线框填充。
+        // - LessEqual：高亮线就贴在面上，Less 会被自己遮掉
+        // - 不写深度：否则后画的网格会被高亮线挡住
+        // - Wireframe：顶点是三角形，靠填充模式画出每个面的三条边
+        static const PipelineStateHint kHighlight3DState{ 1, 0, DepthFunc::LessEqual,
+                                                          FillMode::Wireframe };
 
         // 与 renderx.h 的 DefaultPipeline 枚举一一对应。
         // 覆盖层统一走 P3C4：缩放时与图元几何一致变换，且支持半透明。
@@ -1307,9 +1309,10 @@ namespace Render::RT::detail
             { DP::Mesh3D, VF::P3N3, RS::World, PT::Triangles, "Mesh3D", nullptr, &kMesh3DState },
             { DP::Mesh3DWire, VF::P3N3, RS::World, PT::Triangles, "Mesh3DWire", nullptr,
               &kMesh3DWireState },
-            // 选中高亮：复用 2D 的 P3C4 世界线段着色器，只是深度状态不同。
-            // 3D 高亮没有自己的着色器需求——颜色是宿主给的常量色。
-            { DP::Highlight3D, VF::P3C4, RS::World, PT::LineStrip, "Highlight3D", nullptr,
+            // 选中高亮：复用 2D 的 P3C4 世界着色器，几何是三角形而非线段——
+            // 靠 Wireframe 填充画出每个面的三条边。改用 LineStrip 会在相邻三角形
+            // 之间连出多余斜线，这是宿主原 glPolygonMode(GL_LINE) 的等价迁移。
+            { DP::Highlight3D, VF::P3C4, RS::World, PT::Triangles, "Highlight3D", nullptr,
               &kHighlight3DState },
         };
         static_assert(sizeof(kEntries) / sizeof(kEntries[0]) == static_cast<size_t>(DP::Count),

@@ -365,12 +365,19 @@ namespace Render
             /// 同 Mesh3D，但 fillMode = Wireframe。线框是管线状态，见 FillMode。
             Mesh3DWire = 19,
             /**
-             * 3D 选中高亮（P3C4 + 世界空间 + 线段）。
+             * 3D 选中高亮（P3C4 + 世界空间 + **三角形 + 线框填充**）。
              *
-             * 与 WorldLine4 的区别只在深度状态：高亮线框需要
-             * depthFunc = LessEqual 且 depthWrite = 0，才能贴在网格表面
-             * 而不被自身深度剔除（否则线框会与三角面 z-fighting，
-             * 表现为闪烁的虚线）。
+             * 顶点是网格的三角形顶点，不是线段：靠 fillMode = Wireframe 画出
+             * 每个三角面的三条边。这一点容易搞错——若改用 LineStrip 提交同一批
+             * 顶点，会在相邻三角形之间连出多余的斜线。
+             *
+             * 与 WorldLine4 的另一处区别是深度状态：需要 depthFunc = LessEqual
+             * 且 depthWrite = 0，才能贴在网格表面而不被自身深度剔除
+             * （否则线框与三角面 z-fighting，表现为闪烁的虚线）；不写深度是为了
+             * 不让后画的网格被高亮线挡住。
+             *
+             * 线宽固定 1.0：macOS 的 GL 与 Metal 上 Capabilities::maxLineWidth
+             * 就是 1.0，粗线只能靠三角化。
              */
             Highlight3D = 20,
             Count = 21,

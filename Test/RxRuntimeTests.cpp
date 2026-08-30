@@ -376,10 +376,10 @@ TEST(RxRuntime, Default3DPipelinesAreDistinct)
     // 否则两者命中同一条管线——先建的赢，另一条静默画错。
     EXPECT_NE(mesh, wire) << "fillMode 未进管线键：线框与实心塌缩成同一条管线";
 
-    // 高亮走 P3C4 + 世界线段，与 2D 覆盖层同格式同拓扑，但深度状态不同
-    // （LessEqual 且不写深度），因此也必须是独立的一条。
-    EXPECT_NE(highlight, rxPipelineGetDefault(runtime, DefaultPipeline::WorldLine4))
-        << "深度状态未进管线键：3D 高亮与 2D 覆盖线塌缩成同一条管线";
+    // 高亮走 P3C4 + 世界三角形，与 2D 覆盖层的 WorldTri4 同格式同空间同拓扑，
+    // 只有深度状态与填充模式不同，因此必须是独立的一条。
+    EXPECT_NE(highlight, rxPipelineGetDefault(runtime, DefaultPipeline::WorldTri4))
+        << "深度状态/填充模式未进管线键：3D 高亮与 2D 覆盖三角形塌缩成同一条管线";
 
     rxRuntimeDestroy(runtime);
 }
