@@ -151,12 +151,13 @@ set(RENDERX_SHADER_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/point_p3c3.frag
     ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/point_p3c4.frag
 
-    # ---- 3D（Phase 11 收口 3D 时启用）----
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/mesh_3d.vert
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/mesh_3d.frag
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/mesh_3d_instanced.vert
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/highlight_3d.vert
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/highlight_3d.frag
+    # ---- 3D ----
+    # 网格：位置 + 法线，顶点已是世界坐标。光照在片元内算（Blinn-Phong，
+    # 三方向光 + 环境项），参数来自 FrameUniforms 块（rx_lighting_3d.glsl）。
+    # 线框只是 fillMode 不同的另一条管线，复用同一对着色器。
+    # 选中高亮复用 world_p3c4.*：颜色是宿主给的常量色，不需要光照。
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/mesh_3d_p3n3.vert
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/mesh_3d_p3n3.frag
 
     # ---- GPU 剔除 ----
     ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/culling.comp
@@ -171,6 +172,7 @@ set(RENDERX_SHADER_SOURCES
 # 但必须声明为构建依赖，否则修改后不会触发重新生成——这正是旧方案的老问题。
 set(RENDERX_SHADER_INCLUDES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/rx_push_constants.glsl
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/rx_lighting_3d.glsl
 )
 
 set(RENDERX_EMBED_SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/CMake/EmbedShaders.cmake")

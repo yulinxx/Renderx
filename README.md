@@ -21,11 +21,12 @@
 > - **Shader**：构建期编入二进制，运行期零文件 IO。
 > - **零业务耦合**：Renderx 目录下已无任何 `Log/SyLogger.h` 引用；
 >   `otool -L` / `ldd` 结果只有 OpenGL + libc++ + libSystem，**零第一方依赖**。
-> - **测试**：`RenderxTests` 34/34、`RenderxGLTests` 74/74，构建零警告。
+> - **测试**：`RenderxTests` 34/34、`RenderxGLTests` 77/77，构建零警告。
 >
 > **已知缺口**
 >
-> - 3D：`mesh_3d.*` 仍用独立 uniform，未并入 PushConstants 块。
+> - 离屏渲染 / 截图：尚无 render-to-texture 目标 API，`captureOffscreen`
+>   仍留在宿主侧的裸 GL 路径。
 >
 > 完整目标设计与决策依据见 `Docs/03-渲染主链/新渲染架构.md`。
 
@@ -717,14 +718,23 @@ Shader 在构建期编入 DLL，构建后输出目录中不再有 `.vert/.frag/.
 | 世界空间纹理 | `world_tex_p3t2c4.vert`（片段复用 `screen_tex_p2t2c4.frag`） |
 | 字形（屏幕） | `screen_glyph_p2t2c4.frag`（顶点复用 `screen_tex_p2t2c4.vert`）：R8 **覆盖率**图集 |
 | 字形（世界） | `world_glyph_sdf_p3t2c4.frag`（顶点复用 `world_tex_p3t2c4.vert`）：R8 **距离场**图集 |
-| 3D 网格 | `mesh_3d.vert`、`mesh_3d.frag`、`mesh_3d_instanced.vert` |
-| 高亮 | `highlight_3d.vert`、`highlight_3d.frag` |
+| 3D 网格 | `mesh_3d_p3n3.vert`、`mesh_3d_p3n3.frag`（线框复用同一对，只有 `fillMode` 不同） |
+| 3D 选中高亮 | 复用 `world_p3c4.*`：颜色是宿主给的常量色，不需要光照 |
 | GPU 剔除 | `culling.comp` |
 
-此外 `rx_push_constants.glsl` 是**被 include 的片段**，不作为独立 shader 嵌入，
-但声明为构建依赖。它是全部 RT shader 共用的 std140 pushConstant 块的唯一声明处
-（`uView` / `uViewport` / `uPointSize` / `uSdfScale`，共 80 字节），
-与 C++ 侧 `Render::RT::detail::PushConstants` 逐字节对应并有 `static_assert` 锁定。
+此外 `rx_push_constants.glsl` 与 `rx_lighting_3d.glsl` 是**被 include 的片段**，
+不作为独立 shader 嵌入，但声明为构建依赖。
+
+- `rx_push_constants.glsl`：全部 RT shader 共用的 std140 pushConstant 块的唯一声明处。
+  前 80 字节 2D/3D 共用（`uView` / `uViewport` / `uPointSize` / `uPad0`），
+  后 48 字节是 3D 材质段（`uMatDiffuse` / `uMatAmbient` / `uMatSpecular` / `uMatShininess`），
+  合计 128 字节 —— 正好等于 RHI 的 `kMaxPushConstantBytes`。
+  与 C++ 侧 `Render::RT::detail::PushConstants` 逐字节对应，有 `static_assert` 与两条
+  `offsetof` 断言锁定。2D shader 也声明完整 128 字节：让它只声明前 80 字节在 GL 上虽然
+  合法，但等于把「同一块有两种长度」引入构建期，日后插字段时两种声明会悄悄错位。
+- `rx_lighting_3d.glsl`：3D 光照的 per-pass 块 `FrameUniforms`（1 号 UBO，160 字节），
+  与公共 ABI 的 `Lighting3DDesc` 逐字节对应。只有 P3N3 管线声明它。
+
 展开由 `CMake/EmbedShaders.cmake` 在构建期完成（单文件、双引号、同目录）。
 之所以不允许各 shader 各抄一份：std140 布局不匹配不产生编译错误，只会算出错误偏移。
 
@@ -795,6 +805,7 @@ add_subdirectory(Test)
 |------|------|
 | `rxSessionCreate` / `rxSessionDestroy` | 1 Session 绑 1 Surface；同一表面上的第二个 Session 会被拒绝 |
 | `rxSessionSetClearColor` / `rxSessionSetViewMatrix` | 清屏色与视图矩阵（列主序 4x4） |
+| `rxSessionSetLighting3D` | 3D 光照参数（三方向光 + 环境项，160 字节）。传 `nullptr` 关闭。每帧在 BeginFrame 内上传一次，与 Session 一对一——多窗口各有各的光照 |
 | `rxSessionBeginFrame` | 获取后备缓冲（GL 在此 makeCurrent）并开启 render pass。返回 `ErrorSurfaceOutOfDate` 时 resize 后重试本帧 |
 | `rxSessionAllocTransient` | 分配本帧顶点内存，只在 Begin/End 之间有效 |
 | `rxSessionSubmit` | 提交一批 `DrawCommand`；同一帧内可多次调用。DLL 按 `sortKey` 稳定排序后合批 |
@@ -900,6 +911,9 @@ if (rxSessionBeginFrame(session) == RxResult::Ok)
 | `Screen` | 否 | 否 | P3C3 / P3C4 / P2T2C4 | HUD、标尺、屏幕角标 |
 | `WorldPinned` | 是 | **否** | P3O2C4（锚点 + 像素偏移） | 场景内定尺寸标记：箭头、符号、标注框、引线端点 |
 
+3D 网格（P3N3）只支持 `World`：法线光照在屏幕/定尺寸空间没有意义，
+`defaultShadersFor` 对这两种组合明确不给 shader。
+
 `WorldPinned` 的换算在顶点着色器内完成（`clip.xy += offsetPx * (2.0/uViewport) * clip.w`，
 乘 `clip.w` 抵消透视除法，因此偏移恒等于 N 个像素）。
 **拾取判定必须用同一公式**，否则视觉与命中区会随缩放错位。详见
@@ -907,8 +921,9 @@ if (rxSessionBeginFrame(session) == RxResult::Ok)
 
 ### 当前缺口
 
-- **3D（P3N3）**：`mesh_3d.*` 仍用独立 uniform，未并入 PushConstants 块；
-  `VertexFormat::P3N3` 的管线解析会明确失败并报错，不提供半实现路径。
+- **3D 离屏渲染**：尚无 render-to-texture 目标 API，因此 `captureOffscreen`
+  这类需求仍留在宿主侧。3D 的**上屏**路径已完整（Mesh3D / Mesh3DWire /
+  Highlight3D 三条内建管线 + `rxSessionSetLighting3D`）。
 - **Metal / Vulkan**：`RHI::createDevice` 对这两个后端返回 `nullptr` 并报错，
   不静默回退到 Null（回退的表现是画面全黑而调用方拿不到任何错误）。
 - **纹理配置**：`TextureDesc` 只有宽/高/像素三项，格式恒为 RGBA8Unorm、
@@ -982,11 +997,65 @@ pushConstant 块（`uView` / `uViewport` / `uPointSize` / `uSdfScale`）。
 
 | Shader | 文件 | 状态 |
 |--------|------|------|
-| Mesh3D / Mesh3DInstanced / Highlight3D | `mesh_3d.*`、`mesh_3d_instanced.vert`、`highlight_3d.*` | 仍用 `uModelMatrix`/`uViewMatrix`/`uProjMatrix` 独立 uniform，未并入 PushConstants；3D 收口阶段处理 |
 | Culling | `culling.comp` | GPU 视锥剔除，RT 当前走 CPU 的 `rxSessionQueryVisibility` |
+
+> 已删除：`mesh_3d_instanced.vert` —— 它把 `aModelMatrix` 声明为逐实例顶点属性，
+> 而 RHI 没有 divisor API，实例全部塌缩到原点；且 `DefaultPipeline` 里从来没有
+> 对应项，属于建不出来也用不上的死文件。真要做实例化，模型矩阵应作为逐实例
+> 顶点属性配合 divisor 进来，届时连 RHI 一起补。
 
 > 所有 shader 都显式标注 `layout(location = N)`：Apple 的 GLSL 编译器在缺省时会乱序分配
 > attribute slot，导致颜色/坐标错位（见 `Docs/Mac渲染.md` §9）。
+
+## 3D 渲染（ABI 5.0）
+
+3D 与 2D 走**同一条**提交链路：同样的 `rxSessionAllocTransient` → 写顶点 →
+`DrawCommand` → `rxSessionSubmit`，同样的排序键与合批。差异只有三处，且都是
+本质差异而非实现分歧。
+
+**1. 顶点格式与管线**
+
+| 用途 | 顶点格式 | 内建管线 | 深度状态 |
+|------|---------|---------|---------|
+| 网格实体 | `P3N3`（位置 + 法线，stride 24） | `Mesh3D` | 测试开、写入开、`LessEqual` |
+| 线框 | `P3N3` | `Mesh3DWire` | 同上，`fillMode = Wireframe` |
+| 选中高亮 | `P3C4` | `Highlight3D` | 测试开、**写入关**、`LessEqual` |
+| 地面网格 / 坐标轴 / 橡皮筋 | `P3C3` / `P3C4` | 直接复用 2D 的 `WorldLine*` / `ScreenLine*` | 关深度 |
+
+`fillMode` 属于**管线固定状态**：Vulkan 的 `VK_POLYGON_MODE_LINE` 与 Metal 的
+`MTLTriangleFillModeLines` 都写在管线对象里，录制期不可改。因此线框不能是
+`DrawCommand` 上的一个开关，必须是另一条管线——`Mesh3DWire` 就是为此存在的。
+它已进入管线缓存键，`RxRuntime.WireframePipelineDedupesByFillMode` 锁住这点。
+
+高亮为什么要 `LessEqual` 且不写深度：高亮线贴在面上，同深度处 `Less` 会被面片
+自己遮掉；而写深度会让后画的网格被高亮线挡住。
+
+**2. 光照在 DLL 内算**
+
+`rxSessionSetLighting3D(session, &desc)` 设置 `Lighting3DDesc`（160 字节：
+环境项 + 主光/补光/轮廓光三个方向光 + 相机位置 + 亮度下限 + 曝光）。
+片元着色器做 Blinn-Phong。
+
+为什么不像 2D 那样把颜色算好写进顶点色：高光是**视角相关**的，烘进顶点意味着
+相机每动一次就要重传全部顶点（十万面网格每帧数 MB），或者干脆放弃高光。
+宿主侧写 GLSL 也不行——那等于把跨平台目标交还给宿主。
+
+`Lighting3DDesc::viewPos` 由宿主提供而非从视图矩阵反解：`DrawPacket::viewMatrix`
+是 `proj * view` 的合并矩阵，透视投影下无法稳定恢复眼点。
+
+参数走 `FrameUniforms`（1 号 UBO）而不是 pushConstant：pushConstant 上限 128 字节
+且每次换管线/换材质都重推，160 字节的逐帧常量挂上去纯属浪费。只有 P3N3 管线
+声明这个块，Runtime 按管线记账（`pipelineNeedsLighting3D`）决定是否绑定绑定组——
+无条件绑定会让 2D 管线每次换管线都收到一条「未声明 binding 1」的警告。
+
+**3. 材质是 per-draw 的**
+
+`MaterialDesc` 的 `color` / `ambient` / `specular` / `shininess` 写进 pushConstant
+的 80..127 字节段。它随 `DrawCommand::materialIndex` 逐命令变化，因此不能和光照
+一起放进 per-pass 块。无材质时该段显式复位为默认值——否则相邻两个 3D 网格会串色。
+
+**顶点是世界坐标**：没有 per-draw 的 model 矩阵。宿主的网格顶点本来就存世界空间，
+顶点着色器只做 `uView * pos`，法线直接透传。
 
 ## 版本信息
 

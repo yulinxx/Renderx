@@ -208,12 +208,30 @@ namespace Render::RT::detail
                             : ShaderPair{ "world_p3c3.vert", "world_p3c3.frag" };
 
         case VertexFormat::P3N3:
-            // 3D 网格管线（mesh_3d.*）仍使用 uModelMatrix/uViewMatrix/uProjMatrix
-            // 独立 uniform，尚未并入 PushConstants 块。3D 收口是后续阶段的工作，
-            // 这里明确不提供，避免出现「建得出来但画不对」的半实现路径。
-            return {};
+            // 3D 网格：位置 + 法线，世界坐标已由调用方预变换（宿主的 mesh
+            // 顶点本来就是世界空间的），因此没有 per-draw model 矩阵。
+            // 屏幕/定尺寸空间对「法线光照」没有意义，明确不给 shader。
+            if (isScreen || isPinned)
+            {
+                return {};
+            }
+            return { "mesh_3d_p3n3.vert", "mesh_3d_p3n3.frag" };
         }
         return {};
+    }
+
+    PipelineStateHint defaultStateFor(VertexFormat format)
+    {
+        PipelineStateHint hint{};
+        if (format == VertexFormat::P3N3)
+        {
+            // 3D 网格是唯一需要深度缓冲的格式：三角面之间的遮挡关系无法
+            // 靠排序键表达（互相穿插的面片没有正确的全局顺序）。
+            hint.depthTest = 1;
+            hint.depthWrite = 1;
+            hint.depthFunc = DepthFunc::LessEqual;
+        }
+        return hint;
     }
 
     // ==================== PipelineKey ====================
@@ -224,7 +242,8 @@ namespace Render::RT::detail
                depthTest == other.depthTest && depthWrite == other.depthWrite &&
                blendEnable == other.blendEnable && srcBlend == other.srcBlend &&
                dstBlend == other.dstBlend && depthFunc == other.depthFunc &&
-               lineWidth == other.lineWidth && shaderName == other.shaderName &&
+               lineWidth == other.lineWidth && fillMode == other.fillMode &&
+               shaderName == other.shaderName &&
                fragmentShaderName == other.fragmentShaderName;
     }
 
@@ -243,6 +262,7 @@ namespace Render::RT::detail
         // depthFunc 与线宽用异或叠加，避免超出 64 位。线宽已量化，
         // 因此按整数倍数散列即可，不必对浮点位模式做散列。
         bits ^= static_cast<uint64_t>(key.depthFunc) * 0x9E3779B97F4A7C15ull;
+        bits ^= static_cast<uint64_t>(key.fillMode) * 0xD6E8FEB86659FD93ull;
         bits ^= static_cast<uint64_t>(key.lineWidth / Runtime::kLineWidthQuantum) * 0xC2B2AE3D27D4EB4Full;
         return std::hash<uint64_t>{}(bits) ^ (std::hash<std::string>{}(key.shaderName) << 1) ^
                (std::hash<std::string>{}(key.fragmentShaderName) << 2);
@@ -498,6 +518,7 @@ namespace Render::RT::detail
         materials.resize(1);
         // pipelines[0] 保留：pipelineIndex == 0 表示「让 Runtime 自己解析」
         pipelines.resize(1);
+        pipelineNeedsLighting.resize(1);
 
         if (!ensureDefaultPipelines())
         {
@@ -579,6 +600,19 @@ namespace Render::RT::detail
             }
             textureBindGroups.clear();
 
+            // 光照 UBO 不登记进 buffers 句柄表：它没有公共 BufferHandle，
+            // 登记反而会在下面的 buffers 遍历里被第二次销毁。
+            if (lightingBindGroup.valid())
+            {
+                device->destroyBindGroup(lightingBindGroup);
+                lightingBindGroup = {};
+            }
+            if (lightingUbo.valid())
+            {
+                device->destroyBuffer(lightingUbo);
+                lightingUbo = {};
+            }
+
             // 注意：管线句柄只在 pipelines 里各出现一次。
             // 旧实现同时持有 m_pipelines 与 PipelineStateManager 的缓存，
             // 销毁时两处都释放同一批句柄，构成双重释放。
@@ -590,6 +624,7 @@ namespace Render::RT::detail
                 }
             }
             pipelines.clear();
+            pipelineNeedsLighting.clear();
             pipelineCache.clear();
 
             for (auto& entry : shaders)
@@ -958,7 +993,7 @@ namespace Render::RT::detail
         if (!pair.vertex || !pair.fragment)
         {
             log.error("[rt] 无法为 vertexFormat=%d space=%d 找到内建 shader"
-                      "（P3N3/3D 管线尚未并入 PushConstants 模型）",
+                      "（该组合没有语义正确的着色器，见 defaultShadersFor）",
                       static_cast<int>(key.vertexFormat), static_cast<int>(key.space));
             return 0;
         }
@@ -976,14 +1011,31 @@ namespace Render::RT::detail
         bufferLayout.stride = layout.stride;
         bufferLayout.perInstance = false;
 
-        // 采样器绑定只对带纹理的格式声明
-        RHI::BindingSlot textureSlot{};
-        textureSlot.set = 0;
-        textureSlot.binding = 0;
-        textureSlot.type = RHI::BindingType::SampledTexture;
-        textureSlot.glName = "uTex";
+        // 绑定槽位按需声明：
+        // - 带纹理的格式声明一个采样纹理（binding 0）
+        // - 3D 网格格式声明 FrameUniforms（binding 1，光照参数）
+        // 二者互不重叠，因此用同一个数组按顺序填。
+        RHI::BindingSlot bindingSlots[2]{};
+        uint32_t bindingCount = 0;
         const bool needsTexture =
             key.vertexFormat == VertexFormat::P2T2C4 || key.vertexFormat == VertexFormat::P3T2C4;
+        const bool needsLighting = key.vertexFormat == VertexFormat::P3N3;
+        if (needsTexture)
+        {
+            bindingSlots[bindingCount].set = 0;
+            bindingSlots[bindingCount].binding = 0;
+            bindingSlots[bindingCount].type = RHI::BindingType::SampledTexture;
+            bindingSlots[bindingCount].glName = "uTex";
+            bindingCount += 1;
+        }
+        if (needsLighting)
+        {
+            bindingSlots[bindingCount].set = 0;
+            bindingSlots[bindingCount].binding = kFrameUniformBinding;
+            bindingSlots[bindingCount].type = RHI::BindingType::UniformBuffer;
+            bindingSlots[bindingCount].glName = kFrameUniformBlockName;
+            bindingCount += 1;
+        }
 
         RHI::GraphicsPipelineDesc desc{};
         desc.vertexShader = vs;
@@ -993,10 +1045,14 @@ namespace Render::RT::detail
         desc.attributeCount = layout.attributeCount;
         desc.bufferLayouts = &bufferLayout;
         desc.bufferLayoutCount = 1;
-        desc.bindings = needsTexture ? &textureSlot : nullptr;
-        desc.bindingCount = needsTexture ? 1u : 0u;
+        desc.bindings = bindingCount > 0 ? bindingSlots : nullptr;
+        desc.bindingCount = bindingCount;
         desc.pushConstantBytes = kPushConstantBytes;
         desc.raster.lineWidth = key.lineWidth;
+        // 线框：Metal 无原生等价，后端在 Capabilities 里声明支持性，
+        // 不支持时退化为实心——比整条管线建不出来要好。
+        desc.raster.fillMode = key.fillMode == FillMode::Wireframe ? RHI::FillMode::Wireframe
+                                                                  : RHI::FillMode::Solid;
         desc.depthStencil.depthTestEnable = key.depthTest != 0;
         desc.depthStencil.depthWriteEnable = key.depthWrite != 0;
         desc.depthStencil.depthCompare = toRhiCompareOp(key.depthFunc);
@@ -1021,6 +1077,7 @@ namespace Render::RT::detail
         }
 
         pipelines.push_back(handle);
+        pipelineNeedsLighting.push_back(needsLighting ? 1u : 0u);
         const auto index = static_cast<uint16_t>(pipelines.size() - 1);
         pipelineCache.emplace(key, index);
         return index;
@@ -1041,6 +1098,7 @@ namespace Render::RT::detail
         key.srcBlend = desc.srcBlend;
         key.dstBlend = desc.dstBlend;
         key.depthFunc = desc.depthFunc;
+        key.fillMode = desc.fillMode;
         key.lineWidth = 1.0f;
         key.shaderName = desc.shaderName ? desc.shaderName : "";
         return createPipelineFromKey(key);
@@ -1048,18 +1106,25 @@ namespace Render::RT::detail
 
     uint16_t Runtime::resolvePipeline(VertexFormat format, RenderSpace space,
                                       PrimitiveTopology topology, float lineWidth,
-                                      const char* fragmentShaderOverride)
+                                      const char* fragmentShaderOverride,
+                                      const PipelineStateHint* stateOverride)
     {
+        // 深度/填充默认由顶点格式决定（2D 关深度、P3N3 开深度），
+        // 调用方需要别的组合时给 stateOverride——内建管线表就是这么区分
+        // Mesh3D / Mesh3DWire / Highlight3D 的。
+        const PipelineStateHint state = stateOverride ? *stateOverride : defaultStateFor(format);
+
         PipelineKey key{};
         key.vertexFormat = format;
         key.space = space;
         key.topology = topology;
-        key.depthTest = 0;
-        key.depthWrite = 0;
+        key.depthTest = state.depthTest;
+        key.depthWrite = state.depthWrite;
         key.blendEnable = 1;
         key.srcBlend = BlendFactor::SrcAlpha;
         key.dstBlend = BlendFactor::OneMinusSrcAlpha;
-        key.depthFunc = DepthFunc::LessEqual;
+        key.depthFunc = state.depthFunc;
+        key.fillMode = state.fillMode;
         if (fragmentShaderOverride)
         {
             key.fragmentShaderName = fragmentShaderOverride;
@@ -1085,6 +1150,79 @@ namespace Render::RT::detail
             return {};
         }
         return pipelines[index];
+    }
+
+    bool Runtime::pipelineNeedsLighting3D(uint16_t index) const
+    {
+        if (index == 0 || index >= pipelineNeedsLighting.size())
+        {
+            return false;
+        }
+        return pipelineNeedsLighting[index] != 0;
+    }
+
+    bool Runtime::ensureLighting3DResources()
+    {
+        if (lightingBindGroup.valid())
+        {
+            return true;
+        }
+        if (!device)
+        {
+            return false;
+        }
+
+        if (!lightingUbo.valid())
+        {
+            RHI::BufferDesc bufferDesc{};
+            bufferDesc.size = kFrameUniformBytes;
+            bufferDesc.usage = RHI::BufferUsage::Uniform | RHI::BufferUsage::TransferDst;
+            // 每帧最多写一次 160 字节，用 writeBuffer 即可，不需要持久映射
+            bufferDesc.access = RHI::MemoryAccess::GpuOnly;
+            bufferDesc.debugName = "RxLighting3DUbo";
+            lightingUbo = device->createBuffer(bufferDesc);
+            if (!lightingUbo.valid())
+            {
+                log.error("[rt] 3D lighting UBO creation failed (%u bytes)", kFrameUniformBytes);
+                return false;
+            }
+        }
+
+        RHI::BufferBinding binding{};
+        binding.set = 0;
+        binding.binding = kFrameUniformBinding;
+        binding.buffer = lightingUbo;
+        binding.offset = 0;
+        binding.size = kFrameUniformBytes;
+
+        RHI::BindGroupDesc groupDesc{};
+        groupDesc.buffers = &binding;
+        groupDesc.bufferCount = 1;
+        groupDesc.debugName = "RxLighting3DBindGroup";
+        lightingBindGroup = device->createBindGroup(groupDesc);
+        if (!lightingBindGroup.valid())
+        {
+            log.error("[rt] 3D lighting bind group creation failed");
+            return false;
+        }
+
+        log.info("[rt] 3D lighting uniforms ready: %u bytes at (set=0, binding=%u)", kFrameUniformBytes,
+                 kFrameUniformBinding);
+        return true;
+    }
+
+    void Runtime::uploadLighting3D(const FrameUniforms& uniforms)
+    {
+        if (!ensureLighting3DResources())
+        {
+            return;
+        }
+        // 失败只记日志：丢一帧光照参数导致的是「画面偏暗」，
+        // 而中断整帧提交会让窗口闪黑，后者更糟。
+        if (device->writeBuffer(lightingUbo, 0, &uniforms, kFrameUniformBytes) != RHI::RhiResult::Ok)
+        {
+            log.warn("[rt] 3D lighting upload failed, keeping previous frame values");
+        }
     }
 
     uint16_t Runtime::defaultPipeline(DefaultPipeline kind) const
@@ -1113,7 +1251,23 @@ namespace Render::RT::detail
             const char* label;
             /// 非空则替换按格式选出的默认片段着色器
             const char* fragmentShader;
+            /// 非空则覆盖按顶点格式取的深度/填充默认值（见 defaultStateFor）。
+            /// 给了默认值，2D 那 18 行就不必各写一个 nullptr。
+            const PipelineStateHint* state = nullptr;
         };
+
+        // 3D 的三条深度/填充组合。提成具名常量而不是内联在表里，
+        // 是因为它们表达的是渲染意图，值本身看不出来。
+        //
+        // 网格：开深度测试 + 写深度。面片间的遮挡靠深度缓冲，排序键无解。
+        static const PipelineStateHint kMesh3DState{ 1, 1, DepthFunc::LessEqual, FillMode::Solid };
+        // 线框：同上，只是填充模式不同。线框必须是独立管线，见 FillMode。
+        static const PipelineStateHint kMesh3DWireState{ 1, 1, DepthFunc::LessEqual,
+                                                         FillMode::Wireframe };
+        // 选中高亮：LessEqual 且不写深度。要求「与网格同深度处也画得出来」
+        // （高亮线就贴在面上，Less 会被自己遮掉），又不能污染深度缓冲，
+        // 否则后画的网格会被高亮线挡住。
+        static const PipelineStateHint kHighlight3DState{ 1, 0, DepthFunc::LessEqual, FillMode::Solid };
 
         // 与 renderx.h 的 DefaultPipeline 枚举一一对应。
         // 覆盖层统一走 P3C4：缩放时与图元几何一致变换，且支持半透明。
@@ -1147,6 +1301,16 @@ namespace Render::RT::detail
             // 只有片元不同（距离场而非 RGBA），因此同样必须显式指定片段着色器。
             { DP::WorldGlyphSdf, VF::P3T2C4, RS::World, PT::Triangles, "WorldGlyphSdf",
               "world_glyph_sdf_p3t2c4.frag" },
+            // ---- 3D ----
+            // 网格实体：位置 + 法线，顶点已是世界坐标，光照在 DLL 内算
+            // （mesh_3d_p3n3.frag 读 FrameUniforms 的三光源 + 材质段）。
+            { DP::Mesh3D, VF::P3N3, RS::World, PT::Triangles, "Mesh3D", nullptr, &kMesh3DState },
+            { DP::Mesh3DWire, VF::P3N3, RS::World, PT::Triangles, "Mesh3DWire", nullptr,
+              &kMesh3DWireState },
+            // 选中高亮：复用 2D 的 P3C4 世界线段着色器，只是深度状态不同。
+            // 3D 高亮没有自己的着色器需求——颜色是宿主给的常量色。
+            { DP::Highlight3D, VF::P3C4, RS::World, PT::LineStrip, "Highlight3D", nullptr,
+              &kHighlight3DState },
         };
         static_assert(sizeof(kEntries) / sizeof(kEntries[0]) == static_cast<size_t>(DP::Count),
                       "内建管线表必须覆盖 DefaultPipeline 的全部取值");
@@ -1154,8 +1318,8 @@ namespace Render::RT::detail
         uint32_t ready = 0;
         for (const Entry& entry : kEntries)
         {
-            const uint16_t index =
-                resolvePipeline(entry.format, entry.space, entry.topology, 1.0f, entry.fragmentShader);
+            const uint16_t index = resolvePipeline(entry.format, entry.space, entry.topology, 1.0f,
+                                                  entry.fragmentShader, entry.state);
             defaults[static_cast<size_t>(entry.kind)] = index;
             if (index != 0)
             {

@@ -711,6 +711,17 @@ namespace Render
             session->setViewMatrix(viewMatrix);
         }
 
+        void rxSessionSetLighting3D(SessionHandle handle, const Lighting3DDesc* desc)
+        {
+            Session* session = checkedSession(handle);
+            if (!session)
+            {
+                return;
+            }
+            // desc == nullptr 是合法输入（关闭光照），不在这里拦截
+            session->setLighting3D(desc);
+        }
+
         RxResult rxSessionBeginFrame(SessionHandle handle)
         {
             Session* session = checkedSession(handle);

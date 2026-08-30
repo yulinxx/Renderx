@@ -178,6 +178,21 @@ namespace Render::RT::detail
         std::memcpy(viewMatrix, matrix, sizeof(viewMatrix));
     }
 
+    void Session::setLighting3D(const Lighting3DDesc* desc)
+    {
+        if (!desc)
+        {
+            // 关闭光照：不再上传 FrameUniforms，也不给 3D 管线绑定它。
+            // 着色器侧因此不需要「光照是否存在」的分支——网格以材质漫反射色平铺。
+            lighting3DEnabled = false;
+            frameUniforms.lighting = Lighting3DDesc{};
+            return;
+        }
+
+        frameUniforms.lighting = *desc;
+        lighting3DEnabled = true;
+    }
+
     // ==================== 帧 ====================
 
     RxResult Session::beginFrame()
@@ -333,6 +348,8 @@ namespace Render::RT::detail
         BufferHandle boundVertexBuffer = BufferHandle::Invalid;
         uint64_t boundVertexOffset = UINT64_MAX;
         TextureHandle boundTexture = TextureHandle::Invalid;
+        /// 光照绑定组本帧是否已绑到当前管线上。换管线会失效（见下）。
+        bool boundLighting = false;
         PushConstants pushed{};
         bool pushedValid = false;
 
@@ -397,9 +414,43 @@ namespace Render::RT::detail
                 boundVertexBuffer = BufferHandle::Invalid;
                 boundVertexOffset = UINT64_MAX;
                 boundTexture = TextureHandle::Invalid;
+                boundLighting = false;
+            }
+
+            // 3D 管线的光照绑定组：只有声明了 FrameUniforms 块的管线才绑，
+            // 否则 GL 后端会对每条 2D 命令 warn 一次「未声明 binding 1」。
+            if (!boundLighting && runtime->pipelineNeedsLighting3D(pipelineIndex))
+            {
+                if (runtime->lightingBindGroup.valid())
+                {
+                    cmd->bindBindGroup(0, runtime->lightingBindGroup);
+                    boundLighting = true;
+                }
+                else
+                {
+                    runtime->log.warn("[rt] 3D pipeline bound but lighting uniforms are unavailable, "
+                                      "mesh will render unlit");
+                }
             }
 
             push.pointSize = pointSize;
+            // 3D 材质段：无材质时显式复位，否则上一条命令的颜色会泄漏到这条
+            // ——同一帧里 2D 命令不读这段，但相邻的两个 3D 网格会串色。
+            if (material)
+            {
+                std::memcpy(push.matDiffuse, material->color, sizeof(push.matDiffuse));
+                std::memcpy(push.matAmbient, material->ambient, sizeof(push.matAmbient));
+                std::memcpy(push.matSpecular, material->specular, sizeof(push.matSpecular));
+                push.matShininess = material->shininess > 0.0f ? material->shininess : 1.0f;
+            }
+            else
+            {
+                const PushConstants defaults{};
+                std::memcpy(push.matDiffuse, defaults.matDiffuse, sizeof(push.matDiffuse));
+                std::memcpy(push.matAmbient, defaults.matAmbient, sizeof(push.matAmbient));
+                std::memcpy(push.matSpecular, defaults.matSpecular, sizeof(push.matSpecular));
+                push.matShininess = defaults.matShininess;
+            }
             if (!pushedValid || std::memcmp(&pushed, &push, sizeof(push)) != 0)
             {
                 cmd->pushConstants(0, kPushConstantBytes, &push);
@@ -671,7 +722,16 @@ namespace Render::RT::detail
         // 不重开就变成未配对的 end，后端会报错并把整帧判废。
         if (cmd)
         {
-            RHI::RenderPassBeginDesc pass{};
+        // 3D 光照参数上传。必须在 beginRenderPass 之前：Vulkan 不允许在
+        // RenderPass 内做缓冲拷贝。每帧无条件重传而不是「脏了才传」——
+        // 光照 UBO 由整个 Runtime 共享，多窗口下每个 Session 的参数不同，
+        // 按脏标记跳过会让第二个窗口沿用第一个窗口的光照。
+        if (lighting3DEnabled)
+        {
+            runtime->uploadLighting3D(frameUniforms);
+        }
+
+        RHI::RenderPassBeginDesc pass{};
             pass.colorAttachmentCount = 1;
             pass.colorAttachments[0].texture = {};
             // Load 而不是 Clear：本帧已画好的内容不能被清掉

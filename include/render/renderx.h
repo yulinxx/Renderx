@@ -82,10 +82,19 @@
 
 // ==================== ABI 版本 ====================
 
+// 5.0：3D 收口。三处结构体尺寸变化，故抬 major：
+//      - PipelineDesc 增加 fillMode（线框模式属于管线固定状态，
+//        Vulkan/Metal 都不能在录制期改，因此必须落到管线而非 DrawCommand）
+//      - MaterialDesc 增加 3D 材质三色与高光指数
+//      - DefaultPipeline 追加 Mesh3D / Mesh3DWire / Highlight3D，Count 变化
+//      同时新增 rxSessionSetLighting3D。3D 光照放在 DLL 内：光照是渲染职责，
+//      且顶点只需上传一次——若在宿主烘焙进顶点色，相机每动一次就要重传全部顶点，
+//      并且视点相关的镜面高光根本无法正确表达。
+//
 // 4.0：字体接口从「递字符串、DLL 内部排版」改为「DLL 只出字形度量与图集，
 //      宿主自己拼四边形」。rxFontLoad 被 rxFontCreate 系列取代，签名不兼容，
 //      故抬 major。旧接口恒返回 ErrorUnsupportedBackend，无可用调用方。
-#define RENDERX_ABI_VERSION_MAJOR 4
+#define RENDERX_ABI_VERSION_MAJOR 5
 #define RENDERX_ABI_VERSION_MINOR 0
 #define RENDERX_ABI_VERSION \
     ((RENDERX_ABI_VERSION_MAJOR << 16) | RENDERX_ABI_VERSION_MINOR)
@@ -286,6 +295,22 @@ namespace Render
             Greater = 3,
         };
 
+        /**
+         * @brief 多边形填充模式
+         *
+         * 线框是**管线固定状态**，不是逐命令状态：Vulkan 的
+         * VK_POLYGON_MODE_LINE 与 Metal 的 MTLTriangleFillModeLines 都在
+         * 管线/渲染状态上，录制期无法切换。GL 虽然有 glPolygonMode 可以随时改，
+         * 但把它做成逐命令状态会导致三个后端语义不一致——因此统一落到管线。
+         *
+         * 这也是「线框模式」需要一条独立内建管线（Mesh3DWire）的原因。
+         */
+        enum class FillMode : uint8_t
+        {
+            Solid = 0,
+            Wireframe = 1,
+        };
+
         /// 内建管线。覆盖层（选择框/手柄/虚线轮廓/点标记）统一使用
         /// 世界空间 + P3C4，以保证缩放时与图元几何一致变换。
         enum class DefaultPipeline : uint8_t
@@ -328,7 +353,27 @@ namespace Render
             /// 用它的字体必须以 FontDesc::sdfPadding > 0 创建，否则图集里是
             /// 覆盖率而非距离场，边缘会被 smoothstep 硬阈值化。
             WorldGlyphSdf = 17,
-            Count = 18,
+            /**
+             * 3D 网格（P3N3 + 世界空间 + 三角形），带深度测试与内建光照。
+             *
+             * 顶点是**已在 CPU 侧变换到世界坐标**的位置 + 法线，因此不需要
+             * 逐命令的模型矩阵——DrawPacket::viewMatrix 直接填 proj * view。
+             * 颜色不在顶点里：材质三色与高光指数由 DrawCommand::materialIndex
+             * 选中的 MaterialDesc 提供，光照参数由 rxSessionSetLighting3D 设置。
+             */
+            Mesh3D = 18,
+            /// 同 Mesh3D，但 fillMode = Wireframe。线框是管线状态，见 FillMode。
+            Mesh3DWire = 19,
+            /**
+             * 3D 选中高亮（P3C4 + 世界空间 + 线段）。
+             *
+             * 与 WorldLine4 的区别只在深度状态：高亮线框需要
+             * depthFunc = LessEqual 且 depthWrite = 0，才能贴在网格表面
+             * 而不被自身深度剔除（否则线框会与三角面 z-fighting，
+             * 表现为闪烁的虚线）。
+             */
+            Highlight3D = 20,
+            Count = 21,
         };
 
         // ==================== 创建描述 ====================
@@ -428,11 +473,14 @@ namespace Render
             BlendFactor srcBlend;
             BlendFactor dstBlend;
             DepthFunc depthFunc;
+            /// 多边形填充模式。线框必须落到管线，见 FillMode 的说明。
+            FillMode fillMode;
+            uint8_t _pad0[7];
             /// 内建 shader 名（见 DLL 内置 shader 库）。
             /// 空指针表示按 vertexFormat + space 使用默认 shader。
             const char* shaderName;
         };
-        static_assert(sizeof(PipelineDesc) == 16, "PipelineDesc ABI size changed");
+        static_assert(sizeof(PipelineDesc) == 24, "PipelineDesc ABI size changed");
 
         struct TextureDesc
         {
@@ -537,10 +585,75 @@ namespace Render
             /// 超出上限时应改用三角化线段
             float lineWidth;
             float pointSize;
+            /// 漫反射色。2D 管线**不消费**此值——2D 的颜色在顶点里，
+            /// 材质只提供缺省线宽与点大小。3D 网格没有顶点色，靠这里取色。
             float color[4];
             uint32_t flags;
+            /// 环境反射色。仅 Mesh3D / Mesh3DWire 消费。
+            float ambient[3];
+            /// 镜面反射色。仅 Mesh3D / Mesh3DWire 消费。
+            float specular[3];
+            /// Phong 高光指数，越大高光越锐。仅 Mesh3D / Mesh3DWire 消费。
+            float shininess;
         };
-        static_assert(sizeof(MaterialDesc) == 28, "MaterialDesc ABI size changed");
+        static_assert(sizeof(MaterialDesc) == 56, "MaterialDesc ABI size changed");
+
+        // ==================== 3D 光照 ====================
+        //
+        // 为什么光照在 DLL 内而不是宿主烘焙进顶点色：
+        //
+        // 1. 镜面高光与视点相关。烘焙进顶点色后相机一转高光就不对，
+        //    要维持正确就得每帧重算并重传全部顶点——十万面的模型上这是
+        //    每帧几 MB 的上传量，而现在顶点只需上传一次。
+        // 2. 光照是渲染职责。放在宿主意味着三个后端各自的着色差异要由
+        //    业务层消化，与「零业务耦合」相反。
+        //
+        // 2D 侧没有对应概念：2D 是平面图形，没有法线，颜色在顶点里就是最终色。
+        // 这是 2D 与 3D 唯一的本质分歧，其余环节（顶点上传、命令提交、
+        // 排序键、瞬态环、几何仓）两者完全同构。
+
+        /// 单个方向光。direction 是**从表面指向光源**的方向，不需要预先归一化。
+        struct DirectionalLight3D
+        {
+            float direction[3];
+            /// 0/1。关掉的光不参与累加，而不是把强度设 0——
+            /// 后者仍会走完一遍高光计算。
+            uint32_t enabled;
+            float color[3];
+            float intensity;
+        };
+        static_assert(sizeof(DirectionalLight3D) == 32, "DirectionalLight3D ABI size changed");
+
+        struct Lighting3DDesc
+        {
+            float ambientColor[3];
+            uint32_t ambientEnabled;
+            float ambientIntensity;
+            /// 0/1。双面光照：取 |dot(N, L)| 而非 max(dot(N, L), 0)。
+            /// 导入的 OBJ/STL 绕序不可靠，单面光照会让整片三角面变黑。
+            uint32_t doubleSided;
+            /// 0/1
+            uint32_t specularEnabled;
+            float specularIntensity;
+            /// 主光 / 补光 / 轮廓光
+            DirectionalLight3D key;
+            DirectionalLight3D fill;
+            DirectionalLight3D rim;
+            /**
+             * 相机世界坐标，算镜面高光用。
+             *
+             * 必须由宿主传入：DrawPacket::viewMatrix 是 proj * view 的合并结果，
+             * DLL 无法从中稳定地反解出眼点位置（投影矩阵可能是正交的）。
+             */
+            float viewPos[3];
+            /// 亮度下限，避免背光面纯黑到看不出轮廓
+            float minBrightness;
+            /// 曝光系数，整体乘在最终颜色上
+            float exposure;
+            /// 占位，把结构体尺寸补到 16 的倍数，与 std140 块尺寸一致
+            uint32_t _pad0[3];
+        };
+        static_assert(sizeof(Lighting3DDesc) == 160, "Lighting3DDesc ABI size changed");
 
         // ==================== 绘制命令 ====================
 
@@ -987,6 +1100,20 @@ namespace Render
         RENDER_API void rxSessionDestroy(SessionHandle session);
         RENDER_API void rxSessionSetClearColor(SessionHandle session, float r, float g, float b, float a);
         RENDER_API void rxSessionSetViewMatrix(SessionHandle session, const float viewMatrix[16]);
+
+        /**
+         * @brief 设置 3D 光照参数
+         *
+         * 只影响 Mesh3D / Mesh3DWire 管线；2D 管线不读这些值。
+         *
+         * 参数是 Session 级持久状态，不是逐帧参数——设一次即对后续所有帧生效，
+         * 与 rxSessionSetClearColor 同一语义。相机移动只需更新
+         * Lighting3DDesc::viewPos 后重设一次，顶点缓冲无需重传。
+         *
+         * desc 为 nullptr 时关闭光照（等价于全部 enabled = 0），
+         * 此时网格以材质漫反射色平铺，用于「无光照预览」。
+         */
+        RENDER_API void rxSessionSetLighting3D(SessionHandle session, const Lighting3DDesc* desc);
 
         /**
          * @brief 开始一帧

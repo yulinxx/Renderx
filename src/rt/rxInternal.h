@@ -32,6 +32,7 @@
 #include "rhi/rhiSurface.h"
 #include "rt/rxIncremental.h"
 
+#include <cstddef>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -45,8 +46,17 @@ namespace Render::RT::detail
      * 与 shader 里的 `layout(std140) uniform PushConstants` 逐字段对应。
      * 任何一侧改动都必须同步另一侧——std140 不会报错，只会算出错误的偏移。
      *
-     * std140 偏移：uView 0..63（mat4，16 对齐）、uViewport 64..71（vec2，8 对齐）、
-     * uPointSize 72..75、uPad0 76..79。共 80 字节，在 RHI 的 128 上限内。
+     * 布局分两段：
+     *   0..79    2D 与 3D 共用：uView 0..63（mat4，16 对齐）、
+     *            uViewport 64..71（vec2，8 对齐）、uPointSize 72..75、uPad0 76..79
+     *   80..127  3D 材质段，只有 Mesh3D / Mesh3DWire 的着色器会读取
+     *
+     * 全部着色器（含 2D）都声明完整的 128 字节块，声明只有 rx_push_constants.glsl
+     * 一处。让 2D 只声明前 80 字节在 GL 上虽然合法，但等于把「同一块有两种长度」
+     * 引入构建期，日后插入字段时两种声明的偏移会悄悄错位。
+     *
+     * 光照**不在这里**：它是逐 pass 而非逐命令的量，160 字节挂在每条命令上纯属浪费，
+     * 走 FrameUniforms（1 号 UBO），见下方。
      */
     struct PushConstants
     {
@@ -60,10 +70,52 @@ namespace Render::RT::detail
          * 抗锯齿边缘）。字形改走 R8 覆盖率 + 直接取 alpha 后该字段再无消费方。
          */
         float pad0 = 0.0f;
+
+        // ---- 3D 材质段（偏移 80 起）----
+        // std140 要求 vec3/vec4 按 16 字节对齐，字段顺序不能随意调整：
+        //   matDiffuse  @80  （80 = 5*16，天然对齐）
+        //   matAmbient  @96  + pad1 @108
+        //   matSpecular @112 + matShininess @124（float 可以塞进同一个 16 字节槽）
+        float matDiffuse[4]{ 1.0f, 1.0f, 1.0f, 1.0f };
+        float matAmbient[3]{};
+        float pad1 = 0.0f;
+        float matSpecular[3]{};
+        float matShininess = 1.0f;
     };
-    static_assert(sizeof(PushConstants) == 80, "PushConstants 与 shader 中的 std140 块必须一致");
+    static_assert(sizeof(PushConstants) == 128, "PushConstants 与 shader 中的 std140 块必须一致");
+    static_assert(offsetof(PushConstants, matDiffuse) == 80, "3D 材质段必须从偏移 80 开始");
+    static_assert(offsetof(PushConstants, matSpecular) == 112, "std140 要求 vec3 按 16 字节对齐");
 
     constexpr uint32_t kPushConstantBytes = sizeof(PushConstants);
+
+    /**
+     * @brief 逐 pass 的 uniform 块（1 号 UBO，块名 FrameUniforms，std140）
+     *
+     * 目前只承载 3D 光照。放这里而不是 PushConstants 的理由：光照在一帧内不变，
+     * 而 PushConstants 会在每次换管线/换材质时重推——把 160 字节挂上去等于
+     * 每条命令都重传一遍常量。
+     *
+     * 与公共 ABI 的 Lighting3DDesc 完全同构，因此可以直接 memcpy；
+     * 字段布局同时必须与 rx_lighting_3d.glsl 的 std140 块逐字节一致。
+     */
+    struct FrameUniforms
+    {
+        Lighting3DDesc lighting{};
+    };
+    static_assert(sizeof(FrameUniforms) == 160, "FrameUniforms 与 shader 中的 std140 块必须一致");
+
+    constexpr uint32_t kFrameUniformBytes = sizeof(FrameUniforms);
+
+    /**
+     * FrameUniforms 的槽位：(set = 0, binding = 1)。
+     *
+     * binding 0 不可用：GL 后端把 pushConstant 落在 0 号 UBO binding point
+     * （见 glDevice.h 的 kPushConstantBinding），用户声明的 UniformBuffer
+     * 从 1 开始顺序分配。glName 必须与 shader 里的块名逐字符一致，
+     * 否则 GL 后端找不到 block、绑定静默失效。
+     */
+    constexpr uint32_t kFrameUniformBinding = 1;
+    constexpr const char* kFrameUniformBlockName = "FrameUniforms";
 
     /// 顶点格式对应的属性布局，供建管线时展开
     struct VertexLayout
@@ -162,6 +214,23 @@ namespace Render::RT::detail
         void releaseOverflowBuffers();
     };
 
+    /**
+     * 深度与填充状态。
+     *
+     * 2D 全程不需要深度（顺序由排序键决定），因此 resolvePipeline 过去把
+     * 「深度关、实心填充」写死成常量。3D 打破了这个前提：网格要开深度测试
+     * 与深度写入，选中高亮要 LessEqual + 不写深度，线框要 Wireframe。
+     * 与其在 resolvePipeline 上继续加平铺参数，不如把这组状态提成一个显式
+     * 的结构，由顶点格式给出默认值、内建管线表按需覆盖。
+     */
+    struct PipelineStateHint
+    {
+        uint8_t depthTest = 0;
+        uint8_t depthWrite = 0;
+        DepthFunc depthFunc = DepthFunc::LessEqual;
+        FillMode fillMode = FillMode::Solid;
+    };
+
     /// 管线缓存键：同一组状态只建一条管线
     struct PipelineKey
     {
@@ -181,6 +250,12 @@ namespace Render::RT::detail
          * 否则浮点抖动会把管线数量炸开。
          */
         float lineWidth = 1.0f;
+        /**
+         * 多边形填充模式。与线宽同理，属于管线固定状态：
+         * Vulkan 的 VK_POLYGON_MODE_LINE 与 Metal 的 MTLTriangleFillModeLines
+         * 都写在管线对象里，录制期不可改，因此线框必须是另一条管线。
+         */
+        FillMode fillMode = FillMode::Solid;
         std::string shaderName;  ///< 空表示按格式+空间取默认（只覆盖顶点着色器）
         /**
          * 片段着色器覆盖。空表示按格式取默认。
@@ -225,6 +300,27 @@ namespace Render::RT::detail
         std::vector<RHI::PipelineHandle> pipelines;
         std::unordered_map<PipelineKey, uint16_t, PipelineKeyHash> pipelineCache;
         uint16_t defaults[static_cast<size_t>(DefaultPipeline::Count)]{};
+
+        /**
+         * 与 pipelines 平行：该管线是否声明了 FrameUniforms 块。
+         *
+         * 记账而不是每次绑定都试一遍：若无条件对所有管线 bindBindGroup，
+         * 2D 管线没声明这个 binding，GL 后端每次换管线都会 warn 一条
+         * 「当前管线未声明 set=0 binding=1」——一帧上百条，日志直接失去价值。
+         */
+        std::vector<uint8_t> pipelineNeedsLighting;
+
+        /**
+         * 3D 光照参数的 UBO 与绑定组。
+         *
+         * 挂在 Runtime 而非 Session：Session 只持有 CPU 侧的 FrameUniforms 值，
+         * GPU 资源按设备共享一份，帧内由当前 Session 在 EndFrame 写入。
+         * 多窗口下两个 Session 不会同时处于「写 UBO → 提交」之间
+         * （sessionsInFrame 之外还有 RHI 帧的串行约束），因此一份足够。
+         * 懒创建：纯 2D 的进程不会为此付出任何 GPU 内存。
+         */
+        RHI::BufferHandle lightingUbo{};
+        RHI::BindGroupHandle lightingBindGroup{};
 
         /// materials[0] 保留为「无材质」
         std::vector<MaterialDesc> materials;
@@ -325,10 +421,20 @@ namespace Render::RT::detail
         /// 按绘制命令的格式/空间/拓扑/线宽解析一条管线（带缓存）。
         /// fragmentShaderOverride 非空时替换按格式选出的默认片段着色器，
         /// 用于「同格式同空间、只有片元不同」的管线（ScreenTextured vs ScreenGlyph）。
+        /// stateOverride 非空时覆盖按顶点格式取的深度/填充默认值（见 defaultStateFor）。
         uint16_t resolvePipeline(VertexFormat format, RenderSpace space, PrimitiveTopology topology,
                                  float lineWidth = 1.0f,
-                                 const char* fragmentShaderOverride = nullptr);
+                                 const char* fragmentShaderOverride = nullptr,
+                                 const PipelineStateHint* stateOverride = nullptr);
         RHI::PipelineHandle rhiPipeline(uint16_t index);
+        /// 该管线是否声明了 FrameUniforms 块（即需要绑定光照绑定组）
+        bool pipelineNeedsLighting3D(uint16_t index) const;
+
+        // ---- 3D 光照 ----
+        /// 懒创建光照 UBO 与绑定组。纯 2D 路径永不调用，因此不占 GPU 内存。
+        bool ensureLighting3DResources();
+        /// 把本帧的 FrameUniforms 写进 UBO。失败只记日志：光照失效比整帧丢弃好。
+        void uploadLighting3D(const FrameUniforms& uniforms);
 
         // ---- 表面 ----
         SurfaceHandle createSurface(const SurfaceDesc& desc);
@@ -377,6 +483,17 @@ namespace Render::RT::detail
         float viewMatrix[16]{};
         FrameStats stats{};
 
+        /**
+         * 逐 pass uniform（当前只有 3D 光照）。Session 级持久状态，
+         * 与 clearColor 同一语义：设一次对后续所有帧生效。
+         *
+         * lighting3DEnabled 为 false 时不上传本块，也不给 3D 管线绑定它——
+         * 于是「没设过光照」与「显式关闭光照」走同一条路径，不需要在
+         * 着色器里再判一次。
+         */
+        FrameUniforms frameUniforms{};
+        bool lighting3DEnabled = false;
+
         bool inFrame = false;
         RHI::ICommandList* cmd = nullptr;
         uint64_t frameId = 0;
@@ -390,6 +507,8 @@ namespace Render::RT::detail
 
         void setClearColor(float r, float g, float b, float a);
         void setViewMatrix(const float matrix[16]);
+        /// desc 为 nullptr 表示关闭 3D 光照，见 rxSessionSetLighting3D
+        void setLighting3D(const Lighting3DDesc* desc);
 
         RxResult beginFrame();
         RxResult allocTransient(uint64_t sizeBytes, TransientAlloc* out);
@@ -446,6 +565,9 @@ namespace Render::RT::detail
     VertexLayout vertexLayoutFor(VertexFormat format);
     /// 顶点格式 + 空间 + 拓扑 → 内建 shader 名
     ShaderPair defaultShadersFor(VertexFormat format, RenderSpace space, PrimitiveTopology topology);
+    /// 顶点格式 → 默认深度/填充状态。P3N3（3D 网格）开深度测试与写入，
+    /// 其余 2D 格式一律关深度：2D 的遮挡关系由排序键而非深度缓冲决定。
+    PipelineStateHint defaultStateFor(VertexFormat format);
     RHI::PrimitiveTopology toRhiTopology(PrimitiveTopology topology);
     RHI::BlendFactor toRhiBlendFactor(BlendFactor factor);
     RHI::CompareOp toRhiCompareOp(DepthFunc func);

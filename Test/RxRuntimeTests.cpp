@@ -13,6 +13,7 @@
 
 #include "render/renderx.h"
 
+#include <cstddef>
 #include <fstream>
 #include <iterator>
 #include <string>
@@ -285,6 +286,34 @@ TEST(RxRuntime, P3T2C4StrideMatchesLayout)
     EXPECT_EQ(rxVertexStride(VertexFormat::P3T2C4), 36u);
 }
 
+TEST(RxRuntime, Lighting3DDescMatchesStd140Layout)
+{
+    // sizeof 相等不代表布局相等：字段顺序调换后总大小可能不变，
+    // 而 shader 仍按旧偏移取值——表现为「高光颜色被当成光照方向」这类
+    // 无从下手的画面错乱。这里逐字段锁住 rx_lighting_3d.glsl 注释里的偏移表。
+    EXPECT_EQ(sizeof(Lighting3DDesc), 160u);
+    EXPECT_EQ(sizeof(DirectionalLight3D), 32u) << "std140 结构体尺寸向上取整到 16 的倍数";
+
+    EXPECT_EQ(offsetof(Lighting3DDesc, ambientColor), 0u);
+    EXPECT_EQ(offsetof(Lighting3DDesc, ambientEnabled), 12u);
+    EXPECT_EQ(offsetof(Lighting3DDesc, ambientIntensity), 16u);
+    EXPECT_EQ(offsetof(Lighting3DDesc, doubleSided), 20u);
+    EXPECT_EQ(offsetof(Lighting3DDesc, specularEnabled), 24u);
+    EXPECT_EQ(offsetof(Lighting3DDesc, specularIntensity), 28u);
+    // 三个方向光必须落在 16 字节边界上，否则 std140 会插入隐式填充
+    EXPECT_EQ(offsetof(Lighting3DDesc, key), 32u);
+    EXPECT_EQ(offsetof(Lighting3DDesc, fill), 64u);
+    EXPECT_EQ(offsetof(Lighting3DDesc, rim), 96u);
+    EXPECT_EQ(offsetof(Lighting3DDesc, viewPos), 128u);
+    EXPECT_EQ(offsetof(Lighting3DDesc, minBrightness), 140u);
+    EXPECT_EQ(offsetof(Lighting3DDesc, exposure), 144u);
+
+    EXPECT_EQ(offsetof(DirectionalLight3D, direction), 0u);
+    EXPECT_EQ(offsetof(DirectionalLight3D, enabled), 12u);
+    EXPECT_EQ(offsetof(DirectionalLight3D, color), 16u);
+    EXPECT_EQ(offsetof(DirectionalLight3D, intensity), 28u);
+}
+
 TEST(RxRuntime, DefaultPipelinesAreDeduplicated)
 {
     LogSink sink;
@@ -310,7 +339,7 @@ TEST(RxRuntime, DefaultPipelinesAreDeduplicated)
     rxRuntimeDestroy(runtime);
 }
 
-TEST(RxRuntime, PipelineWithoutBuiltinShaderFailsLoudly)
+TEST(RxRuntime, Mesh3DPipelineResolvesToRealShaders)
 {
     LogSink sink;
     const RuntimeDesc desc = makeRuntimeDesc(&sink);
@@ -318,13 +347,65 @@ TEST(RxRuntime, PipelineWithoutBuiltinShaderFailsLoudly)
     ASSERT_TRUE(rxValid(runtime));
     sink.errors.clear();
 
-    // P3N3 是 3D 网格格式，其 shader 仍用独立 uniform，尚未并入 PushConstants。
-    // 必须明确失败并报错，而不是建出一条画不对的管线。
+    // P3N3 是 3D 网格格式。5.0 起它有真实的内建 shader（mesh_3d_p3n3.*），
+    // 因此必须能建出管线——此前这里返回 0 是「3D 未收口」的占位行为。
     PipelineDesc pipelineDesc{};
     pipelineDesc.topology = PrimitiveTopology::Triangles;
     pipelineDesc.vertexFormat = VertexFormat::P3N3;
-    EXPECT_EQ(rxPipelineCreate(runtime, &pipelineDesc), 0);
-    EXPECT_FALSE(sink.errors.empty());
+    EXPECT_NE(rxPipelineCreate(runtime, &pipelineDesc), 0);
+    EXPECT_TRUE(sink.errors.empty());
+
+    rxRuntimeDestroy(runtime);
+}
+
+TEST(RxRuntime, Default3DPipelinesAreDistinct)
+{
+    LogSink sink;
+    const RuntimeDesc desc = makeRuntimeDesc(&sink);
+    const RuntimeHandle runtime = rxRuntimeCreate(&desc);
+    ASSERT_TRUE(rxValid(runtime));
+
+    const uint16_t mesh = rxPipelineGetDefault(runtime, DefaultPipeline::Mesh3D);
+    const uint16_t wire = rxPipelineGetDefault(runtime, DefaultPipeline::Mesh3DWire);
+    const uint16_t highlight = rxPipelineGetDefault(runtime, DefaultPipeline::Highlight3D);
+    EXPECT_NE(mesh, 0);
+    EXPECT_NE(wire, 0);
+    EXPECT_NE(highlight, 0);
+
+    // 线框只有 fillMode 与实心不同。fillMode 必须进管线缓存键，
+    // 否则两者命中同一条管线——先建的赢，另一条静默画错。
+    EXPECT_NE(mesh, wire) << "fillMode 未进管线键：线框与实心塌缩成同一条管线";
+
+    // 高亮走 P3C4 + 世界线段，与 2D 覆盖层同格式同拓扑，但深度状态不同
+    // （LessEqual 且不写深度），因此也必须是独立的一条。
+    EXPECT_NE(highlight, rxPipelineGetDefault(runtime, DefaultPipeline::WorldLine4))
+        << "深度状态未进管线键：3D 高亮与 2D 覆盖线塌缩成同一条管线";
+
+    rxRuntimeDestroy(runtime);
+}
+
+TEST(RxRuntime, WireframePipelineDedupesByFillMode)
+{
+    LogSink sink;
+    const RuntimeDesc desc = makeRuntimeDesc(&sink);
+    const RuntimeHandle runtime = rxRuntimeCreate(&desc);
+    ASSERT_TRUE(rxValid(runtime));
+
+    PipelineDesc solid{};
+    solid.topology = PrimitiveTopology::Triangles;
+    solid.vertexFormat = VertexFormat::P3N3;
+    solid.fillMode = FillMode::Solid;
+
+    PipelineDesc wire = solid;
+    wire.fillMode = FillMode::Wireframe;
+
+    const uint16_t solidIndex = rxPipelineCreate(runtime, &solid);
+    const uint16_t wireIndex = rxPipelineCreate(runtime, &wire);
+    EXPECT_NE(solidIndex, 0);
+    EXPECT_NE(wireIndex, 0);
+    EXPECT_NE(solidIndex, wireIndex);
+    // 同一组状态重复请求仍要命中缓存
+    EXPECT_EQ(rxPipelineCreate(runtime, &wire), wireIndex);
 
     rxRuntimeDestroy(runtime);
 }
