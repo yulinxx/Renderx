@@ -12,7 +12,9 @@
 #include <gtest/gtest.h>
 
 #include "render/renderx.h"
+#include "shader/shaderLibrary.h"
 
+#include <cctype>
 #include <cstddef>
 #include <fstream>
 #include <iterator>
@@ -1435,6 +1437,115 @@ TEST_F(RxIncrementalFixture, DrawListRejectsForeignAndDestroyedHandles)
     GeometryStoreStats storeStats{};
     EXPECT_EQ(rxGeometryStoreGetStats(runtime, GeometryStoreHandle::Invalid, &storeStats),
               RxResult::ErrorInvalidHandle);
+}
+
+// ==================== 内置 shader 的 uniform 块 ====================
+
+namespace
+{
+    /// 取出 shader 里所有「无实例名」uniform 块的成员名
+    ///
+    /// 只支持本仓 shader 实际使用的写法：`uniform Name { ... };`，块内是一层
+    /// 平铺的 `类型 名字;` 声明（结构体在块外声明）。故意不做通用 GLSL 解析。
+    std::vector<std::string> collectAnonymousBlockMembers(const std::string& src)
+    {
+        std::vector<std::string> members;
+        size_t pos = 0;
+        while ((pos = src.find("uniform", pos)) != std::string::npos)
+        {
+            const size_t open = src.find('{', pos);
+            const size_t close = src.find('}', open == std::string::npos ? pos : open);
+            if (open == std::string::npos || close == std::string::npos)
+            {
+                break;
+            }
+
+            // 块后紧跟 ';' 才是无实例名的块；有实例名时成员不进全局命名空间
+            size_t after = close + 1;
+            while (after < src.size() && std::isspace(static_cast<unsigned char>(src[after])))
+            {
+                ++after;
+            }
+            const bool anonymous = after < src.size() && src[after] == ';';
+
+            if (anonymous)
+            {
+                const std::string body = src.substr(open + 1, close - open - 1);
+                size_t stmtBegin = 0;
+                while (stmtBegin < body.size())
+                {
+                    const size_t semi = body.find(';', stmtBegin);
+                    if (semi == std::string::npos)
+                    {
+                        break;
+                    }
+                    // 取 ';' 之前的最后一个标识符，即成员名
+                    size_t end = semi;
+                    while (end > stmtBegin && !std::isalnum(static_cast<unsigned char>(body[end - 1])) &&
+                           body[end - 1] != '_')
+                    {
+                        --end;
+                    }
+                    size_t begin = end;
+                    while (begin > stmtBegin && (std::isalnum(static_cast<unsigned char>(body[begin - 1])) ||
+                                                 body[begin - 1] == '_'))
+                    {
+                        --begin;
+                    }
+                    if (end > begin)
+                    {
+                        members.push_back(body.substr(begin, end - begin));
+                    }
+                    stmtBegin = semi + 1;
+                }
+            }
+            pos = close + 1;
+        }
+        return members;
+    }
+}  // namespace
+
+TEST(RxShaderLibrary, AnonymousUniformBlockMembersDoNotCollide)
+{
+    // 回归：PushConstants 与 FrameUniforms 都曾有一个叫 uPad0 的占位成员。
+    // 两者都是「无实例名」的 uniform 块，成员名进的是全局命名空间，因此同时
+    // 包含二者的 mesh_3d_p3n3.frag 编译失败：
+    //   "Field name 'uPad0' of interface block without instance name
+    //    'FrameUniforms' would shadow a previous declaration"
+    // Mesh3D / Mesh3DWire 管线于是建不出来，所有 P3N3 命令被跳过 ——
+    // 表面现象是「导入 3D 模型完全不显示，选中只剩高亮线框」（线框走 P3C4，
+    // 不含 FrameUniforms，照常编译）。
+    //
+    // 这条只能在 GL 上暴露：Null 后端不编译 GLSL，Mesh3D 的其它用例照样绿。
+    // 因此这里直接检查嵌进二进制的展开后源码，不依赖任何 GL 上下文。
+    const uint32_t total = Render::shader::count();
+    ASSERT_GT(total, 0u);
+
+    uint32_t checked = 0;
+    for (uint32_t i = 0; i < total; ++i)
+    {
+        if (Render::shader::languageAt(i) != Render::shader::Language::Glsl)
+        {
+            continue;
+        }
+        const char* name = Render::shader::nameAt(i);
+        ASSERT_NE(name, nullptr);
+        const char* source = Render::shader::glslSource(name);
+        ASSERT_NE(source, nullptr) << name;
+
+        const std::vector<std::string> members = collectAnonymousBlockMembers(source);
+        for (size_t a = 0; a < members.size(); ++a)
+        {
+            for (size_t b = a + 1; b < members.size(); ++b)
+            {
+                EXPECT_NE(members[a], members[b])
+                    << name << " 的无实例名 uniform 块里有重名成员 \"" << members[a]
+                    << "\"，GLSL 会报 would shadow a previous declaration，整条管线建不出来";
+            }
+        }
+        ++checked;
+    }
+    EXPECT_GT(checked, 0u);
 }
 
 // ==================== 3D 光照上传时机 ====================

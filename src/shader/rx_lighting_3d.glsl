@@ -27,8 +27,12 @@
 //   uViewPos           128..139
 //   uMinBrightness     140..143
 //   uExposure          144..147
-//   uPad0              148..159
+//   uLightingPad0      148..159
 // 合计 160 字节。
+//
+// 成员命名注意：无实例名的 uniform block，成员名进全局命名空间，因此本块的
+// 成员名不得与 rx_push_constants.glsl 的任何成员重名（两者会同时出现在
+// P3N3 网格 shader 里）。这也是占位字段叫 uLightingPad0 而不是 uPad0 的原因。
 //
 // 块名必须是 FrameUniforms：GL 后端按名字解析 block index
 // （见 rxInternal.h 的 kFrameUniformBlockName）。
@@ -65,5 +69,13 @@ layout(std140) uniform FrameUniforms
     float uMinBrightness;
     /// 线性曝光系数，作用在最终颜色上
     float uExposure;
-    uvec3 uPad0;
+    /// 占位，让块尺寸与 C++ 侧的 160 字节一致。
+    ///
+    /// 名字必须带 Lighting 前缀：无实例名的 uniform block，其成员名进的是
+    /// **全局命名空间**。同时包含本文件与 rx_push_constants.glsl 的 shader
+    /// （即所有 P3N3 网格 shader），若两个块都叫 uPad0，GLSL 会报
+    /// "would shadow a previous declaration" 而整条管线建不出来 ——
+    /// 表现为 3D 模型完全不显示。见 RxRuntimeTests 的
+    /// SharedUniformBlockMembersDoNotCollide。
+    uvec3 uLightingPad0;
 };

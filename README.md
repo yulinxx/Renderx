@@ -1061,6 +1061,13 @@ pushConstant 块（`uView` / `uViewport` / `uPointSize` / `uSdfScale`）。
 声明这个块，Runtime 按管线记账（`pipelineNeedsLighting3D`）决定是否绑定绑定组——
 无条件绑定会让 2D 管线每次换管线都收到一条「未声明 binding 1」的警告。
 
+`PushConstants` 与 `FrameUniforms` 都是**无实例名**的 uniform 块，成员名进的是
+全局命名空间，因此两个块的成员名不得重复 —— 同时包含二者的 P3N3 网格 shader
+会直接编译失败（`would shadow a previous declaration`），管线建不出来，
+表现为 3D 模型完全不显示。占位字段因此分别叫 `uPad0` / `uLightingPad0`。
+这条只在 GL/Metal 上暴露（Null 后端不编译 GLSL），锁它的用例是
+`AnonymousUniformBlockMembersDoNotCollide`，直接扫嵌进二进制的展开后源码。
+
 上传时机固定在 `BeginFrame` 里、`beginRenderPass` **之前**（Vulkan 不允许在
 render pass 内做缓冲拷贝），而且每帧无条件重传——光照 UBO 由整个 Runtime 共享，
 按脏标记跳过会让第二个窗口沿用第一个窗口的光照。

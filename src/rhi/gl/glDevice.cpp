@@ -445,7 +445,14 @@ namespace Render::RHI::gl
             {
                 m_gl.GetShaderInfoLog(name, length, nullptr, log.data());
             }
-            m_log.error("[gl] 着色器编译失败（stage=0x%04X, name=%s）：%s", stage,
+            // 阶段用词而不是只打 GL 枚举：debugName 是「管线名」（取自顶点
+            // shader 文件名），三个阶段共用同一个，只看它会把片元阶段的错误
+            // 误读成顶点 shader 的错误。
+            const char* stageWord = stage == GL_VERTEX_SHADER     ? "vertex"
+                                    : stage == GL_FRAGMENT_SHADER ? "fragment"
+                                    : stage == GL_COMPUTE_SHADER  ? "compute"
+                                                                  : "unknown";
+            m_log.error("[gl] 着色器编译失败（stage=%s(0x%04X), pipeline=%s）：%s", stageWord, stage,
                         debugName ? debugName : "?", log.data());
             m_gl.DeleteShader(name);
             return 0;
