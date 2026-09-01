@@ -297,11 +297,18 @@ public:
      * @brief 清空所有元素
      *
      * 所有稀疏索引都会被标记为空闲，世代计数器增加。
+     *
+     * 必须先清空 m_freeList 再重填：旧实现直接 push_back，第二次 clear()
+     * 之后自由列表里会出现重复索引（已释放的槽位在上一轮 clear 里进过表，
+     * 这一轮又被压进去一次）。后果不止是列表无界增长——allocate_slot 会把
+     * 同一个稀疏槽位发出两次，两个不同的 key 指向同一条数据，属正确性缺陷。
      */
     void clear()
     {
         m_dense.clear();
         m_dense_keys.clear();
+        m_freeList.clear();
+        m_freeList.reserve(m_sparse.size());
         for (uint32_t i = 0; i < m_sparse.size(); ++i)
         {
             bump_generation(m_sparse[i].generation);

@@ -161,14 +161,25 @@ namespace Render
 
         // ==================== 后端 ====================
 
+        /**
+         * @brief 后端标识
+         *
+         * **枚举取值不等于可用后端**：当前只有 Null 与 OpenGL 已实现。
+         * Metal（Phase 7）/ Vulkan（Phase 8）保留取值是为了让 ABI 与
+         * PipelineDesc 的固定状态字段提前定型，选中它们会在
+         * rxRuntimeCreate 里报错返回失败，**不做静默回退**
+         * （见 rhiFactory.cpp 的 isBackendAvailable / createDevice）。
+         */
         enum class Backend : int32_t
         {
             /// 无操作后端：不产生任何 GPU 调用，用于单测与无头环境
             Null = 0,
             OpenGL = 1,
+            /// 未实现（Phase 7）。选中即失败，不回退
             Metal = 2,
+            /// 未实现（Phase 8）。选中即失败，不回退
             Vulkan = 3,
-            /// 由 DLL 选择当前平台的最佳可用后端
+            /// 由 DLL 选择当前平台的最佳可用后端（仅在已实现的后端里选）
             Auto = 4,
         };
 

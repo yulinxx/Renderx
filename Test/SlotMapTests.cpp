@@ -12,7 +12,9 @@
 #include <gtest/gtest.h>
 #include "../src/core/slotMap.h"
 
+#include <set>
 #include <string>
+#include <vector>
 
 // 测试基本插入和查找
 TEST(SlotMapTest, Insert_ReturnsValidKey)
@@ -170,7 +172,45 @@ TEST(SlotMapTest, Clear_RemovesAllElements)
     EXPECT_EQ(map.find(k3), nullptr);
 }
 
+// 回归：重复 clear() 不得让自由列表出现重复索引。
+// 旧实现 clear() 直接 push_back 而不先清空 m_freeList，第二次 clear 之后
+// 同一个稀疏槽位会被发出两次，两个不同的 key 指向同一条数据。
+TEST(SlotMapTest, Clear_Twice_DoesNotHandOutDuplicateSlots)
+{
+    SlotMap<uint64_t, int> map;
+    map.insert(1);
+    map.insert(2);
+    map.insert(3);
+
+    map.clear();
+    map.clear();
+
+    const int count = 3;
+    std::vector<uint64_t> keys;
+    for (int i = 0; i < count; ++i)
+    {
+        keys.push_back(map.insert(i));
+    }
+
+    EXPECT_EQ(map.size(), static_cast<uint32_t>(count));
+
+    // 每个 key 都必须落在互不相同的槽位上，且能读回自己的值
+    for (int i = 0; i < count; ++i)
+    {
+        ASSERT_NE(map.find(keys[i]), nullptr);
+        EXPECT_EQ(*map.find(keys[i]), i);
+    }
+
+    std::set<uint32_t> slots;
+    for (uint64_t k : keys)
+    {
+        slots.insert(static_cast<uint32_t>(k & 0xFFFFFFFFu));
+    }
+    EXPECT_EQ(slots.size(), static_cast<size_t>(count));
+}
+
 // 测试 reserve 操作
+
 TEST(SlotMapTest, Reserve_IncreasesCapacity)
 {
     SlotMap<uint64_t, int> map;
