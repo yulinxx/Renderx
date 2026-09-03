@@ -638,8 +638,6 @@ namespace Render::RHI::gl
         }
 
         const PipelineHandle handle = m_pipelines.add(std::move(record));
-        m_log.debug("[gl] Graphics pipeline ready: %s (program=%u attrs=%u bindings=%u)",  // 图形管线就绪
-                    desc.debugName ? desc.debugName : "?", program, desc.attributeCount, desc.bindingCount);
         return handle;
     }
 
