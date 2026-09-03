@@ -133,7 +133,7 @@ namespace Render::RT::detail
 
         surface->boundSession = this;
         runtime->sessions.push_back(this);
-        runtime->log.info("[rt] Session 就绪：surface=%ux%u depth=%s", surface->width, surface->height,
+        runtime->log.debug("[rt] Session ready: surface=%ux%u depth=%s", surface->width, surface->height,  // Session 就绪
                           surface->hasDepth ? "on" : "off");
         return true;
     }

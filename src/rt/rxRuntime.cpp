@@ -531,7 +531,7 @@ namespace Render::RT::detail
             log.warn("[rt] 部分内建管线创建失败，相关绘制会被跳过");
         }
 
-        log.info("[rt] Runtime 就绪：backend=%s device=%s 瞬态容量=%llu 字节",
+        log.debug("[rt] Runtime ready: backend=%s device=%s transient=%llu bytes",  // Runtime 就绪
                  rxBackendName(caps.backend), caps.deviceName,
                  static_cast<unsigned long long>(transientBytes));
         return true;
@@ -1359,7 +1359,7 @@ namespace Render::RT::detail
             }
         }
 
-        log.info("[rt] 内建管线就绪 %u/%u（内嵌 shader %u 个）", ready,
+        log.debug("[rt] Built-in pipelines ready %u/%u (embedded shaders: %u)", ready,  // 内建管线就绪
                  static_cast<uint32_t>(DP::Count), shader::count());
         return ready == static_cast<uint32_t>(DP::Count);
     }

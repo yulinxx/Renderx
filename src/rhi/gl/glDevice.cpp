@@ -198,7 +198,7 @@ namespace Render::RHI::gl
             m_gl.Enable(GL_PROGRAM_POINT_SIZE);
         }
 
-        m_log.info("[gl] 设备已创建：%s | %s", m_caps.deviceName, m_caps.driverInfo);
+        m_log.info("[gl] Device created: %s | %s", m_caps.deviceName, m_caps.driverInfo);  // 设备已创建
         // 尽早接上驱动的诊断通道：同步模式下驱动会在出错的那一句调用里回调，
         // 是定位「GL 用法非法」最直接的手段。取不到入口就静默跳过（老驱动/ES）。
         if (m_gl.DebugMessageCallback && m_gl.Enable)
@@ -211,10 +211,10 @@ namespace Render::RHI::gl
                 m_gl.DebugMessageControl(GL_DONT_CARE, GL_DONT_CARE, GL_DONT_CARE, 0, nullptr,
                     GL_TRUE);
             }
-            m_log.info("[gl] debug output enabled (synchronous)");
+            m_log.debug("[gl] debug output enabled (synchronous)");
         }
-        m_log.debug("[gl] 能力：compute=%u indirect=%u multiIndirect=%u storage=%u persistentMap=%u "
-                    "maxTexture=%u maxUboBindings(已用 1 个给 pushConstant)",
+        m_log.debug("[gl] Capabilities: compute=%u indirect=%u multiIndirect=%u storage=%u persistentMap=%u "  // 能力
+                    "maxTexture=%u maxUboBindings(1 used for pushConstant)",
                     m_caps.computeShaders, m_caps.indirectDraw, m_caps.multiDrawIndirect,
                     m_caps.storageBuffers, m_caps.persistentMapping, m_caps.maxTextureSize);
     }
@@ -252,7 +252,7 @@ namespace Render::RHI::gl
         }
         m_framebufferCache.clear();
 
-        m_log.info("[gl] 设备已销毁");
+        m_log.debug("[gl] Device destroyed");  // 设备已销毁
     }
 
     void GlDevice::queryCapabilities()
@@ -355,7 +355,7 @@ namespace Render::RHI::gl
 
         auto* surface = new GlSurface(this, desc, m_log);
         m_surfaces.push_back(surface);
-        m_log.debug("[gl] createSurface: %ux%u（当前表面数 %zu）", desc.initialExtent.width,
+        m_log.debug("[gl] createSurface: %ux%u (surface count: %zu)", desc.initialExtent.width,  // 创建表面
                     desc.initialExtent.height, m_surfaces.size());
         return surface;
     }
@@ -638,7 +638,7 @@ namespace Render::RHI::gl
         }
 
         const PipelineHandle handle = m_pipelines.add(std::move(record));
-        m_log.debug("[gl] 图形管线就绪：%s（program=%u attrs=%u bindings=%u）",
+        m_log.debug("[gl] Graphics pipeline ready: %s (program=%u attrs=%u bindings=%u)",  // 图形管线就绪
                     desc.debugName ? desc.debugName : "?", program, desc.attributeCount, desc.bindingCount);
         return handle;
     }

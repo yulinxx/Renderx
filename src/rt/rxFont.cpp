@@ -113,9 +113,9 @@ namespace Render::RT::detail
         device->writeTexture(rhiTexture, 0, full, font->pixels.data(), font->pixels.size());
 
         *outFont = static_cast<FontHandle>(fonts.insert(font));
-        log.info("[rt] 字体就绪：pixelHeight=%.1f 图集 %ux%u（R8 %s，%.2f MB）",
+        log.debug("[rt] Font ready: pixelHeight=%.1f atlas %ux%u (R8 %s, %.2f MB)",  // 字体就绪
                  static_cast<double>(desc.pixelHeight), width, height,
-                 desc.sdfPadding != 0 ? "距离场" : "覆盖率",
+                 desc.sdfPadding != 0 ? "SDF" : "coverage",
                  static_cast<double>(font->pixels.size()) / (1024.0 * 1024.0));
         return RxResult::Ok;
     }

@@ -67,9 +67,9 @@ namespace Render::RT::detail
         m_free.clear();
         m_free.push_back(Range{ 0, static_cast<uint32_t>(initial) });
 
-        m_owner->log.info("[rt] 几何仓就绪：容量 %llu 字节，粒度 %u，%s",
+        m_owner->log.debug("[rt] Geometry store ready: capacity %llu bytes, granularity %u, %s",  // 几何仓就绪
                           static_cast<unsigned long long>(initial), m_granularity,
-                          m_forIndices ? "索引" : "顶点");
+                          m_forIndices ? "indices" : "vertices");
         return true;
     }
 
@@ -186,7 +186,7 @@ namespace Render::RT::detail
         m_dirty.clear();
         markDirty(0, static_cast<uint32_t>(next));
 
-        m_owner->log.info("[rt] 几何仓扩容：%llu → %llu 字节（第 %u 次）",
+        m_owner->log.debug("[rt] Geometry store expanded: %llu -> %llu bytes (attempt %u)",  // 几何仓扩容
                           static_cast<unsigned long long>(oldCapacity),
                           static_cast<unsigned long long>(next), m_growCount);
         return true;
