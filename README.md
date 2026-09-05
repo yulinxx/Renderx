@@ -999,7 +999,7 @@ pushConstant 块（`uView` / `uViewport` / `uPointSize` / `uSdfScale`）。
 
 | Shader | 文件 | 状态 |
 |--------|------|------|
-| Culling | `culling.comp` | GPU 视锥剔除，RT 当前走 CPU 的 `rxSessionQueryVisibility` |
+| Culling | `culling.comp` | GPU 视锥剔除，RT 当前走 CPU 的 `rxSessionQueryVisibility`；shader 为 GLSL **430**（compute 的最低版本，兼容 Windows/Linux 的 GL 4.6）。macOS 最高 GL 4.1，**无计算着色器**，接入时必须先判 `Capabilities::computeShaders`，为 0 则降级 CPU 剔除 |
 
 > 已删除：`mesh_3d_instanced.vert` —— 它把 `aModelMatrix` 声明为逐实例顶点属性，
 > 而 RHI 没有 divisor API，实例全部塌缩到原点；且 `DefaultPipeline` 里从来没有

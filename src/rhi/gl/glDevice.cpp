@@ -645,7 +645,12 @@ namespace Render::RHI::gl
     {
         if (!m_caps.computeShaders)
         {
-            m_log.error("[gl] createComputePipeline: 当前上下文不支持计算着色器");
+            // 计算着色器需要 GL 4.3+。macOS 最高 GL 4.1，永远不会走到这里；
+            // Windows/Linux 的 GL 4.6 上下文里函数指针必然已解析。
+            // 调用方必须以本身的 Capabilities::computeShaders 先判定，
+            // 不支持时降级到 CPU 路径（rxSessionQueryVisibility 等）。
+            m_log.error("[gl] createComputePipeline: 当前上下文不支持计算着色器"
+                        "（需要 GL 4.3+ / 计算着色器，macOS 请走 CPU 剔除路径）");
             return PipelineHandle{};
         }
         const GlShaderRecord* cs = m_shaders.get(desc.computeShader);

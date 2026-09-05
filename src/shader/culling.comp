@@ -13,8 +13,20 @@
  *   binding = 1: uint[]         可见性结果数组（输出）
  *   binding = 2: DrawCommand[]  indirect draw 命令数组（输出）
  *   binding = 3: uint           原子计数器（输出命令数量）
+ *
+ * 跨平台兼容性：
+ *   Compute Shader 需要 GL 4.3+（GLSL 430），macOS 最高仅支持 GL 4.1，
+ *   因此 macOS 上不存在任何计算着色器路径 —— 调用方必须降级到 CPU 剔除
+ *   （rxSessionQueryVisibility / DrawList::resolve），并以
+ *   Capabilities::computeShaders == 0 /  作为判定条件。
+ *
+ *   版本号用 430 而非 460：430 是 compute 的最低可用版本，兼容所有
+ *   GL 4.3+ 上下文（包含 Windows/Linux 的 4.6）；本 shader 未使用任何
+ *   460 专属特性（subgroup/bitfield/arbitrary write 等），430 足够。
+ *   若未来需要 460 专属特性，应提供 430 / 460 两个变体并按其能力选择，
+ *   而不是把基础版本直接抬到 460。
  */
-#version 460 core
+#version 430 core
 
 layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
 
