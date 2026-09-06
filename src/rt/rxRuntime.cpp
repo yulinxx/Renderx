@@ -792,6 +792,53 @@ namespace Render::RT::detail
         return result == RHI::RhiResult::Ok ? RxResult::Ok : RxResult::ErrorInvalidArgument;
     }
 
+    TextureHandle Runtime::createRenderTargetTexture(const RenderTargetDesc& desc)
+    {
+        if (!device || desc.width == 0 || desc.height == 0)
+        {
+            log.error("[rt] rxTextureCreateRenderTarget: 尺寸为 0");
+            return TextureHandle::Invalid;
+        }
+        // 必须包含 ColorAttachment 或 DepthStencilAttachment
+        const bool hasColor = (static_cast<uint32_t>(desc.usage) & static_cast<uint32_t>(TextureUsageFlag::ColorAttachment)) != 0;
+        const bool hasDepth = (static_cast<uint32_t>(desc.usage) & static_cast<uint32_t>(TextureUsageFlag::DepthStencilAttachment)) != 0;
+        if (!hasColor && !hasDepth)
+        {
+            log.error("[rt] rxTextureCreateRenderTarget: 必须包含 ColorAttachment 或 DepthStencilAttachment 用途");
+            return TextureHandle::Invalid;
+        }
+
+        RHI::TextureDesc rhiDesc{};
+        rhiDesc.width = desc.width;
+        rhiDesc.height = desc.height;
+        rhiDesc.format = hasColor ? RHI::Format::RGBA8Unorm : RHI::Format::D32Float;
+        rhiDesc.usage = RHI::TextureUsage::Sampled;
+
+        if (hasColor)
+        {
+            rhiDesc.usage = rhiDesc.usage | RHI::TextureUsage::ColorAttachment;
+        }
+        if (static_cast<uint32_t>(desc.usage) & static_cast<uint32_t>(TextureUsageFlag::TransferSrc))
+        {
+            rhiDesc.usage = rhiDesc.usage | RHI::TextureUsage::TransferSrc;
+        }
+        if (hasDepth)
+        {
+            rhiDesc.usage = rhiDesc.usage | RHI::TextureUsage::DepthStencilAttachment;
+            // 深度纹理不需要 Sampled 用途
+            rhiDesc.usage = RHI::TextureUsage::DepthStencilAttachment;
+        }
+
+        rhiDesc.debugName = "RxRenderTarget";
+
+        const RHI::TextureHandle rhi = device->createTexture(rhiDesc);
+        if (!rhi.valid())
+        {
+            return TextureHandle::Invalid;
+        }
+        return static_cast<TextureHandle>(textures.insert(rhi));
+    }
+
     RHI::BindGroupHandle Runtime::bindGroupForTexture(TextureHandle handle)
     {
         const auto key = static_cast<uint64_t>(handle);

@@ -25,10 +25,11 @@
 >
 > **已知缺口**
 >
-> - 离屏渲染 / 截图：尚无 render-to-texture 目标 API，`captureOffscreen`
->   仍留在宿主侧的裸 GL 路径。
+> - ~~离屏渲染 / 截图：尚无 render-to-texture 目标 API~~ ✅ **已实现（v5.1）**：
+>   `rxTextureCreateRenderTarget` / `rxSessionSetRenderTarget` /
+>   `rxSessionReadPixelsFromTexture` 支持任意分辨率离屏渲染与读回。
 >
-> 完整目标设计与决策依据见 `Docs/03-渲染主链/新渲染架构.md`。
+> 完整目标设计与决策依据见 `Docs/03-渲染主链/新渲染架构.md`.
 
 ## 功能描述
 
@@ -918,14 +919,10 @@ if (rxSessionBeginFrame(session) == RxResult::Ok)
 乘 `clip.w` 抵消透视除法，因此偏移恒等于 N 个像素）。
 **拾取判定必须用同一公式**，否则视觉与命中区会随缩放错位。详见
 `Docs/03-渲染主链/新渲染架构.md` §15。
-
 ### 当前缺口
 
-- **3D 离屏渲染**：尚无 render-to-texture 目标 API，因此 `captureOffscreen`
-  这类需求仍留在宿主侧。3D 的**上屏**路径已完整（Mesh3D / Mesh3DWire /
-  Highlight3D / Gizmo3D 四条内建管线 + `rxSessionSetLighting3D`）。
-- **Metal / Vulkan**：`RHI::createDevice` 对这两个后端返回 `nullptr` 并报错，
-  不静默回退到 Null（回退的表现是画面全黑而调用方拿不到任何错误）。
+- **3D 离屏渲染**：✅ **已实现（v5.1）**。`rxTextureCreateRenderTarget` / `rxSessionSetRenderTarget` / `rxSessionReadPixelsFromTexture` 支持任意分辨率离屏渲染与读回。支持带深度附件的离屏渲染，可用于 3D 网格导出等高分辨率输出场景。
+- **Metal / Vulkan**：`RHI::createDevice` 对这两个后端返回 `nullptr` 并报错，不静默回退到 Null（回退的表现是画面全黑而调用方拿不到任何错误）。
 - **纹理配置**：`TextureDesc` 只有宽/高/像素三项，格式恒为 RGBA8Unorm、
   采样器恒为 `defaultSampler`（GL_LINEAR / CLAMP）。sRGB、mipmap、
   各向异性、最近邻采样都还没有表达位；需要时再扩字段，不预留空洞。

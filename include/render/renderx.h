@@ -95,11 +95,15 @@
 //      且顶点只需上传一次——若在宿主烘焙进顶点色，相机每动一次就要重传全部顶点，
 //      并且视点相关的镜面高光根本无法正确表达。
 //
+// 5.1：离屏渲染支持。新增 rxSessionSetRenderTarget 与
+//      rxSessionReadPixelsFromTexture。Session 支持绑定自定义颜色/深度纹理
+//      作为渲染目标，实现真正的任意分辨率离屏渲染。
+//
 // 4.0：字体接口从「递字符串、DLL 内部排版」改为「DLL 只出字形度量与图集，
 //      宿主自己拼四边形」。rxFontLoad 被 rxFontCreate 系列取代，签名不兼容，
 //      故抬 major。旧接口恒返回 ErrorUnsupportedBackend，无可用调用方。
 #define RENDERX_ABI_VERSION_MAJOR 5
-#define RENDERX_ABI_VERSION_MINOR 0
+#define RENDERX_ABI_VERSION_MINOR 1
 #define RENDERX_ABI_VERSION \
     ((RENDERX_ABI_VERSION_MAJOR << 16) | RENDERX_ABI_VERSION_MINOR)
 
@@ -542,6 +546,34 @@ namespace Render
             uint64_t rgbaBytes;
         };
         static_assert(sizeof(TextureDesc) == 24, "TextureDesc ABI size changed");
+
+        /// 纹理用途标志（用于创建渲染目标等特殊用途纹理）
+        enum class TextureUsageFlag : uint32_t
+        {
+            None = 0,
+            /// 可作为着色器采样源
+            Sampled = 1u << 0,
+            /// 可作为渲染通道颜色附件（离屏渲染目标）
+            ColorAttachment = 1u << 1,
+            /// 可作为渲染通道深度/模板附件
+            DepthStencilAttachment = 1u << 2,
+            /// 可作为 GPU 读回源（readPixels 支持）
+            TransferSrc = 1u << 3,
+        };
+        inline TextureUsageFlag operator|(TextureUsageFlag a, TextureUsageFlag b)
+        {
+            return static_cast<TextureUsageFlag>(static_cast<uint32_t>(a) | static_cast<uint32_t>(b));
+        }
+
+        /// 创建渲染目标纹理的描述（离屏渲染用）
+        struct RenderTargetDesc
+        {
+            uint32_t width;
+            uint32_t height;
+            TextureUsageFlag usage;  /// 必须包含 ColorAttachment | TransferSrc
+            uint32_t _pad0;
+        };
+        static_assert(sizeof(RenderTargetDesc) == 16, "RenderTargetDesc ABI size changed");
 
         // ---------- 字体 ----------
         //
@@ -997,6 +1029,18 @@ namespace Render
         RENDER_API RxResult rxTextureUpdate(RuntimeHandle runtime, TextureHandle texture,
                                             const TextureDesc* desc);
 
+        /**
+         * @brief 创建渲染目标纹理（离屏渲染用）
+         *
+         * 创建可作为 Framebuffer 颜色附件的纹理。必须包含 ColorAttachment 用途，
+         * 建议同时包含 TransferSrc 以支持 rxSessionReadPixelsFromTexture 读回。
+         *
+         * @param usage 必须包含 TextureUsageFlag::ColorAttachment
+         * @return 无效句柄表示创建失败
+         */
+        RENDER_API TextureHandle rxTextureCreateRenderTarget(RuntimeHandle runtime,
+                                                             const RenderTargetDesc* desc);
+
         RENDER_API uint16_t rxMaterialAdd(RuntimeHandle runtime, const MaterialDesc* desc);
         RENDER_API RxResult rxMaterialUpdate(RuntimeHandle runtime, uint16_t index,
                                              const MaterialDesc* desc);
@@ -1220,6 +1264,42 @@ namespace Render
         RENDER_API RxResult rxSessionReadPixels(SessionHandle session, uint32_t x, uint32_t y,
                                                 uint32_t width, uint32_t height, void* outBytes,
                                                 uint64_t outByteCapacity);
+
+        /**
+         * @brief 设置 Session 的渲染目标为离屏纹理
+         *
+         * 调用后，后续的 rxSessionBeginFrame 将绑定指定的颜色/深度纹理，
+         * 而非交换链后备缓冲。纹理需由 rxTextureCreate 创建，
+         * usage 必须包含 ColorAttachment | TransferSrc。
+         *
+         * @param colorTexture 颜色附件纹理（无效句柄表示恢复到交换链）
+         * @param depthTexture 可选深度附件纹理（无效句柄表示不使用深度）
+         * @param extent       渲染目标尺寸。传 0 时使用 colorTexture 的尺寸
+         * @return ErrorInvalidArgument 表示纹理格式/用途不支持
+         */
+        RENDER_API RxResult rxSessionSetRenderTarget(SessionHandle session,
+                                                     TextureHandle colorTexture,
+                                                     TextureHandle depthTexture,
+                                                     uint32_t width, uint32_t height);
+
+        /**
+         * @brief 从指定纹理读回像素（离屏渲染导出）
+         *
+         * 与 rxSessionReadPixels 的区别：
+         * - 不要求在 BeginFrame/EndFrame 之间调用
+         * - 直接读取指定纹理，而非当前后备缓冲
+         * - 适用于离屏渲染后的结果导出
+         *
+         * @param texture    要读取的纹理（必须包含 TransferSrc 用途）
+         * @param x,y        读取区域左上角（像素，左上原点）
+         * @param outBytes   至少 width * height * 4 字节
+         */
+        RENDER_API RxResult rxSessionReadPixelsFromTexture(SessionHandle session,
+                                                           TextureHandle texture,
+                                                           uint32_t x, uint32_t y,
+                                                           uint32_t width, uint32_t height,
+                                                           void* outBytes,
+                                                           uint64_t outByteCapacity);
 
         // ---------- 工具 ----------
 

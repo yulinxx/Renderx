@@ -317,6 +317,16 @@ namespace Render
             return runtime->updateTexture(texture, *desc);
         }
 
+        TextureHandle rxTextureCreateRenderTarget(RuntimeHandle handle, const RenderTargetDesc* desc)
+        {
+            Runtime* runtime = checkedRuntime(handle);
+            if (!runtime || !desc)
+            {
+                return TextureHandle::Invalid;
+            }
+            return runtime->createRenderTargetTexture(*desc);
+        }
+
         uint16_t rxMaterialAdd(RuntimeHandle handle, const MaterialDesc* desc)
         {
             Runtime* runtime = checkedRuntime(handle);
@@ -784,8 +794,8 @@ namespace Render
             return session->endFrame();
         }
 
-        RxResult rxSessionReadPixels(SessionHandle handle, uint32_t x, uint32_t y, uint32_t width,
-                                     uint32_t height, void* outBytes, uint64_t outByteCapacity)
+RxResult rxSessionReadPixels(SessionHandle handle, uint32_t x, uint32_t y, uint32_t width,
+                                      uint32_t height, void* outBytes, uint64_t outByteCapacity)
         {
             Session* session = checkedSession(handle);
             if (!session)
@@ -794,6 +804,65 @@ namespace Render
             }
             return session->readPixels(static_cast<int32_t>(x), static_cast<int32_t>(y), width, height,
                                        outBytes, outByteCapacity);
+        }
+
+        RxResult rxSessionSetRenderTarget(SessionHandle handle,
+                                          TextureHandle colorTexture,
+                                          TextureHandle depthTexture,
+                                          uint32_t width, uint32_t height)
+        {
+            Session* session = checkedSession(handle);
+            if (!session)
+            {
+                return RxResult::ErrorInvalidHandle;
+            }
+            Runtime* runtime = session->runtime;
+            if (!runtime)
+            {
+                return RxResult::ErrorInvalidHandle;
+            }
+            const RHI::TextureHandle* colorRhi = rxValid(colorTexture) ? runtime->textures.find(static_cast<uint64_t>(colorTexture)) : nullptr;
+            const RHI::TextureHandle* depthRhi = rxValid(depthTexture) ? runtime->textures.find(static_cast<uint64_t>(depthTexture)) : nullptr;
+            if (rxValid(colorTexture) && !colorRhi)
+            {
+                return RxResult::ErrorInvalidHandle;
+            }
+            if (rxValid(depthTexture) && !depthRhi)
+            {
+                return RxResult::ErrorInvalidHandle;
+            }
+            return session->setRenderTarget(colorRhi ? *colorRhi : RHI::TextureHandle{},
+                                            depthRhi ? *depthRhi : RHI::TextureHandle{},
+                                            width, height);
+        }
+
+        RxResult rxSessionReadPixelsFromTexture(SessionHandle handle,
+                                                TextureHandle texture,
+                                                uint32_t x, uint32_t y,
+                                                uint32_t width, uint32_t height,
+                                                void* outBytes, uint64_t outByteCapacity)
+        {
+            Session* session = checkedSession(handle);
+            if (!session)
+            {
+                return RxResult::ErrorInvalidHandle;
+            }
+            if (!rxValid(texture))
+            {
+                return RxResult::ErrorInvalidHandle;
+            }
+            Runtime* runtime = session->runtime;
+            if (!runtime)
+            {
+                return RxResult::ErrorInvalidHandle;
+            }
+            const RHI::TextureHandle* rhiTexture = runtime->textures.find(static_cast<uint64_t>(texture));
+            if (!rhiTexture)
+            {
+                return RxResult::ErrorInvalidHandle;
+            }
+            return session->readPixelsFromTexture(*rhiTexture, static_cast<int32_t>(x), static_cast<int32_t>(y),
+                                                  width, height, outBytes, outByteCapacity);
         }
 
         RxResult rxSessionQueryVisibility(SessionHandle handle, const float* aabbs, uint32_t aabbCount,

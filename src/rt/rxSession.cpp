@@ -194,8 +194,7 @@ namespace Render::RT::detail
     }
 
     // ==================== 帧 ====================
-
-    RxResult Session::beginFrame()
+RxResult Session::beginFrame()
     {
         if (!runtime || !runtime->device || !surface || !surface->rhi)
         {
@@ -207,17 +206,22 @@ namespace Render::RT::detail
             return RxResult::ErrorUnknown;
         }
 
-        // GL 后端在 acquireNextImage 内部完成 makeCurrent，宿主不需要也不应该自己做。
-        const RHI::RhiResult acquired = surface->rhi->acquireNextImage();
-        if (acquired != RHI::RhiResult::Ok)
+        // 离屏渲染不需要 acquireNextImage（无交换链）
+        const bool isOffscreen = offscreenColorTexture.valid();
+        if (!isOffscreen)
         {
-            // OutOfDate 是正常的窗口尺寸变化，调用方 resize 后重试本帧，不记为错误。
-            if (acquired != RHI::RhiResult::ErrorSwapchainOutOfDate)
+            // GL 后端在 acquireNextImage 内部完成 makeCurrent，宿主不需要也不应该自己做。
+            const RHI::RhiResult acquired = surface->rhi->acquireNextImage();
+            if (acquired != RHI::RhiResult::Ok)
             {
-                runtime->log.error("[rt] rxSessionBeginFrame: acquireNextImage 失败（%s）",
-                                   RHI::resultName(acquired));
+                // OutOfDate 是正常的窗口尺寸变化，调用方 resize 后重试本帧，不记为错误。
+                if (acquired != RHI::RhiResult::ErrorSwapchainOutOfDate)
+                {
+                    runtime->log.error("[rt] rxSessionBeginFrame: acquireNextImage 失败（%s）",
+                                       RHI::resultName(acquired));
+                }
+                return toRxResult(acquired);
             }
-            return toRxResult(acquired);
         }
 
         cmd = runtime->device->beginFrame(surface->rhi);
@@ -237,9 +241,15 @@ namespace Render::RT::detail
         runtime->sessionsInFrame += 1;
 
         // 窗口尺寸以 Surface 的实际交换链尺寸为准：宿主可能漏调 rxSurfaceResize。
-        const RHI::Extent2D extent = surface->rhi->extent();
-        surface->width = extent.width;
-        surface->height = extent.height;
+        // 离屏渲染时用 offscreenWidth/Height。
+        const RHI::Extent2D extent = isOffscreen
+            ? RHI::Extent2D{ offscreenWidth, offscreenHeight }
+            : surface->rhi->extent();
+        if (!isOffscreen)
+        {
+            surface->width = extent.width;
+            surface->height = extent.height;
+        }
 
         // 3D 光照参数上传。必须在 beginRenderPass 之前：Vulkan 不允许在
         // RenderPass 内做缓冲拷贝。每帧无条件重传而不是「脏了才传」——
@@ -256,22 +266,46 @@ namespace Render::RT::detail
 
         RHI::RenderPassBeginDesc pass{};
         pass.colorAttachmentCount = 1;
-        // 无效纹理句柄 = 使用交换链当前后备缓冲
-        pass.colorAttachments[0].texture = {};
-        pass.colorAttachments[0].loadOp = RHI::LoadOp::Clear;
-        pass.colorAttachments[0].storeOp = RHI::StoreOp::Store;
-        pass.colorAttachments[0].clearValue = { clearColor[0], clearColor[1], clearColor[2],
-                                                clearColor[3] };
-        pass.hasDepthAttachment = surface->hasDepth;
-        if (surface->hasDepth)
+        if (isOffscreen)
         {
-            pass.depthAttachment.texture = surface->rhi->depthTexture();
-            pass.depthAttachment.loadOp = RHI::LoadOp::Clear;
-            pass.depthAttachment.storeOp = RHI::StoreOp::DontCare;
-            pass.depthAttachment.clearDepth = 1.0f;
+            // 离屏渲染：使用自定义颜色/深度纹理
+            pass.colorAttachments[0].texture = offscreenColorTexture;
+            pass.colorAttachments[0].loadOp = RHI::LoadOp::Clear;
+            pass.colorAttachments[0].storeOp = RHI::StoreOp::Store;
+            pass.colorAttachments[0].clearValue = { clearColor[0], clearColor[1], clearColor[2],
+                                                    clearColor[3] };
+            if (offscreenDepthTexture.valid())
+            {
+                pass.hasDepthAttachment = true;
+                pass.depthAttachment.texture = offscreenDepthTexture;
+                pass.depthAttachment.loadOp = RHI::LoadOp::Clear;
+                pass.depthAttachment.storeOp = RHI::StoreOp::DontCare;
+                pass.depthAttachment.clearDepth = 1.0f;
+            }
+            else
+            {
+                pass.hasDepthAttachment = false;
+            }
+        }
+        else
+        {
+            // 交换链渲染：使用当前后备缓冲
+            pass.colorAttachments[0].texture = {};
+            pass.colorAttachments[0].loadOp = RHI::LoadOp::Clear;
+            pass.colorAttachments[0].storeOp = RHI::StoreOp::Store;
+            pass.colorAttachments[0].clearValue = { clearColor[0], clearColor[1], clearColor[2],
+                                                    clearColor[3] };
+            pass.hasDepthAttachment = surface->hasDepth;
+            if (surface->hasDepth)
+            {
+                pass.depthAttachment.texture = surface->rhi->depthTexture();
+                pass.depthAttachment.loadOp = RHI::LoadOp::Clear;
+                pass.depthAttachment.storeOp = RHI::StoreOp::DontCare;
+                pass.depthAttachment.clearDepth = 1.0f;
+            }
         }
         pass.extent = extent;
-        pass.debugName = "RxSessionPass";
+        pass.debugName = isOffscreen ? "RxSessionPassOffscreen" : "RxSessionPass";
 
         const RHI::RhiResult began = cmd->beginRenderPass(pass);
         if (began != RHI::RhiResult::Ok)
@@ -292,6 +326,7 @@ namespace Render::RT::detail
 
         stats = FrameStats{};
         drawSequence = 0;
+
         inFrame = true;
         return RxResult::Ok;
     }
@@ -644,8 +679,10 @@ namespace Render::RT::detail
         stats.gpuMemoryBytes = runtime->device->gpuMemoryUsageBytes();
 
         // 呈现与提交分离：多窗口时可以先各自 submitFrame，再统一 present。
+        // 离屏渲染模式不需要 present（无交换链）。
         RHI::RhiResult presented = RHI::RhiResult::Ok;
-        if (surface && surface->rhi)
+        const bool isOffscreen = offscreenColorTexture.valid();
+        if (!isOffscreen && surface && surface->rhi)
         {
             presented = surface->rhi->present();
         }
@@ -679,7 +716,41 @@ namespace Render::RT::detail
     RxResult Session::readPixels(int32_t x, int32_t y, uint32_t width, uint32_t height,
                                  void* outBytes, uint64_t outByteCapacity)
     {
-        if (!runtime || !runtime->device || !surface || !surface->rhi)
+        // 交换链渲染必须在帧内读取；离屏渲染由 readPixelsFromTexture 处理
+        return readPixelsImpl(offscreenColorTexture.valid() ? offscreenColorTexture
+                                                             : surface->rhi->currentColorTexture(),
+                              x, y, width, height, outBytes, outByteCapacity,
+                              surface->rhi->colorFormat(), true);
+    }
+
+    RxResult Session::readPixelsFromTexture(RHI::TextureHandle texture, int32_t x, int32_t y,
+                                            uint32_t width, uint32_t height,
+                                            void* outBytes, uint64_t outByteCapacity)
+    {
+        if (!runtime || !runtime->device)
+        {
+            return RxResult::ErrorInvalidHandle;
+        }
+        if (!texture.valid())
+        {
+            return RxResult::ErrorInvalidArgument;
+        }
+        if (!outBytes || width == 0 || height == 0)
+        {
+            return RxResult::ErrorInvalidArgument;
+        }
+
+        // 离屏纹理读取不要求在帧内，但需要同步等待
+        return readPixelsImpl(texture, x, y, width, height, outBytes, outByteCapacity,
+                              RHI::Format::RGBA8Unorm, false);
+    }
+
+    RxResult Session::readPixelsImpl(RHI::TextureHandle texture, int32_t x, int32_t y,
+                                     uint32_t width, uint32_t height,
+                                     void* outBytes, uint64_t outByteCapacity,
+                                     RHI::Format format, bool requireInFrame)
+    {
+        if (!runtime || !runtime->device)
         {
             return RxResult::ErrorInvalidHandle;
         }
@@ -687,7 +758,7 @@ namespace Render::RT::detail
         {
             return RxResult::ErrorInvalidArgument;
         }
-        if (!inFrame)
+        if (requireInFrame && !inFrame)
         {
             // EndFrame 之后后备缓冲已交给呈现，内容不再保证有效。
             // 这里报错而不是「尽力读一次」：读到上一帧或空白画面
@@ -706,11 +777,10 @@ namespace Render::RT::detail
             return RxResult::ErrorInvalidArgument;
         }
 
-        const RHI::TextureHandle color = surface->rhi->currentColorTexture();
-        if (!color.valid())
+        if (!texture.valid())
         {
-            runtime->log.error("[rt] rxSessionReadPixels: 表面未提供颜色附件句柄");
-            return RxResult::ErrorUnsupportedBackend;
+            runtime->log.error("[rt] rxSessionReadPixels: 无效的纹理句柄");
+            return RxResult::ErrorInvalidArgument;
         }
 
         // 已录制的绘制必须先落到附件上才能读到。GL 下 readTexture 内部
@@ -729,28 +799,37 @@ namespace Render::RT::detail
 
         uint32_t rowPitch = 0;
         const RHI::RhiResult read =
-            runtime->device->readTexture(color, region, outBytes, outByteCapacity, &rowPitch);
+            runtime->device->readTexture(texture, region, outBytes, outByteCapacity, &rowPitch);
 
         // 读回后必须重开 RenderPass：EndFrame 会无条件 endRenderPass，
         // 不重开就变成未配对的 end，后端会报错并把整帧判废。
-        if (cmd)
+        if (cmd && requireInFrame)
         {
             // 光照 UBO 不用在这里重传：本帧的内容在 BeginFrame 里已经写好，
             // 帧内没有任何接口能改它（setLighting3D 只写 CPU 侧的 frameUniforms）。
             RHI::RenderPassBeginDesc pass{};
             pass.colorAttachmentCount = 1;
-            pass.colorAttachments[0].texture = {};
+            pass.colorAttachments[0].texture = offscreenColorTexture.valid()
+                ? offscreenColorTexture : RHI::TextureHandle{};
             // Load 而不是 Clear：本帧已画好的内容不能被清掉
             pass.colorAttachments[0].loadOp = RHI::LoadOp::Load;
             pass.colorAttachments[0].storeOp = RHI::StoreOp::Store;
-            pass.hasDepthAttachment = surface->hasDepth;
-            if (surface->hasDepth)
+            pass.hasDepthAttachment = offscreenDepthTexture.valid() || surface->hasDepth;
+            if (offscreenDepthTexture.valid())
+            {
+                pass.depthAttachment.texture = offscreenDepthTexture;
+                pass.depthAttachment.loadOp = RHI::LoadOp::Load;
+                pass.depthAttachment.storeOp = RHI::StoreOp::DontCare;
+            }
+            else if (surface->hasDepth)
             {
                 pass.depthAttachment.texture = surface->rhi->depthTexture();
                 pass.depthAttachment.loadOp = RHI::LoadOp::Load;
                 pass.depthAttachment.storeOp = RHI::StoreOp::DontCare;
             }
-            pass.extent = surface->rhi->extent();
+            pass.extent = offscreenColorTexture.valid()
+                ? RHI::Extent2D{ offscreenWidth, offscreenHeight }
+                : surface->rhi->extent();
             pass.debugName = "RxSessionPassAfterReadback";
             cmd->beginRenderPass(pass);
         }
@@ -776,7 +855,6 @@ namespace Render::RT::detail
             }
         }
 
-        const RHI::Format format = surface->rhi->colorFormat();
         if (format == RHI::Format::BGRA8Unorm || format == RHI::Format::BGRA8Srgb)
         {
             for (uint64_t i = 0; i < required; i += kBytesPerPixel)
@@ -784,6 +862,32 @@ namespace Render::RT::detail
                 std::swap(bytes[i], bytes[i + 2]);
             }
         }
+        return RxResult::Ok;
+    }
+
+    RxResult Session::setRenderTarget(RHI::TextureHandle colorTexture,
+                                      RHI::TextureHandle depthTexture,
+                                      uint32_t width, uint32_t height)
+    {
+        if (!runtime || !runtime->device)
+        {
+            return RxResult::ErrorInvalidHandle;
+        }
+        if (inFrame)
+        {
+            runtime->log.error("[rt] rxSessionSetRenderTarget: 必须在 EndFrame 之后调用");
+            return RxResult::ErrorUnknown;
+        }
+
+        offscreenColorTexture = colorTexture;
+        offscreenDepthTexture = depthTexture;
+        offscreenWidth = width;
+        offscreenHeight = height;
+
+        runtime->log.debug("[rt] Session render target set: color=%s depth=%s %ux%u",
+                           colorTexture.valid() ? "valid" : "swapchain",
+                           depthTexture.valid() ? "valid" : "none",
+                           width, height);
         return RxResult::Ok;
     }
 

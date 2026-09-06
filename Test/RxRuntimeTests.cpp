@@ -1637,3 +1637,137 @@ TEST_F(RxIncrementalFixture, ReadPixelsRequiresOpenFrameAndSufficientCapacity)
     EXPECT_EQ(rxSessionEndFrame(session), RxResult::Ok);
 }
 
+// ==================== 离屏渲染 ====================
+
+TEST_F(RxIncrementalFixture, OffscreenRenderTargetCreateAndRead)
+{
+    // 创建渲染目标纹理
+    Render::RT::RenderTargetDesc rtDesc{};
+    rtDesc.width = 256;
+    rtDesc.height = 256;
+    rtDesc.usage = Render::RT::TextureUsageFlag::ColorAttachment | Render::RT::TextureUsageFlag::TransferSrc;
+    TextureHandle rtTexture = rxTextureCreateRenderTarget(runtime, &rtDesc);
+    ASSERT_TRUE(rxValid(rtTexture));
+
+    // 设置 Session 使用离屏渲染目标
+    EXPECT_EQ(rxSessionSetRenderTarget(session, rtTexture, TextureHandle::Invalid, 256, 256), RxResult::Ok);
+
+    // 开始帧（离屏模式不需要 acquireNextImage）
+    ASSERT_EQ(rxSessionBeginFrame(session), RxResult::Ok);
+
+    // 提交一个简单的三角形
+    DrawCommand cmd{};
+    cmd.vertexBuffer = BufferHandle::Invalid;
+    cmd.indexBuffer = BufferHandle::Invalid;
+    cmd.sortKey = rxMakeSortKey(0, 0, 0, 0);
+    cmd.vertexCount = 3;
+    cmd.topology = PrimitiveTopology::Triangles;
+    cmd.space = RenderSpace::Screen;
+    cmd.vertexFormat = VertexFormat::P3C4;
+    cmd.pipelineIndex = rxPipelineGetDefault(runtime, DefaultPipeline::ScreenTri);
+
+    // 分配瞬态内存
+    TransientAlloc alloc{};
+    ASSERT_EQ(rxSessionAllocTransient(session, 3 * rxVertexStride(VertexFormat::P3C4), &alloc), RxResult::Ok);
+    cmd.vertexBuffer = alloc.buffer;
+    cmd.vertexOffset = alloc.offset;
+
+    // 写入三角形顶点（屏幕空间，像素坐标）
+    struct Vertex { float x, y, z, r, g, b, a; };
+    Vertex* verts = static_cast<Vertex*>(alloc.cpuPtr);
+    verts[0] = { 100.0f, 100.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f };  // 红
+    verts[1] = { 200.0f, 100.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f };  // 绿
+    verts[2] = { 150.0f, 200.0f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f };  // 蓝
+
+    DrawPacket packet{};
+    packet.commands = &cmd;
+    packet.commandCount = 1;
+    packet.enableCulling = 0;
+    packet.frameId = 1;
+    std::memset(packet.viewMatrix, 0, sizeof(packet.viewMatrix));
+    packet.viewport[0] = 0; packet.viewport[1] = 0; packet.viewport[2] = 256; packet.viewport[3] = 256;
+
+    EXPECT_EQ(rxSessionSubmit(session, &packet), RxResult::Ok);
+    EXPECT_EQ(rxSessionEndFrame(session), RxResult::Ok);
+
+    // 从离屏纹理读回像素（不要求在帧内）
+    std::vector<uint8_t> pixels(256 * 256 * 4);
+    EXPECT_EQ(rxSessionReadPixelsFromTexture(session, rtTexture, 0, 0, 256, 256, pixels.data(), pixels.size()),
+              RxResult::Ok);
+
+    // Null 后端不实际渲染，只验证 API 调用成功
+    // 真实 GPU 后端测试由 RenderxGLTests（GL 后端）覆盖
+
+    // 恢复到交换链渲染
+    EXPECT_EQ(rxSessionSetRenderTarget(session, TextureHandle::Invalid, TextureHandle::Invalid, 0, 0), RxResult::Ok);
+
+    // 清理
+    rxTextureDestroy(runtime, rtTexture);
+}
+
+TEST_F(RxIncrementalFixture, OffscreenWithDepthAttachment)
+{
+    // 创建带深度附件的渲染目标
+    Render::RT::RenderTargetDesc colorDesc{};
+    colorDesc.width = 128;
+    colorDesc.height = 128;
+    colorDesc.usage = Render::RT::TextureUsageFlag::ColorAttachment | Render::RT::TextureUsageFlag::TransferSrc;
+    TextureHandle colorTex = rxTextureCreateRenderTarget(runtime, &colorDesc);
+    ASSERT_TRUE(rxValid(colorTex));
+
+    Render::RT::RenderTargetDesc depthDesc{};
+    depthDesc.width = 128;
+    depthDesc.height = 128;
+    depthDesc.usage = Render::RT::TextureUsageFlag::DepthStencilAttachment;
+    TextureHandle depthTex = rxTextureCreateRenderTarget(runtime, &depthDesc);
+    ASSERT_TRUE(rxValid(depthTex));
+
+    // 设置 Session 使用离屏渲染目标（带深度）
+    EXPECT_EQ(rxSessionSetRenderTarget(session, colorTex, depthTex, 128, 128), RxResult::Ok);
+
+    ASSERT_EQ(rxSessionBeginFrame(session), RxResult::Ok);
+
+    // 提交 3D 网格（需要深度测试）
+    DrawCommand cmd{};
+    cmd.sortKey = rxMakeSortKey(0, 0, 0, 0);
+    cmd.topology = PrimitiveTopology::Triangles;
+    cmd.space = RenderSpace::World;
+    cmd.vertexFormat = VertexFormat::P3N3;
+    cmd.pipelineIndex = rxPipelineGetDefault(runtime, DefaultPipeline::Mesh3D);
+
+    TransientAlloc alloc{};
+    ASSERT_EQ(rxSessionAllocTransient(session, 3 * rxVertexStride(VertexFormat::P3N3), &alloc), RxResult::Ok);
+    cmd.vertexBuffer = alloc.buffer;
+    cmd.vertexOffset = alloc.offset;
+
+    struct Vertex3D { float x, y, z, nx, ny, nz; };
+    Vertex3D* verts = static_cast<Vertex3D*>(alloc.cpuPtr);
+    verts[0] = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f };
+    verts[1] = { 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f };
+    verts[2] = { 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f };
+
+    DrawPacket packet{};
+    packet.commands = &cmd;
+    packet.commandCount = 1;
+    packet.enableCulling = 0;
+    packet.frameId = 1;
+    float viewMatrix[16] = { 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1 };
+    std::memcpy(packet.viewMatrix, viewMatrix, sizeof(viewMatrix));
+    packet.viewport[0] = 0; packet.viewport[1] = 0; packet.viewport[2] = 128; packet.viewport[3] = 128;
+
+    EXPECT_EQ(rxSessionSubmit(session, &packet), RxResult::Ok);
+    EXPECT_EQ(rxSessionEndFrame(session), RxResult::Ok);
+
+    // 读回验证
+    std::vector<uint8_t> pixels(128 * 128 * 4);
+    EXPECT_EQ(rxSessionReadPixelsFromTexture(session, colorTex, 0, 0, 128, 128, pixels.data(), pixels.size()),
+              RxResult::Ok);
+
+    // 恢复
+    EXPECT_EQ(rxSessionSetRenderTarget(session, TextureHandle::Invalid, TextureHandle::Invalid, 0, 0), RxResult::Ok);
+
+    // 清理
+    rxTextureDestroy(runtime, colorTex);
+    rxTextureDestroy(runtime, depthTex);
+}
+

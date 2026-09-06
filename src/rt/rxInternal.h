@@ -385,6 +385,7 @@ namespace Render::RT::detail
         TextureHandle createTexture(const TextureDesc& desc);
         void destroyTexture(TextureHandle handle);
         RxResult updateTexture(TextureHandle handle, const TextureDesc& desc);
+        TextureHandle createRenderTargetTexture(const RenderTargetDesc& desc);
         RHI::BindGroupHandle bindGroupForTexture(TextureHandle handle);
 
         uint16_t addMaterial(const MaterialDesc& desc);
@@ -500,6 +501,12 @@ namespace Render::RT::detail
         FrameUniforms frameUniforms{};
         bool lighting3DEnabled = false;
 
+        /// 离屏渲染目标。无效句柄表示使用交换链后备缓冲。
+        RHI::TextureHandle offscreenColorTexture{};
+        RHI::TextureHandle offscreenDepthTexture{};
+        uint32_t offscreenWidth = 0;
+        uint32_t offscreenHeight = 0;
+
         bool inFrame = false;
         RHI::ICommandList* cmd = nullptr;
         uint64_t frameId = 0;
@@ -537,8 +544,30 @@ namespace Render::RT::detail
          */
         RxResult readPixels(int32_t x, int32_t y, uint32_t width, uint32_t height, void* outBytes,
                             uint64_t outByteCapacity);
+        /**
+         * @brief 从指定纹理读回像素（离屏渲染导出）
+         *
+         * 不要求在 BeginFrame/EndFrame 之间调用。直接读取指定纹理。
+         */
+        RxResult readPixelsFromTexture(RHI::TextureHandle texture, int32_t x, int32_t y,
+                                       uint32_t width, uint32_t height, void* outBytes,
+                                       uint64_t outByteCapacity);
         RxResult queryVisibility(const float* aabbs, uint32_t aabbCount, const float viewBounds[4],
                                  VisibilityResult* out);
+
+        /**
+         * @brief 内部实现：从指定纹理读回像素
+         */
+        RxResult readPixelsImpl(RHI::TextureHandle texture, int32_t x, int32_t y,
+                                uint32_t width, uint32_t height, void* outBytes,
+                                uint64_t outByteCapacity, RHI::Format format, bool requireInFrame);
+
+        /**
+         * @brief 设置离屏渲染目标
+         */
+        RxResult setRenderTarget(RHI::TextureHandle colorTexture,
+                                 RHI::TextureHandle depthTexture,
+                                 uint32_t width, uint32_t height);
 
     private:
         /**
