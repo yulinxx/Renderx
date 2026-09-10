@@ -14,16 +14,8 @@ namespace Render::shader
 {
     namespace generated
     {
-        /// 与 CMake/EmbedShaders.cmake 生成的结构保持一致。
-        /// 故意用内建类型而非 <cstdint>，使生成文件无需包含任何头文件。
-        struct RawShaderBlob
-        {
-            const char* name;
-            const char* language;
-            const unsigned char* data;
-            unsigned long long sizeBytes;
-        };
-
+        // 使用 CMake 生成的定义，不要重新定义
+        // struct RawShaderBlob 定义在 generated/shaderBlobs.cpp 中
         extern const RawShaderBlob kShaderBlobs[];
         extern const unsigned long long kShaderBlobCount;
     }  // namespace generated
