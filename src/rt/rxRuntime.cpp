@@ -1196,10 +1196,10 @@ namespace Render::RT::detail
         // 必须自己三角化（Capabilities::maxLineWidth 就是为此暴露的）。
         const float maxWidth = caps.maxLineWidth > 0.0f ? caps.maxLineWidth : 1.0f;
         float clamped = lineWidth > 0.0f ? lineWidth : 1.0f;
-        clamped = std::min(clamped, maxWidth);
-        const float quantized = std::max(
+        clamped = (std::min)(clamped, maxWidth);
+        const float quantized = (std::max)(
             kLineWidthQuantum, std::round(clamped / kLineWidthQuantum) * kLineWidthQuantum);
-        key.lineWidth = std::min(quantized, maxWidth);
+        key.lineWidth = (std::min)(quantized, maxWidth);
 
         return createPipelineFromKey(key);
     }

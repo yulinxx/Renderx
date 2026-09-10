@@ -47,7 +47,7 @@ namespace Render::RT::detail
         uint64_t initial = desc.initialBytes != 0 ? desc.initialBytes : kDefaultInitialBytes;
         initial = alignUp(initial, m_granularity);
 
-        m_maxBytes = desc.maxBytes != 0 ? std::min(desc.maxBytes, kAbsoluteMaxBytes) : kAbsoluteMaxBytes;
+        m_maxBytes = desc.maxBytes != 0 ? (std::min)(desc.maxBytes, kAbsoluteMaxBytes) : kAbsoluteMaxBytes;
         if (initial > m_maxBytes)
         {
             m_owner->log.warn("[rt] rxGeometryStoreCreate: initialBytes(%llu) 超过 maxBytes(%llu)，已钳制",
@@ -159,7 +159,7 @@ namespace Render::RT::detail
         {
             next *= 2;
         }
-        next = std::min(alignUp(next, m_granularity), m_maxBytes);
+        next = (std::min)(alignUp(next, m_granularity), m_maxBytes);
         if (next < requiredCapacity)
         {
             m_owner->log.error("[rt] 几何仓扩容到上限 %llu 仍不足（需要 %llu）",
@@ -392,7 +392,7 @@ namespace Render::RT::detail
             const Range& next = m_dirty[i];
             if (next.offset <= current.end() + kDirtyMergeGap)
             {
-                current.size = std::max(current.end(), next.end()) - current.offset;
+                current.size = (std::max)(current.end(), next.end()) - current.offset;
             }
             else
             {

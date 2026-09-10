@@ -189,7 +189,7 @@ namespace Render::RT::detail
             outX = font.cursorX;
             outY = font.cursorY;
             font.cursorX += needW;
-            font.rowHeight = std::max(font.rowHeight, needH);
+            font.rowHeight = (std::max)(font.rowHeight, needH);
             return true;
         }
     }  // namespace
