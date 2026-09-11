@@ -1364,15 +1364,15 @@ namespace Render::RT::detail
             // 因此必须显式指定片段着色器，否则两者会命中同一条缓存管线。
             { DP::ScreenGlyph, VF::P2T2C4, RS::Screen, PT::Triangles, "ScreenGlyph",
               "screen_glyph_p2t2c4.frag" },
-            // 世界空间贴图（位图实体）：顶点是世界坐标，随视图平移/缩放变换。
+            // 世界空间贴图（位图图元）：顶点是世界坐标，随视图平移/缩放变换。
             // 片元与 ScreenTextured 相同，但空间不同，因此是独立的一条。
             { DP::WorldTextured, VF::P3T2C4, RS::World, PT::Triangles, "WorldTextured", nullptr },
-            // 世界空间字形（文字实体）：与 WorldTextured 同格式同空间同拓扑，
+            // 世界空间字形（文字图元）：与 WorldTextured 同格式同空间同拓扑，
             // 只有片元不同（距离场而非 RGBA），因此同样必须显式指定片段着色器。
             { DP::WorldGlyphSdf, VF::P3T2C4, RS::World, PT::Triangles, "WorldGlyphSdf",
               "world_glyph_sdf_p3t2c4.frag" },
             // ---- 3D ----
-            // 网格实体：位置 + 法线，顶点已是世界坐标，光照在 DLL 内算
+            // 网格图元：位置 + 法线，顶点已是世界坐标，光照在 DLL 内算
             // （mesh_3d_p3n3.frag 读 FrameUniforms 的三光源 + 材质段）。
             { DP::Mesh3D, VF::P3N3, RS::World, PT::Triangles, "Mesh3D", nullptr, &kMesh3DState },
             { DP::Mesh3DWire, VF::P3N3, RS::World, PT::Triangles, "Mesh3DWire", nullptr,

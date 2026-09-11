@@ -46,7 +46,7 @@
 - **日志注入**：DLL 不依赖任何日志库，出口由宿主通过 `rxLogCallback` 注入。
 
 **不做、也不应该做的事**：几何离散化（圆/弧/椭圆/贝塞尔 → 折线）、场景图、
-实体语义、图层、选择集、捕捉、单位制、拾取、文本布局排版、文件 IO。
+图元语义、图层、选择集、捕捉、单位制、拾取、文本布局排版、文件 IO。
 这些都属于应用层——详见 `renderx.h` 头部的「职责边界」。
 
 ## 使用方法
@@ -842,7 +842,7 @@ CAD 的负载是后者占绝大多数，10 万条图元改一条时前者要重�
   只传仓句柄无法校验它属于哪个 Runtime——跨 Runtime 误用是多窗口下
   最容易犯且最难查的错误。
 - 槽号必须**紧凑分配**（上限 `1 << 24`）。条目按 slot 直接下标存放，
-  直接拿实体的 64 位 ID 当槽号会撑爆内存，这种情况明确报错。
+  直接拿图元的 64 位 ID 当槽号会撑爆内存，这种情况明确报错。
 - 合批只对**列表型拓扑**（Points / Lines / Triangles）生效。
   Strip / Loop 即使顶点连续、状态相同也绝不合并——那会把两条独立折线
   连起来多画一段，而这种错误在密集图形里几乎看不出来。
@@ -972,7 +972,7 @@ pushConstant 块（`uView` / `uViewport` / `uPointSize` / `uSdfScale`）。
 | ScreenTextured | `screen_tex_p2t2c4.vert` | `screen_tex_p2t2c4.frag` | 屏幕空间 RGBA 纹理（HUD 贴图） |
 | ScreenGlyph | `screen_tex_p2t2c4.vert` | `screen_glyph_p2t2c4.frag` | 字形四边形：图集为 R8 覆盖率，alpha 取 `.r`、rgb 取顶点色 |
 | WorldPinnedLine / WorldPinnedTri | `world_pinned_p3o2c4.vert` | `world_p3c4.frag` | 世界锚定 + 屏幕定尺寸（P3O2C4） |
-| WorldTextured | `world_tex_p3t2c4.vert` | `screen_tex_p2t2c4.frag` | 世界空间 RGBA 纹理（位图实体，P3T2C4） |
+| WorldTextured | `world_tex_p3t2c4.vert` | `screen_tex_p2t2c4.frag` | 世界空间 RGBA 纹理（位图图元，P3T2C4） |
 | WorldGlyphSdf | `world_tex_p3t2c4.vert` | `world_glyph_sdf_p3t2c4.frag` | 世界空间字形：图集为 R8 **距离场**，用 `fwidth(d)` 做缩放无关抗锯齿 |
 | Mesh3D / Mesh3DWire | `mesh_3d_p3n3.vert` | `mesh_3d_p3n3.frag` | 3D 网格（P3N3）：光照在 DLL 内算，两条只差 `fillMode` |
 | Highlight3D / Gizmo3D | `world_p3c4.vert` | `world_p3c4.frag` | 3D 覆盖层：复用 2D 的 P3C4 世界着色器，只差深度状态 / `fillMode` / 深度偏移 |
@@ -1016,7 +1016,7 @@ pushConstant 块（`uView` / `uViewport` / `uPointSize` / `uSdfScale`）。
 
 | 用途 | 顶点格式 | 内建管线 | 深度状态 |
 |------|---------|---------|---------|
-| 网格实体 | `P3N3`（位置 + 法线，stride 24） | `Mesh3D` | 测试开、写入开、`LessEqual` |
+| 网格图元 | `P3N3`（位置 + 法线，stride 24） | `Mesh3D` | 测试开、写入开、`LessEqual` |
 | 线框 | `P3N3` | `Mesh3DWire` | 同上，`fillMode = Wireframe` |
 | 选中高亮 | `P3C4` | `Highlight3D` | 测试开、**写入关**、`LessEqual` |
 | 变换手柄 | `P3C4` | `Gizmo3D` | 测试开、**写入关**、`LessEqual`、深度偏移 1/1 |

@@ -475,14 +475,14 @@ namespace Render::RT::detail
         {
             return RxResult::ErrorInvalidHandle;
         }
-        // 槽号由调用方分配（通常与业务实体一一对应），因此可能很稀疏。
+        // 槽号由调用方分配（通常与业务图元一一对应），因此可能很稀疏。
         // 但稠密数组的随机访问在每帧热路径上仍胜过哈希表；
         // 只在槽号异常巨大时才拒绝，避免一次 upsert 撑爆内存。
         constexpr uint32_t kMaxSlot = 1u << 24;  // 1600 万槽 ≈ 上限
         if (slot >= kMaxSlot)
         {
             m_owner->log.error("[rt] rxDrawListUpsert: 槽号 %u 过大（上限 %u）。"
-                               "槽号应紧凑分配，不要直接用实体的 64 位 ID",
+                               "槽号应紧凑分配，不要直接用图元的 64 位 ID",
                                slot, kMaxSlot);
             return RxResult::ErrorInvalidArgument;
         }
@@ -672,7 +672,7 @@ namespace Render::RT::detail
                 target.vertexCount += entry.command.vertexCount;
                 target.indexCount += entry.command.indexCount;
                 // userData 归属变得不明确：合并后的 draw 对应多个条目。
-                // 置 0 而不是保留第一个——保留会让调用方误以为能靠它反查实体。
+                // 置 0 而不是保留第一个——保留会让调用方误以为能靠它反查图元。
                 target.userData = 0;
                 mergedOut += 1;
                 continue;

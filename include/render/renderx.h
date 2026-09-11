@@ -54,7 +54,7 @@
  *   GeometryPrimitiveKind{Circle, Arc, Ellipse...} 接收解析曲线并自行
  *   细分，导致同一套离散化公式在三处重复实现，且必须靠公共头共享的
  *   inline 函数（TessParams.h）来维持一致——那是耦合，不是封装。
- * - 场景图 / 实体语义 / 图层 / 选择集 / 捕捉 / 单位制。
+ * - 场景图 / 图元语义 / 图层 / 选择集 / 捕捉 / 单位制。
  * - 拾取（picking / hitTest）。
  * - 文本布局与排版（字形光栅化与图集是 GPU 资源缓存，留在 DLL 内）。
  * - 文件 IO。shader 已编入二进制，字体由调用方以内存数据注入。
@@ -270,7 +270,7 @@ namespace Render
             /// 专用于 RenderSpace::WorldPinned。
             P3O2C4 = 4,
             /// 位置 float3 + UV float2 + 颜色 float4，36 字节。
-            /// 世界空间贴图（位图实体）：顶点已在 CPU 侧完成变换，
+            /// 世界空间贴图（位图图元）：顶点已在 CPU 侧完成变换，
             /// 因此旋转/倾斜无需 DLL 额外能力。颜色为纹理的乘性调制。
             P3T2C4 = 5,
         };
@@ -356,12 +356,12 @@ namespace Render
             /// ScreenTextured 是 RGBA 位图，直接采样四通道。二者无法由
             /// (格式, 空间, 拓扑) 区分，所以必须由调用方显式指定 pipelineIndex。
             ScreenGlyph = 15,
-            /// 世界空间贴图（P3T2C4 + 世界空间 + 三角形）。位图实体走这条：
+            /// 世界空间贴图（P3T2C4 + 世界空间 + 三角形）。位图图元走这条：
             /// 顶点在 CPU 侧已完成世界变换，着色器只做 uView 投影 + 采样 RGBA。
             /// 与 ScreenTextured 的区别是空间——后者把顶点当像素坐标，
             /// 贴图不会随视图缩放/平移。
             WorldTextured = 16,
-            /// 世界空间字形（P3T2C4 + 世界空间 + 三角形）。文字实体走这条。
+            /// 世界空间字形（P3T2C4 + 世界空间 + 三角形）。文字图元走这条。
             ///
             /// 与 WorldTextured 同格式同空间同拓扑，差别只在片元：图集是 R8
             /// **距离场**，靠 fwidth 求导得到缩放无关的抗锯齿宽度。因此和
@@ -1162,7 +1162,7 @@ namespace Render
         /**
          * @brief 写入/更新一个槽位
          *
-         * @param slot 调用方自行分配的槽号，用它把渲染条目关联回业务实体。
+         * @param slot 调用方自行分配的槽号，用它把渲染条目关联回业务图元。
          *             槽号不必连续；列表按需增长。
          * @param aabb 世界空间 (minX, minY, maxX, maxY)，用于 DLL 侧剔除。
          *             传 nullptr 表示该条目永不被剔除（覆盖层通常如此）。
