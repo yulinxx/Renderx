@@ -330,27 +330,28 @@ install(DIRECTORY include/render
     DESTINATION include
 )
 
-# ==================== 构建信息输出 ====================
-
-message(STATUS "[${PROJECT_NAME}]")
-message(STATUS "  Version: ${PROJECT_VERSION}")
-message(STATUS "  Platform: ${CMAKE_SYSTEM_NAME}(${CMAKE_SYSTEM_PROCESSOR})")
-message(STATUS "  Build Type: ${CMAKE_BUILD_TYPE}")
-
 # ==================== 测试配置 ====================
 find_package(GTest QUIET)
 if(GTest_FOUND)
     option(BUILD_RENDERX_TESTS "Build Renderx unit tests" ON)
     if(BUILD_RENDERX_TESTS)
         add_subdirectory(Test)
-        message(STATUS "[Renderx] Unit tests enabled (Test/)")
-    else()
-        message(STATUS "[Renderx] Unit tests disabled by BUILD_RENDERX_TESTS=OFF")
     endif()
 else()
-    message(STATUS "[Renderx] GTest not found, unit tests skipped. Install GTest to enable testing.")
+    set(BUILD_RENDERX_TESTS OFF CACHE BOOL "Build Renderx unit tests" FORCE)
 endif()
 
+# ==================== 状态输出 ====================
+
+message(STATUS "[${PROJECT_NAME}]")
+message(STATUS "  Version: ${PROJECT_VERSION}")
+message(STATUS "  Platform: ${CMAKE_SYSTEM_NAME}(${CMAKE_SYSTEM_PROCESSOR})")
+message(STATUS "  Build Type: ${CMAKE_BUILD_TYPE}")
+if(BUILD_RENDERX_TESTS)
+    message(STATUS "  Tests: ENABLED")
+else()
+    message(STATUS "  Tests: DISABLED")
+endif()
 message(STATUS "----------------------------------------")
 
 sanyi_export_imported_target(${PROJECT_NAME}

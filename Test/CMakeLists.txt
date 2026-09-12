@@ -114,7 +114,7 @@ target_link_libraries(RenderxGLTests PRIVATE
 gtest_discover_tests(RenderxGLTests)
 
 # ============================================================
-# Common settings
+# 通用设置
 # ============================================================
 
 set_property(TARGET RenderxTests RenderxGLTests PROPERTY FOLDER "Tests")
