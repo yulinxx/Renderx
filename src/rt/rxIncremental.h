@@ -174,7 +174,7 @@ namespace Render::RT::detail
         static bool canMerge(const DrawCommand& a, const DrawCommand& b);
 
         Runtime* m_owner = nullptr;
-        /// 按 slot 直接下标。槽位由调用方分配，通常与业务实体一一对应，
+        /// 按 slot 直接下标。槽位由调用方分配，通常与业务图元一一对应，
         /// 因此稠密数组比哈希表更合适（查找是每帧热路径）。
         std::vector<Entry> m_entries;
         /// 存活槽位，按 sortKey 排序后的顺序

@@ -211,7 +211,7 @@ TEST(RxRuntime, AllDefaultPipelinesAreAvailable)
     // WorldPinned 是本轮新增的第三档渲染空间，单列一条断言以防被顺带删掉
     EXPECT_NE(rxPipelineGetDefault(runtime, DefaultPipeline::WorldPinnedLine), 0);
     EXPECT_NE(rxPipelineGetDefault(runtime, DefaultPipeline::WorldPinnedTri), 0);
-    // 世界空间贴图：位图实体的唯一通道
+    // 世界空间贴图：位图图元的唯一通道
     EXPECT_NE(rxPipelineGetDefault(runtime, DefaultPipeline::WorldTextured), 0);
     EXPECT_NE(rxPipelineGetDefault(runtime, DefaultPipeline::WorldGlyphSdf), 0);
 
@@ -1222,7 +1222,7 @@ TEST_F(RxIncrementalFixture, DrawListTracksEntryCountAcrossUpsertRemoveClear)
     ASSERT_EQ(rxDrawListGetStats(runtime, list, &stats), RxResult::Ok);
     EXPECT_EQ(stats.entryCount, 0u);
 
-    // 槽号必须紧凑分配：直接拿实体 64 位 ID 当槽号会撑爆稠密数组
+    // 槽号必须紧凑分配：直接拿图元 64 位 ID 当槽号会撑爆稠密数组
     sink.errors.clear();
     EXPECT_EQ(rxDrawListUpsert(runtime, list, 1u << 25, &command, nullptr),
               RxResult::ErrorInvalidArgument);
