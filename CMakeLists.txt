@@ -10,10 +10,6 @@ if(DEFINED VCPKG_DIR AND EXISTS "${VCPKG_DIR}")
 endif()
 
 # 项目配置
-# - 项目名称: RenderX
-# - 版本: 2.0.0
-# - 描述: 工业级2D/3D渲染库
-# - 语言: C++
 project(RenderX
     VERSION 2.0.0
     DESCRIPTION "SanYi CAD Render Library (Industrial-Grade 2D/3D Rendering)"
@@ -27,35 +23,8 @@ endif()
 include("${SANYI_ROOT}/CMake/SanYiPaths.cmake")
 include("${SANYI_ROOT}/CMake/Utils.cmake")
 
-# 设置C++标准为17，并强制要求支持该标准
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
-
-# 编译器警告配置
-if(MSVC)
-    # Visual Studio编译器：启用最高警告级别，UTF-8编码
-    add_compile_options(/W4 /utf-8)
-    # 禁用安全警告（使用标准C库函数时）
-    add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
-    # 禁用类型转换警告（double转float等）
-    add_compile_options(/wd4244)
-else()
-    # GCC/Clang编译器：启用所有警告
-    add_compile_options(-Wall -Wextra -Wpedantic)
-    # 禁用类型转换相关警告
-    add_compile_options(-Wno-conversion)
-    add_compile_options(-Wno-float-conversion)
-endif()
-
-# 如果未指定构建类型，默认为Release
-if(NOT CMAKE_BUILD_TYPE)
-    set(CMAKE_BUILD_TYPE Release)
-endif()
-
-# 注意：本目标始终显式 SHARED（见 sanyi_add_shared_library），
-# 不存在静态库构建路径，因此这里不再定义 BUILD_SHARED_LIBS——
-# 该选项此前是无效的死配置（Utils.cmake 无条件 add_library(SHARED)）。
+# 编译器设置（由 Config.cmake 统一管理，此处不再重复）
+# 注意: C++ 标准、警告级别、构建类型等已在 Config.cmake 中配置
 
 # ==================== 源文件配置 ====================
 
@@ -365,10 +334,8 @@ install(DIRECTORY include/render
 
 message(STATUS "[${PROJECT_NAME}]")
 message(STATUS "  Version: ${PROJECT_VERSION}")
+message(STATUS "  Platform: ${CMAKE_SYSTEM_NAME}(${CMAKE_SYSTEM_PROCESSOR})")
 message(STATUS "  Build Type: ${CMAKE_BUILD_TYPE}")
-message(STATUS "  Shared Libraries: ${BUILD_SHARED_LIBS}")
-message(STATUS "  C++ Standard: ${CMAKE_CXX_STANDARD}")
-message(STATUS "  Log Library: ${LOG_INCLUDE_DIR}")
 
 # ==================== 测试配置 ====================
 find_package(GTest QUIET)
