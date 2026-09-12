@@ -99,11 +99,16 @@
 //      rxSessionReadPixelsFromTexture。Session 支持绑定自定义颜色/深度纹理
 //      作为渲染目标，实现真正的任意分辨率离屏渲染。
 //
+// 5.2：3D 视锥剔除。新增 RxAabb3 / RxFrustum 与 rxDrawListUpsert3D /
+//      rxSessionSubmitDrawList3D。原有 2D 契约（世界矩形 + 4 元组 AABB）不动：
+//      它只用到 x/y，等于把相机当成正交俯视，用在 3D 斜视角下会误裁。
+//      新增接口为纯追加，结构体尺寸未变，故只抬 minor。
+//
 // 4.0：字体接口从「递字符串、DLL 内部排版」改为「DLL 只出字形度量与图集，
 //      宿主自己拼四边形」。rxFontLoad 被 rxFontCreate 系列取代，签名不兼容，
 //      故抬 major。旧接口恒返回 ErrorUnsupportedBackend，无可用调用方。
 #define RENDERX_ABI_VERSION_MAJOR 5
-#define RENDERX_ABI_VERSION_MINOR 1
+#define RENDERX_ABI_VERSION_MINOR 2
 #define RENDERX_ABI_VERSION \
     ((RENDERX_ABI_VERSION_MAJOR << 16) | RENDERX_ABI_VERSION_MINOR)
 
@@ -894,13 +899,48 @@ namespace Render
         // 「状态相同 + 顶点连续」在几何仓里是常态，因为同类图元的块通常
         // 挨着分配。这正是几何仓与绘制列表要配合使用的原因。
 
+        // ---------- 3D 剔除：世界空间包围盒与六平面视锥 ----------
+        //
+        // 2D 的剔除判据是世界空间矩形 (minX, minY, maxX, maxY)。它只用到
+        // x/y，等价于「相机正交俯视」，用在 3D 斜视角下会误裁可见图元。
+        // 3D 因此走下面两个独立结构，不改 2D 那条契约 —— 改它会波及所有
+        // 2D 调用方，而两者本来就不该共用同一个判据。
+
+        /// 世界空间轴对齐包围盒
+        struct RxAabb3
+        {
+            float minX;
+            float minY;
+            float minZ;
+            float maxX;
+            float maxY;
+            float maxZ;
+        };
+        static_assert(sizeof(RxAabb3) == 24, "RxAabb3 ABI size changed");
+
+        /**
+         * @brief 六平面视锥
+         *
+         * planes[i] = (a, b, c, d) 表示平面 a*x + b*y + c*z + d = 0，
+         * **>= 0 的一侧在视锥内侧**（六个平面同时满足即完全可见）。
+         *
+         * 平面按 左/右/下/上/近/远 的顺序给出只是为了可读性，DLL 逐个求交，
+         * 不依赖顺序。由调用方从 proj * view 合并矩阵提取 —— DLL 只看到
+         * 一个合并矩阵（见 rxSessionSetViewMatrix），拆不出两个因子。
+         */
+        struct RxFrustum
+        {
+            float planes[6][4];
+        };
+        static_assert(sizeof(RxFrustum) == 96, "RxFrustum ABI size changed");
+
         struct DrawListDesc
         {
             /// 预留槽位数。可后续增长，预留只是避免早期反复搬迁。
             uint32_t initialCapacity;
             /// 0/1。是否启用合批。关闭便于排查「某图元没画出来」是否合批所致。
             uint8_t enableMerging;
-            /// 0/1。是否启用基于条目 AABB 的剔除。
+            /// 0/1。是否启用基于条目包围盒的剔除（2D 视口矩形或 3D 视锥）。
             uint8_t enableCulling;
             uint8_t _pad0[2];
         };
@@ -1171,6 +1211,21 @@ namespace Render
                                              uint32_t slot, const DrawCommand* command,
                                              const float aabb[4]);
 
+        /**
+         * @brief 写入/更新一个槽位（3D 包围盒）
+         *
+         * 与 rxDrawListUpsert 的唯一区别是包围盒契约：这里是世界空间 3D AABB，
+         * 与 rxSessionSubmitDrawList3D 的六平面视锥配套。
+         *
+         * 同一个列表里两种 upsert 可以混用（2D 覆盖层 + 3D 图元同框的场景），
+         * 但一个槽位只有一份包围盒：后写的那次覆盖前一次。
+         *
+         * @param bounds 传 nullptr 表示该条目不参与剔除（覆盖层通常如此）。
+         */
+        RENDER_API RxResult rxDrawListUpsert3D(RuntimeHandle runtime, DrawListHandle list,
+                                               uint32_t slot, const DrawCommand* command,
+                                               const RxAabb3* bounds);
+
         /// 移除一个槽位。槽位可被后续 upsert 复用。
         RENDER_API RxResult rxDrawListRemove(RuntimeHandle runtime, DrawListHandle list,
                                              uint32_t slot);
@@ -1238,6 +1293,21 @@ namespace Render
          */
         RENDER_API RxResult rxSessionSubmitDrawList(SessionHandle session, DrawListHandle list,
                                                     const float viewBounds[4]);
+
+        /**
+         * @brief 提交一个保留式绘制列表，按 3D 视锥剔除
+         *
+         * 与 rxSessionSubmitDrawList 的区别只有剔除判据：那边是世界空间矩形
+         * 配 2D 条目 AABB，这里是六平面视锥配 3D 条目 AABB。判据是「条目 AABB
+         * 与视锥有交集」，保守方向安全 —— 拿不准就多画，绝不漏画。
+         *
+         * @param frustum 传 nullptr 关闭剔除（与传全零视锥不同，后者会剔掉一切）。
+         *
+         * 相机与投影只在宿主侧，合并矩阵由 rxSessionSetViewMatrix 送进来，
+         * DLL 拆不出两个因子，因此视锥必须由调用方按同一对矩阵提取。
+         */
+        RENDER_API RxResult rxSessionSubmitDrawList3D(SessionHandle session, DrawListHandle list,
+                                                      const RxFrustum* frustum);
 
         /// 结束并呈现本帧（GL: swapBuffers, Metal: presentDrawable, VK: queuePresent）
         RENDER_API RxResult rxSessionEndFrame(SessionHandle session);

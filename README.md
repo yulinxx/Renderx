@@ -4,7 +4,7 @@
 
 > **当前状态（2026-08-25）**
 >
-> - **公共 ABI**：`include/render/renderx.h` 是唯一公共头（48 个 `rx*` 导出，
+> - **公共 ABI**：`include/render/renderx.h` 是唯一公共头（50 个 `rx*` 导出，
 >   零 STL 跨界、全 POD、全 `static_assert` 锁尺寸、无 `bool`、句柄为
 >   `enum class : uint64_t`）。旧的 `render.h` / `RenderTypes.h` /
 >   `runtime_session.h` 已删除。
@@ -21,13 +21,16 @@
 > - **Shader**：构建期编入二进制，运行期零文件 IO。
 > - **零业务耦合**：Renderx 目录下已无任何 `Log/SyLogger.h` 引用；
 >   `otool -L` / `ldd` 结果只有 OpenGL + libc++ + libSystem，**零第一方依赖**。
-> - **测试**：`RenderxTests` 34/34、`RenderxGLTests` 77/77，构建零警告。
+> - **测试**：`RenderxTests` 34/34、`RenderxGLTests` 83/83，构建零警告。
 >
 > **已知缺口**
 >
 > - ~~离屏渲染 / 截图：尚无 render-to-texture 目标 API~~ ✅ **已实现（v5.1）**：
 >   `rxTextureCreateRenderTarget` / `rxSessionSetRenderTarget` /
 >   `rxSessionReadPixelsFromTexture` 支持任意分辨率离屏渲染与读回。
+> - ~~3D 视锥剔除~~ ✅ **已实现（v5.2）**：`RxAabb3` / `RxFrustum` +
+>   `rxDrawListUpsert3D` / `rxSessionSubmitDrawList3D`。2D 的世界矩形契约保持不变，
+>   两侧各用各的判据。GPU 侧的 indirect culling 仍未做。
 >
 > 完整目标设计与决策依据见 `Docs/03-渲染主链/新渲染架构.md`.
 
@@ -810,7 +813,8 @@ add_subdirectory(Test)
 | `rxSessionBeginFrame` | 获取后备缓冲（GL 在此 makeCurrent）并开启 render pass。返回 `ErrorSurfaceOutOfDate` 时 resize 后重试本帧 |
 | `rxSessionAllocTransient` | 分配本帧顶点内存，只在 Begin/End 之间有效 |
 | `rxSessionSubmit` | 提交一批 `DrawCommand`；同一帧内可多次调用。DLL 按 `sortKey` 稳定排序后合批 |
-| `rxSessionSubmitDrawList` | 提交保留式绘制列表（增量渲染的每帧入口）。剔除/排序/合批在 DLL 内完成 |
+| `rxSessionSubmitDrawList` | 提交保留式绘制列表（增量渲染的每帧入口）。剔除/排序/合批在 DLL 内完成。剔除判据是 2D：世界矩形 `(minX,minY,maxX,maxY)` |
+| `rxSessionSubmitDrawList3D` | 同上，但剔除判据是 3D：六平面视锥（`RxFrustum`，`a*x+b*y+c*z+d >= 0` 为内侧）。传 `nullptr` 关闭剔除 |
 | `rxSessionEndFrame` | 结束 render pass、提交命令、呈现 |
 | `rxSessionReadPixels` | 读回当前后备缓冲（截图/视图导出）。**必须在 EndFrame 之前**；输出恒为 RGBA8、左上原点、逐行紧凑 |
 | `rxSessionQueryVisibility` | CPU 侧 AABB 与视口矩形相交（纯几何，不涉及 GPU） |
@@ -832,7 +836,8 @@ CAD 的负载是后者占绝大多数，10 万条图元改一条时前者要重�
 | `rxGeometryFlush` | 主动刷脏区。正常不需要调用——Session 提交前会自动刷；仅帧外批量建场景时用 |
 | `rxGeometryStoreGetStats` | 容量/已用/最大空洞/块数/空闲区间数/待刷脏字节/扩容次数 |
 | `rxDrawListCreate` / `rxDrawListDestroy` | DLL 侧持有的 `DrawCommand` 集合 |
-| `rxDrawListUpsert` | 按槽位写入/更新，**只在图元真正变化时调用**。可附 AABB 供 DLL 剔除 |
+| `rxDrawListUpsert` | 按槽位写入/更新，**只在图元真正变化时调用**。可附 2D AABB（世界矩形）供 DLL 剔除 |
+| `rxDrawListUpsert3D` | 同上，但附的是世界空间 3D AABB（`RxAabb3`），配 `rxSessionSubmitDrawList3D` 使用。传 `nullptr` 表示该条目不参与剔除 |
 | `rxDrawListRemove` / `rxDrawListClear` | 移除单槽 / 清空全部（保留已分配容量） |
 | `rxDrawListGetStats` | 条目数、上帧可见数、上帧 draw call 数、累计排序次数、内存占用 |
 

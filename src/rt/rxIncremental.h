@@ -128,8 +128,9 @@ namespace Render::RT::detail
      *
      * 调用方按槽位 upsert，只在图元真正变化时调用。每帧提交时 DLL 做：
      *
-     *   1. **剔除**：用条目自带的 AABB 与视口矩形求交。AABB 存在 DLL 侧，
-     *      调用方不必每帧再传一遍——那份传输本身就是 O(n)。
+     *   1. **剔除**：用条目自带的包围盒与视口求交。2D 用世界矩形
+     *      (minX,minY,maxX,maxY)，3D 用世界 AABB + 六平面视锥。包围盒存在
+     *      DLL 侧，调用方不必每帧再传一遍——那份传输本身就是 O(n)。
      *   2. **排序**：只在有 upsert/remove 后重排，不是每帧。
      *      稳定排序保证同 sortKey 的条目维持插入顺序。
      *   3. **合批**：相邻条目状态相同且顶点区间连续时合成一次 draw。
@@ -147,12 +148,13 @@ namespace Render::RT::detail
         void shutdown();
 
         RxResult upsert(uint32_t slot, const DrawCommand& command, const float* aabb);
+        RxResult upsert3D(uint32_t slot, const DrawCommand& command, const RxAabb3* bounds);
         RxResult remove(uint32_t slot);
         RxResult clear();
         void fillStats(DrawListStats* out) const;
 
         /**
-         * @brief 解析出本帧要绘制的命令序列
+         * @brief 解析出本帧要绘制的命令序列（2D：世界矩形剔除）
          *
          * @param viewBounds 世界空间 (minX,minY,maxX,maxY)；nullptr 表示不剔除
          * @param culledOut  被剔除的条目数
@@ -162,16 +164,43 @@ namespace Render::RT::detail
         const std::vector<DrawCommand>& resolve(const float* viewBounds, uint32_t& culledOut,
                                                 uint32_t& mergedOut);
 
+        /**
+         * @brief 解析出本帧要绘制的命令序列（3D：六平面视锥剔除）
+         *
+         * @param frustum   世界空间视锥；nullptr 表示不剔除
+         * @param culledOut 被剔除的条目数
+         * @param mergedOut 合批省下的 draw 数
+         */
+        const std::vector<DrawCommand>& resolveFrustum(const RxFrustum* frustum, uint32_t& culledOut,
+                                                       uint32_t& mergedOut);
+
     private:
+        /// 包围盒种类。0 表示「无包围盒」，该条目任何判据下都不剔除。
+        enum BoundsKind : uint8_t
+        {
+            BoundsNone = 0,
+            BoundsAabb2 = 1,
+            BoundsAabb3 = 2,
+        };
+
         struct Entry
         {
             DrawCommand command{};
-            float aabb[4]{};
-            uint8_t hasAabb = 0;
+            /// 包围盒数值。2D 用 [0..3]，3D 用 [0..5]，解释方式由 boundsKind 决定。
+            float bounds[6]{};
+            uint8_t boundsKind = BoundsNone;
             uint8_t alive = 0;
         };
 
         static bool canMerge(const DrawCommand& a, const DrawCommand& b);
+
+        /// 写入主体：两种包围盒契约只差拷贝长度与种类标记
+        RxResult upsertImpl(uint32_t slot, const DrawCommand& command, const float* bounds,
+                            uint8_t boundsKind);
+
+        /// 两种判据共用的主体：排序/剔除/合批只写一遍
+        const std::vector<DrawCommand>& resolveImpl(const float* viewBounds, const RxFrustum* frustum,
+                                                    uint32_t& culledOut, uint32_t& mergedOut);
 
         Runtime* m_owner = nullptr;
         /// 按 slot 直接下标。槽位由调用方分配，通常与业务图元一一对应，

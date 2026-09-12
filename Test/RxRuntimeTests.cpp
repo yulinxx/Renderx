@@ -1190,6 +1190,28 @@ namespace
         desc.cpuWritable = 1;
         return rxBufferCreate(runtime, &desc);
     }
+
+    /// 轴对齐立方体视锥：六个平面都朝盒内，判据可手算，适合做剔除用例
+    RxFrustum makeBoxFrustum(float minValue, float maxValue)
+    {
+        const float planes[6][4] = {
+            { 1.0f, 0.0f, 0.0f, -minValue },   // x >= minValue
+            { -1.0f, 0.0f, 0.0f, maxValue },   // x <= maxValue
+            { 0.0f, 1.0f, 0.0f, -minValue },   // y >= minValue
+            { 0.0f, -1.0f, 0.0f, maxValue },   // y <= maxValue
+            { 0.0f, 0.0f, 1.0f, -minValue },   // z >= minValue
+            { 0.0f, 0.0f, -1.0f, maxValue },   // z <= maxValue
+        };
+        RxFrustum frustum{};
+        for (int i = 0; i < 6; ++i)
+        {
+            for (int j = 0; j < 4; ++j)
+            {
+                frustum.planes[i][j] = planes[i][j];
+            }
+        }
+        return frustum;
+    }
 }  // namespace
 
 TEST_F(RxIncrementalFixture, DrawListTracksEntryCountAcrossUpsertRemoveClear)
@@ -1269,6 +1291,53 @@ TEST_F(RxIncrementalFixture, DrawListCullsByAabbAndCountsIt)
     ASSERT_EQ(rxSessionGetStats(session, &frame), RxResult::Ok);
     EXPECT_EQ(frame.culledCommandCount, 0u);
     EXPECT_EQ(frame.drawCallCount, 3u);
+    EXPECT_EQ(rxSessionEndFrame(session), RxResult::Ok);
+
+    rxDrawListDestroy(runtime, list);
+    rxBufferDestroy(runtime, buffer);
+}
+
+TEST_F(RxIncrementalFixture, DrawListCullsByFrustum3D)
+{
+    DrawListDesc listDesc{};
+    listDesc.initialCapacity = 4;
+    listDesc.enableCulling = 1;
+    const DrawListHandle list = rxDrawListCreate(runtime, &listDesc);
+    ASSERT_TRUE(rxValid(list));
+
+    const BufferHandle buffer = makeVertexBuffer(runtime, 4096);
+    ASSERT_TRUE(rxValid(buffer));
+
+    const DrawCommand inside = makeListCommand(buffer, 0, 3, 1, PrimitiveTopology::Triangles);
+    const DrawCommand outside = makeListCommand(buffer, 512, 3, 2, PrimitiveTopology::Triangles);
+    const DrawCommand straddling = makeListCommand(buffer, 1024, 3, 3, PrimitiveTopology::Triangles);
+    const RxAabb3 insideBox{ -1.0f, -1.0f, -1.0f, 1.0f, 1.0f, 1.0f };
+    const RxAabb3 outsideBox{ 1000.0f, 1000.0f, 1000.0f, 1001.0f, 1001.0f, 1001.0f };
+    // 跨越 x = 10 这条平面：判据是「盒子与视锥有交集」，它必须留下
+    const RxAabb3 straddlingBox{ 5.0f, 0.0f, 0.0f, 200.0f, 1.0f, 1.0f };
+    ASSERT_EQ(rxDrawListUpsert3D(runtime, list, 0, &inside, &insideBox), RxResult::Ok);
+    ASSERT_EQ(rxDrawListUpsert3D(runtime, list, 1, &outside, &outsideBox), RxResult::Ok);
+    ASSERT_EQ(rxDrawListUpsert3D(runtime, list, 2, &straddling, &straddlingBox), RxResult::Ok);
+    // 无包围盒的条目永不被剔除
+    const DrawCommand overlay = makeListCommand(buffer, 2048, 3, 4, PrimitiveTopology::Triangles);
+    ASSERT_EQ(rxDrawListUpsert3D(runtime, list, 3, &overlay, nullptr), RxResult::Ok);
+
+    const RxFrustum frustum = makeBoxFrustum(-10.0f, 10.0f);
+    ASSERT_EQ(rxSessionBeginFrame(session), RxResult::Ok);
+    ASSERT_EQ(rxSessionSubmitDrawList3D(session, list, &frustum), RxResult::Ok);
+
+    FrameStats frame{};
+    ASSERT_EQ(rxSessionGetStats(session, &frame), RxResult::Ok);
+    EXPECT_EQ(frame.culledCommandCount, 1u);
+    EXPECT_EQ(frame.drawCallCount, 3u);
+    EXPECT_EQ(rxSessionEndFrame(session), RxResult::Ok);
+
+    // 传 nullptr 关闭剔除：四条全画
+    ASSERT_EQ(rxSessionBeginFrame(session), RxResult::Ok);
+    ASSERT_EQ(rxSessionSubmitDrawList3D(session, list, nullptr), RxResult::Ok);
+    ASSERT_EQ(rxSessionGetStats(session, &frame), RxResult::Ok);
+    EXPECT_EQ(frame.culledCommandCount, 0u);
+    EXPECT_EQ(frame.drawCallCount, 4u);
     EXPECT_EQ(rxSessionEndFrame(session), RxResult::Ok);
 
     rxDrawListDestroy(runtime, list);

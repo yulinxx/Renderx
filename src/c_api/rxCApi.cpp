@@ -581,6 +581,27 @@ namespace Render
             return target->upsert(slot, *command, aabb);
         }
 
+        RxResult rxDrawListUpsert3D(RuntimeHandle handle, DrawListHandle list, uint32_t slot,
+                                    const DrawCommand* command, const RxAabb3* bounds)
+        {
+            Runtime* runtime = checkedRuntime(handle);
+            if (!runtime)
+            {
+                return RxResult::ErrorInvalidHandle;
+            }
+            if (!command)
+            {
+                return RxResult::ErrorInvalidArgument;
+            }
+            DrawList* target = runtime->resolveDrawList(list);
+            if (!target)
+            {
+                return RxResult::ErrorInvalidHandle;
+            }
+            // bounds == nullptr 是合法输入（该条目不剔除），不在这里拦截
+            return target->upsert3D(slot, *command, bounds);
+        }
+
         RxResult rxDrawListRemove(RuntimeHandle handle, DrawListHandle list, uint32_t slot)
         {
             Runtime* runtime = checkedRuntime(handle);
@@ -782,6 +803,23 @@ namespace Render
                 return RxResult::ErrorInvalidHandle;
             }
             return session->submitDrawList(target, viewBounds);
+        }
+
+        RxResult rxSessionSubmitDrawList3D(SessionHandle handle, DrawListHandle list,
+                                           const RxFrustum* frustum)
+        {
+            Session* session = checkedSession(handle);
+            if (!session)
+            {
+                return RxResult::ErrorInvalidHandle;
+            }
+            DrawList* target = session->runtime ? session->runtime->resolveDrawList(list) : nullptr;
+            if (!target)
+            {
+                return RxResult::ErrorInvalidHandle;
+            }
+            // frustum == nullptr 是合法输入（关闭剔除），不在这里拦截
+            return session->submitDrawList3D(target, frustum);
         }
 
         RxResult rxSessionEndFrame(SessionHandle handle)

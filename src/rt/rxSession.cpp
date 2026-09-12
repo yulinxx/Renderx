@@ -614,6 +614,17 @@ RxResult Session::beginFrame()
 
     RxResult Session::submitDrawList(DrawList* list, const float viewBounds[4])
     {
+        return submitDrawListImpl(list, viewBounds, nullptr);
+    }
+
+    RxResult Session::submitDrawList3D(DrawList* list, const RxFrustum* frustum)
+    {
+        return submitDrawListImpl(list, nullptr, frustum);
+    }
+
+    RxResult Session::submitDrawListImpl(DrawList* list, const float* viewBounds,
+                                        const RxFrustum* frustum)
+    {
         if (!runtime || !surface)
         {
             return RxResult::ErrorInvalidHandle;
@@ -638,7 +649,9 @@ RxResult Session::beginFrame()
 
         uint32_t culled = 0;
         uint32_t merged = 0;
-        const std::vector<DrawCommand>& resolved = list->resolve(viewBounds, culled, merged);
+        const std::vector<DrawCommand>& resolved =
+            frustum != nullptr ? list->resolveFrustum(frustum, culled, merged)
+                               : list->resolve(viewBounds, culled, merged);
         stats.culledCommandCount += culled;
         stats.mergedDrawCount += merged;
 

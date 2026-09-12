@@ -535,6 +535,17 @@ namespace Render::RT::detail
          * @param viewBounds 世界空间 (minX,minY,maxX,maxY)；nullptr 表示不剔除
          */
         RxResult submitDrawList(DrawList* list, const float viewBounds[4]);
+        /**
+         * @brief 提交一个保留式绘制列表，按 3D 视锥剔除
+         *
+         * 与 2D 版的区别只有剔除判据，见 renderx.h 的 RxFrustum。
+         *
+         * @param frustum 世界空间视锥；nullptr 表示不剔除
+         */
+        RxResult submitDrawList3D(DrawList* list, const RxFrustum* frustum);
+        /// 两个 submitDrawList* 的共用主体：只差一个剔除判据
+        RxResult submitDrawListImpl(DrawList* list, const float* viewBounds,
+                                    const RxFrustum* frustum);
         RxResult endFrame();
         /**
          * @brief 从当前后备缓冲读回像素

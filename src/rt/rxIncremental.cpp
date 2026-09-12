@@ -23,6 +23,31 @@ namespace Render::RT::detail
         {
             return (value + alignment - 1) / alignment * alignment;
         }
+
+        /**
+         * @brief 判断世界空间 AABB 是否完全落在视锥之外
+         *
+         * 逐平面分离轴：取 AABB 在该平面法线方向上**最靠内侧**的那个角，
+         * 若连它都在平面外侧，整个盒子必然在外侧。反过来只要有一个角在内侧
+         * 就不能排除——判据是「AABB 与视锥相交」，保守方向是多画不漏画。
+         *
+         * 平面约定见 renderx.h 的 RxFrustum：a*x + b*y + c*z + d >= 0 为内侧。
+         */
+        bool boundsOutsideFrustum(const float bounds[6], const float planes[6][4])
+        {
+            for (uint32_t i = 0; i < 6; ++i)
+            {
+                const float* plane = planes[i];
+                const float x = plane[0] >= 0.0f ? bounds[3] : bounds[0];
+                const float y = plane[1] >= 0.0f ? bounds[4] : bounds[1];
+                const float z = plane[2] >= 0.0f ? bounds[5] : bounds[2];
+                if (plane[0] * x + plane[1] * y + plane[2] * z + plane[3] < 0.0f)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
     }  // namespace
 
     // ======================================================================
@@ -471,6 +496,25 @@ namespace Render::RT::detail
 
     RxResult DrawList::upsert(uint32_t slot, const DrawCommand& command, const float* aabb)
     {
+        return upsertImpl(slot, command, aabb, static_cast<uint8_t>(BoundsAabb2));
+    }
+
+    RxResult DrawList::upsert3D(uint32_t slot, const DrawCommand& command, const RxAabb3* bounds)
+    {
+        if (!bounds)
+        {
+            // nullptr 是合法输入：该条目从此不参与剔除
+            return upsertImpl(slot, command, nullptr, static_cast<uint8_t>(BoundsNone));
+        }
+        // RxAabb3 的字段顺序与 Entry::bounds 的前六个 float 一致，按同一顺序搬
+        const float values[6] = { bounds->minX, bounds->minY, bounds->minZ,
+                                  bounds->maxX, bounds->maxY, bounds->maxZ };
+        return upsertImpl(slot, command, values, static_cast<uint8_t>(BoundsAabb3));
+    }
+
+    RxResult DrawList::upsertImpl(uint32_t slot, const DrawCommand& command, const float* bounds,
+                                 uint8_t boundsKind)
+    {
         if (!m_owner)
         {
             return RxResult::ErrorInvalidHandle;
@@ -496,14 +540,18 @@ namespace Render::RT::detail
         const uint64_t oldSortKey = entry.command.sortKey;
 
         entry.command = command;
-        if (aabb)
+        if (bounds)
         {
-            std::memcpy(entry.aabb, aabb, sizeof(entry.aabb));
-            entry.hasAabb = 1;
+            const uint32_t count = boundsKind == BoundsAabb3 ? 6u : 4u;
+            for (uint32_t i = 0; i < count; ++i)
+            {
+                entry.bounds[i] = bounds[i];
+            }
+            entry.boundsKind = boundsKind;
         }
         else
         {
-            entry.hasAabb = 0;
+            entry.boundsKind = static_cast<uint8_t>(BoundsNone);
         }
 
         if (!wasAlive)
@@ -620,6 +668,19 @@ namespace Render::RT::detail
     const std::vector<DrawCommand>& DrawList::resolve(const float* viewBounds, uint32_t& culledOut,
                                                       uint32_t& mergedOut)
     {
+        return resolveImpl(viewBounds, nullptr, culledOut, mergedOut);
+    }
+
+    const std::vector<DrawCommand>& DrawList::resolveFrustum(const RxFrustum* frustum,
+                                                             uint32_t& culledOut, uint32_t& mergedOut)
+    {
+        return resolveImpl(nullptr, frustum, culledOut, mergedOut);
+    }
+
+    const std::vector<DrawCommand>& DrawList::resolveImpl(const float* viewBounds,
+                                                          const RxFrustum* frustum,
+                                                          uint32_t& culledOut, uint32_t& mergedOut)
+    {
         culledOut = 0;
         mergedOut = 0;
         m_resolved.clear();
@@ -644,7 +705,11 @@ namespace Render::RT::detail
             m_sortCount += 1;
         }
 
-        const bool cull = m_enableCulling && viewBounds != nullptr;
+        // 两个判据各自独立生效：条目带的是哪一种包围盒，就用对应那一种去裁。
+        // 类型不匹配时一律不裁（宁可多画）——混用两种 upsert 的列表里，
+        // 用 2D 矩形去裁 3D 条目正是当初「斜视角误裁」的来源。
+        const bool cull2D = m_enableCulling && viewBounds != nullptr;
+        const bool cull3D = m_enableCulling && frustum != nullptr;
         uint32_t visible = 0;
 
         for (uint32_t slot : m_order)
@@ -654,11 +719,21 @@ namespace Render::RT::detail
             {
                 continue;
             }
-            if (cull && entry.hasAabb != 0)
+            if (cull2D && entry.boundsKind == BoundsAabb2)
             {
-                const bool disjoint = entry.aabb[2] < viewBounds[0] || entry.aabb[0] > viewBounds[2] ||
-                                      entry.aabb[3] < viewBounds[1] || entry.aabb[1] > viewBounds[3];
+                const bool disjoint = entry.bounds[2] < viewBounds[0] ||
+                                      entry.bounds[0] > viewBounds[2] ||
+                                      entry.bounds[3] < viewBounds[1] ||
+                                      entry.bounds[1] > viewBounds[3];
                 if (disjoint)
+                {
+                    culledOut += 1;
+                    continue;
+                }
+            }
+            else if (cull3D && entry.boundsKind == BoundsAabb3)
+            {
+                if (boundsOutsideFrustum(entry.bounds, frustum->planes))
                 {
                     culledOut += 1;
                     continue;
