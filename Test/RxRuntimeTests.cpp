@@ -14,10 +14,14 @@
 #include "render/renderx.h"
 #include "shader/shaderLibrary.h"
 
+#include <algorithm>
 #include <cctype>
+#include <chrono>
 #include <cstddef>
 #include <fstream>
+#include <iostream>
 #include <iterator>
+#include <random>
 #include <string>
 #include <vector>
 
@@ -1492,6 +1496,49 @@ TEST_F(RxIncrementalFixture, DrawListDoesNotMergeAcrossVertexGaps)
     rxBufferDestroy(runtime, buffer);
 }
 
+TEST_F(RxIncrementalFixture, DrawListDoesNotMergeAcrossCulledEntries)
+{
+    // 回归：合批要求「状态相同 + 顶点区间连续」，而部分可见会把这个连续性打断。
+    // 三条线段顶点区间首尾相接（0 / 3 / 6 个顶点），中间那条被剔除时，
+    // 若把首尾两条合并成一个 draw，GPU 会把中间那条的顶点也一起画出来。
+    // 这类「静默多画」在密集图形里几乎看不出来，必须用测试锁住。
+    DrawListDesc listDesc{};
+    listDesc.initialCapacity = 4;
+    listDesc.enableMerging = 1;
+    listDesc.enableCulling = 1;
+    const DrawListHandle list = rxDrawListCreate(runtime, &listDesc);
+    ASSERT_TRUE(rxValid(list));
+
+    const BufferHandle buffer = makeVertexBuffer(runtime, 4096);
+    ASSERT_TRUE(rxValid(buffer));
+
+    const uint32_t stride = rxVertexStride(VertexFormat::P3C3);
+    const DrawCommand first = makeListCommand(buffer, 0, 3, 1, PrimitiveTopology::Triangles);
+    const DrawCommand middle = makeListCommand(buffer, 3 * stride, 3, 2, PrimitiveTopology::Triangles);
+    const DrawCommand last = makeListCommand(buffer, 6 * stride, 3, 3, PrimitiveTopology::Triangles);
+
+    const RxAabb3 inside{ -1.0f, -1.0f, -1.0f, 1.0f, 1.0f, 1.0f };
+    const RxAabb3 outside{ 1000.0f, 1000.0f, 1000.0f, 1001.0f, 1001.0f, 1001.0f };
+    ASSERT_EQ(rxDrawListUpsert3D(runtime, list, 0, &first, &inside), RxResult::Ok);
+    ASSERT_EQ(rxDrawListUpsert3D(runtime, list, 1, &middle, &outside), RxResult::Ok);
+    ASSERT_EQ(rxDrawListUpsert3D(runtime, list, 2, &last, &inside), RxResult::Ok);
+
+    // 3D 视锥走线性路径（2D 走空间索引），这里正是新加的合批预计算逻辑
+    const RxFrustum frustum = makeBoxFrustum(-10.0f, 10.0f);
+    ASSERT_EQ(rxSessionBeginFrame(session), RxResult::Ok);
+    ASSERT_EQ(rxSessionSubmitDrawList3D(session, list, &frustum), RxResult::Ok);
+
+    FrameStats frame{};
+    ASSERT_EQ(rxSessionGetStats(session, &frame), RxResult::Ok);
+    EXPECT_EQ(frame.culledCommandCount, 1u);
+    EXPECT_EQ(frame.mergedDrawCount, 0u) << "中间条目被剔除，首尾不得合并";
+    EXPECT_EQ(frame.drawCallCount, 2u);
+    EXPECT_EQ(rxSessionEndFrame(session), RxResult::Ok);
+
+    rxDrawListDestroy(runtime, list);
+    rxBufferDestroy(runtime, buffer);
+}
+
 TEST_F(RxIncrementalFixture, DrawListRejectsForeignAndDestroyedHandles)
 {
     DrawListDesc listDesc{};
@@ -1506,6 +1553,153 @@ TEST_F(RxIncrementalFixture, DrawListRejectsForeignAndDestroyedHandles)
     GeometryStoreStats storeStats{};
     EXPECT_EQ(rxGeometryStoreGetStats(runtime, GeometryStoreHandle::Invalid, &storeStats),
               RxResult::ErrorInvalidHandle);
+}
+
+TEST_F(RxIncrementalFixture, DrawListSpatialIndexMatchesBruteForceCulling)
+{
+    DrawListDesc listDesc{};
+    listDesc.initialCapacity = 512;
+    listDesc.enableCulling = 1;
+    const DrawListHandle list = rxDrawListCreate(runtime, &listDesc);
+    ASSERT_TRUE(rxValid(list));
+
+    const BufferHandle buffer = makeVertexBuffer(runtime, 4096 * 64);
+    ASSERT_TRUE(rxValid(buffer));
+
+    // 固定种子保证可复现；坐标与尺寸覆盖负值、多尺度（触发不同层与跨格）。
+    constexpr uint32_t kCount = 256;
+    float boxes[kCount][4]{};
+    std::mt19937 rng(20260813u);
+    std::uniform_real_distribution<float> coord(-10000.0f, 10000.0f);
+    std::uniform_real_distribution<float> extent(0.5f, 4000.0f);
+
+    for (uint32_t i = 0; i < kCount; ++i)
+    {
+        const float x = coord(rng);
+        const float y = coord(rng);
+        boxes[i][0] = x;
+        boxes[i][1] = y;
+        boxes[i][2] = x + extent(rng);
+        boxes[i][3] = y + extent(rng);
+    }
+
+    // 顶点偏移不连续，避免合批干扰 drawCallCount 与 visibleCount 的对应。
+    for (uint32_t i = 0; i < kCount; ++i)
+    {
+        const DrawCommand command =
+            makeListCommand(buffer, i * 1024, 3, 100 + i, PrimitiveTopology::Triangles);
+        ASSERT_EQ(rxDrawListUpsert(runtime, list, i, &command, boxes[i]), RxResult::Ok);
+    }
+
+    const float viewBounds[4] = { -500.0f, -500.0f, 500.0f, 500.0f };
+    // 参考实现：与 DLL 内相同的矩形判交，独立算一遍期望值。
+    uint32_t expectedVisible = 0;
+    for (uint32_t i = 0; i < kCount; ++i)
+    {
+        const bool disjoint = boxes[i][2] < viewBounds[0] || boxes[i][0] > viewBounds[2] ||
+                              boxes[i][3] < viewBounds[1] || boxes[i][1] > viewBounds[3];
+        if (!disjoint)
+        {
+            expectedVisible += 1;
+        }
+    }
+
+    ASSERT_EQ(rxSessionBeginFrame(session), RxResult::Ok);
+    ASSERT_EQ(rxSessionSubmitDrawList(session, list, viewBounds), RxResult::Ok);
+
+    FrameStats frame{};
+    ASSERT_EQ(rxSessionGetStats(session, &frame), RxResult::Ok);
+    EXPECT_EQ(frame.culledCommandCount, kCount - expectedVisible);
+    EXPECT_EQ(frame.drawCallCount, expectedVisible);
+    EXPECT_EQ(rxSessionEndFrame(session), RxResult::Ok);
+
+    DrawListStats stats{};
+    ASSERT_EQ(rxDrawListGetStats(runtime, list, &stats), RxResult::Ok);
+    EXPECT_EQ(stats.visibleCount, expectedVisible);
+
+    rxDrawListDestroy(runtime, list);
+    rxBufferDestroy(runtime, buffer);
+}
+
+TEST_F(RxIncrementalFixture, DrawListMovesEntryAcrossCellsOnUpsert)
+{
+    DrawListDesc listDesc{};
+    listDesc.initialCapacity = 4;
+    listDesc.enableCulling = 1;
+    const DrawListHandle list = rxDrawListCreate(runtime, &listDesc);
+    ASSERT_TRUE(rxValid(list));
+
+    const BufferHandle buffer = makeVertexBuffer(runtime, 4096);
+    ASSERT_TRUE(rxValid(buffer));
+
+    const DrawCommand command = makeListCommand(buffer, 0, 3, 1, PrimitiveTopology::Triangles);
+    const float viewBounds[4] = { -50.0f, -50.0f, 50.0f, 50.0f };
+    const float insideBox[4] = { 0.0f, 0.0f, 10.0f, 10.0f };
+    const float outsideBox[4] = { 5000.0f, 5000.0f, 5010.0f, 5010.0f };
+
+    ASSERT_EQ(rxDrawListUpsert(runtime, list, 0, &command, insideBox), RxResult::Ok);
+
+    // 移动到视口外：同一槽位改包围盒，索引必须从旧格摘除并插到新格
+    ASSERT_EQ(rxDrawListUpsert(runtime, list, 0, &command, outsideBox), RxResult::Ok);
+    ASSERT_EQ(rxSessionBeginFrame(session), RxResult::Ok);
+    ASSERT_EQ(rxSessionSubmitDrawList(session, list, viewBounds), RxResult::Ok);
+    FrameStats frame{};
+    ASSERT_EQ(rxSessionGetStats(session, &frame), RxResult::Ok);
+    EXPECT_EQ(frame.culledCommandCount, 1u);
+    EXPECT_EQ(frame.drawCallCount, 0u);
+    EXPECT_EQ(rxSessionEndFrame(session), RxResult::Ok);
+
+    // 再移回来：必须能重新命中
+    ASSERT_EQ(rxDrawListUpsert(runtime, list, 0, &command, insideBox), RxResult::Ok);
+    ASSERT_EQ(rxSessionBeginFrame(session), RxResult::Ok);
+    ASSERT_EQ(rxSessionSubmitDrawList(session, list, viewBounds), RxResult::Ok);
+    ASSERT_EQ(rxSessionGetStats(session, &frame), RxResult::Ok);
+    EXPECT_EQ(frame.culledCommandCount, 0u);
+    EXPECT_EQ(frame.drawCallCount, 1u);
+    EXPECT_EQ(rxSessionEndFrame(session), RxResult::Ok);
+
+    rxDrawListDestroy(runtime, list);
+    rxBufferDestroy(runtime, buffer);
+}
+
+TEST_F(RxIncrementalFixture, DrawListKeepsNon2DEntriesVisibleIn2DView)
+{
+    DrawListDesc listDesc{};
+    listDesc.initialCapacity = 8;
+    listDesc.enableCulling = 1;
+    const DrawListHandle list = rxDrawListCreate(runtime, &listDesc);
+    ASSERT_TRUE(rxValid(list));
+
+    const BufferHandle buffer = makeVertexBuffer(runtime, 4096);
+    ASSERT_TRUE(rxValid(buffer));
+
+    const DrawCommand inside = makeListCommand(buffer, 0, 3, 1, PrimitiveTopology::Triangles);
+    const DrawCommand outside = makeListCommand(buffer, 512, 3, 2, PrimitiveTopology::Triangles);
+    const DrawCommand mesh3D = makeListCommand(buffer, 1024, 3, 3, PrimitiveTopology::Triangles);
+    const DrawCommand overlay = makeListCommand(buffer, 2048, 3, 4, PrimitiveTopology::Triangles);
+
+    const float insideBox[4] = { 0.0f, 0.0f, 10.0f, 10.0f };
+    const float outsideBox[4] = { 1000.0f, 1000.0f, 1010.0f, 1010.0f };
+    const RxAabb3 meshBox{ 0.0f, 0.0f, 0.0f, 10.0f, 10.0f, 10.0f };
+    ASSERT_EQ(rxDrawListUpsert(runtime, list, 0, &inside, insideBox), RxResult::Ok);
+    ASSERT_EQ(rxDrawListUpsert(runtime, list, 1, &outside, outsideBox), RxResult::Ok);
+    // 3D 条目与无包围盒条目：2D 视口下类型不匹配，一律不裁、照常画。
+    ASSERT_EQ(rxDrawListUpsert3D(runtime, list, 2, &mesh3D, &meshBox), RxResult::Ok);
+    ASSERT_EQ(rxDrawListUpsert(runtime, list, 3, &overlay, nullptr), RxResult::Ok);
+
+    const float viewBounds[4] = { -50.0f, -50.0f, 50.0f, 50.0f };
+    ASSERT_EQ(rxSessionBeginFrame(session), RxResult::Ok);
+    ASSERT_EQ(rxSessionSubmitDrawList(session, list, viewBounds), RxResult::Ok);
+
+    FrameStats frame{};
+    ASSERT_EQ(rxSessionGetStats(session, &frame), RxResult::Ok);
+    // 只有 outside（2D 且在视口外）被裁；3D 与无包围盒条目照常画
+    EXPECT_EQ(frame.culledCommandCount, 1u);
+    EXPECT_EQ(frame.drawCallCount, 3u);
+    EXPECT_EQ(rxSessionEndFrame(session), RxResult::Ok);
+
+    rxDrawListDestroy(runtime, list);
+    rxBufferDestroy(runtime, buffer);
 }
 
 // ==================== 内置 shader 的 uniform 块 ====================
@@ -1838,5 +2032,351 @@ TEST_F(RxIncrementalFixture, OffscreenWithDepthAttachment)
     // 清理
     rxTextureDestroy(runtime, colorTex);
     rxTextureDestroy(runtime, depthTex);
+}
+
+// ==================== 百万级性能基准 ====================
+
+namespace
+{
+    /// 毫秒计时（steady_clock，不受系统时钟调整影响）
+    double elapsedMs(std::chrono::steady_clock::time_point start)
+    {
+        return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start)
+            .count();
+    }
+}  // namespace
+
+TEST_F(RxIncrementalFixture, DrawListMillionPrimitiveCullingBaseline)
+{
+    // 基准：100 万条 2D 线段，对比两种「槽位/顶点分配顺序」，回答一个具体问题：
+    //   几何仓里顶点怎么摆，才能让**部分可见**时也能合批？
+    //   - scatter  ：槽位按随机顺序分配，顶点区间与可见集无关
+    //   - clustered：槽位按空间格排序分配，视口覆盖的格 => 连续槽位段
+    // 剔除效果看 culled/visible 数，合批效果看 drawCalls 数。
+    //
+    // 数字受构建配置影响明显（Debug 未优化），因此只做「防灾难」的宽松断言，
+    // 结论看打印出的量级与相对关系。
+    constexpr uint32_t kCount = 1000000;
+    constexpr float kSpan = 10000.0f;
+    constexpr uint32_t kFrames = 5;
+    constexpr int kViewCount = 3;
+
+    std::mt19937 rng(20260813u);
+    std::uniform_real_distribution<float> coord(0.0f, kSpan - 10.0f);
+    std::vector<float> xs(kCount);
+    std::vector<float> ys(kCount);
+    for (uint32_t i = 0; i < kCount; ++i)
+    {
+        xs[i] = coord(rng);
+        ys[i] = coord(rng);
+    }
+
+    const uint32_t stride = rxVertexStride(VertexFormat::P3C3);
+    const float views[kViewCount][4] = {
+        { 0.0f, 0.0f, 1000.0f, 1000.0f },
+        { 4000.0f, 4000.0f, 5000.0f, 5000.0f },
+        { 0.0f, 0.0f, kSpan, kSpan },
+    };
+    const char* viewNames[kViewCount] = { "local", "pan", "full" };
+
+    struct SceneResult
+    {
+        double buildMs = 0.0;
+        uint32_t upsertFailures = 0;
+        double avgMs[kViewCount] = {};
+        uint32_t visible[kViewCount] = {};
+        uint32_t drawCalls[kViewCount] = {};
+    };
+
+    auto runScene = [&](bool clustered, SceneResult& out) {
+        // 分配顺序：clustered 时按空间格排序，使视口覆盖的格对应连续槽位段，
+        // 从而让排序后的可见条目顶点区间也连续——这正是 canMerge 的前提。
+        std::vector<uint32_t> order(kCount);
+        for (uint32_t i = 0; i < kCount; ++i)
+        {
+            order[i] = i;
+        }
+        if (clustered)
+        {
+            // 必须与空间索引内部的 kGridBaseCellSize 一致（256）。
+            // 若用更大的格（如 1000），一个索引格内会混入来自不同聚类格的条目，
+            // 槽位在索引格内变得稀疏，顶点区间重新不连续 —— 合批照样失效。
+            // 这里硬编码而不 include 内部头：rxIncremental.h 会带入 Render::RHI 的
+            // 同名类型（Capabilities / FrameStats），与本文件的 using namespace
+            // Render::RT 产生歧义，正是 unity build 曾踩过的坑。
+            constexpr float kCell = 256.0f;
+            auto cellKey = [&](uint32_t i) {
+                const uint32_t cx = static_cast<uint32_t>(xs[i] / kCell);
+                const uint32_t cy = static_cast<uint32_t>(ys[i] / kCell);
+                return cy * 64u + cx;
+            };
+            std::stable_sort(order.begin(), order.end(),
+                             [&](uint32_t a, uint32_t b) { return cellKey(a) < cellKey(b); });
+        }
+
+        DrawListDesc listDesc{};
+        listDesc.initialCapacity = kCount;
+        listDesc.enableCulling = 1;
+        listDesc.enableMerging = 1;
+        const DrawListHandle list = rxDrawListCreate(runtime, &listDesc);
+        const BufferHandle buffer =
+            makeVertexBuffer(runtime, static_cast<uint64_t>(kCount) * 2u * stride);
+
+        const auto buildStart = std::chrono::steady_clock::now();
+        for (uint32_t k = 0; k < kCount; ++k)
+        {
+            const uint32_t src = order[k];
+            const float x = xs[src];
+            const float y = ys[src];
+            const float box[4] = { x, y, x + 5.0f, y + 5.0f };
+            const DrawCommand command =
+                makeListCommand(buffer, k * 2u * stride, 2, 1, PrimitiveTopology::Lines);
+            if (rxDrawListUpsert(runtime, list, k, &command, box) != RxResult::Ok)
+            {
+                out.upsertFailures += 1;
+            }
+        }
+        out.buildMs = elapsedMs(buildStart);
+
+        for (int c = 0; c < kViewCount; ++c)
+        {
+            // 预热：首帧会带上缓冲扩容、cache 冷等一次性开销，
+            // 混进平均值会把「local 比 pan 慢」这种假象算成结论。
+            constexpr uint32_t kWarmupFrames = 3;
+            for (uint32_t f = 0; f < kWarmupFrames; ++f)
+            {
+                if (rxSessionBeginFrame(session) != RxResult::Ok)
+                {
+                    break;
+                }
+                rxSessionSubmitDrawList(session, list, views[c]);
+                rxSessionEndFrame(session);
+            }
+
+            // 多轮取**最小值**而不是均值：环境噪声（其他进程、频率调节）
+            // 只会让某一轮变慢，因此最小值最接近「无干扰」的真实耗时。
+            // 用均值曾把噪声当成 15% 的优化收益（见设计文档 §14.1）。
+            constexpr uint32_t kRounds = 5;
+            double best = 0.0;
+            for (uint32_t r = 0; r < kRounds; ++r)
+            {
+                const auto frameStart = std::chrono::steady_clock::now();
+                for (uint32_t f = 0; f < kFrames; ++f)
+                {
+                    if (rxSessionBeginFrame(session) != RxResult::Ok)
+                    {
+                        break;
+                    }
+                    rxSessionSubmitDrawList(session, list, views[c]);
+                    FrameStats frameStats{};
+                    rxSessionGetStats(session, &frameStats);
+                    out.visible[c] = kCount - frameStats.culledCommandCount;
+                    out.drawCalls[c] = frameStats.drawCallCount;
+                    rxSessionEndFrame(session);
+                }
+                const double average = elapsedMs(frameStart) / kFrames;
+                best = (r == 0) ? average : (std::min)(best, average);
+            }
+            out.avgMs[c] = best;
+        }
+
+        rxDrawListDestroy(runtime, list);
+        rxBufferDestroy(runtime, buffer);
+    };
+
+    SceneResult scatter{};
+    SceneResult clustered{};
+    runScene(false, scatter);
+    runScene(true, clustered);
+
+    const SceneResult* results[2] = { &scatter, &clustered };
+    const char* labels[2] = { "scatter", "clustered" };
+    std::cout << "\n[bench] primitives=" << kCount << " frames=" << kFrames << "\n";
+    for (int s = 0; s < 2; ++s)
+    {
+        std::cout << "[bench] " << labels[s] << ": build=" << results[s]->buildMs << " ms\n";
+        for (int c = 0; c < kViewCount; ++c)
+        {
+            std::cout << "[bench]   " << viewNames[c] << ": avg=" << results[s]->avgMs[c]
+                      << " ms/frame, visible=" << results[s]->visible[c]
+                      << ", drawCalls=" << results[s]->drawCalls[c] << "\n";
+        }
+    }
+    std::cout << std::flush;
+
+    RecordProperty("primitives", static_cast<int>(kCount));
+    RecordProperty("scatter_local_ms", scatter.avgMs[0]);
+    RecordProperty("clustered_local_ms", clustered.avgMs[0]);
+    RecordProperty("clustered_local_drawcalls", static_cast<int>(clustered.drawCalls[0]));
+
+    EXPECT_EQ(scatter.upsertFailures, 0u);
+    EXPECT_EQ(clustered.upsertFailures, 0u);
+
+    // 剔除语义护栏：局部视图只看得到很小一部分，全图一条都不剔
+    for (int s = 0; s < 2; ++s)
+    {
+        EXPECT_GT(results[s]->visible[0], 0u);
+        EXPECT_LT(results[s]->visible[0], kCount / 10) << "局部视图应只看到很小一部分图元";
+        EXPECT_EQ(results[s]->visible[2], kCount) << "全图视图必须一条都不剔";
+    }
+
+    // 核心结论：按空间聚集分配槽位后，部分可见也应显著合批
+    EXPECT_LT(clustered.drawCalls[0] * 10u, clustered.visible[0])
+        << "clustered 场景的 draw call 数应远小于可见条目数（合批生效）";
+
+    // 防灾难阈值：空间索引失效（退化 O(n^2) 或每帧全量重建）会远超此值
+    EXPECT_LT(scatter.avgMs[0], 500.0) << "局部视图每帧耗时异常";
+    EXPECT_LT(clustered.avgMs[2], 5000.0) << "全图视图每帧耗时异常";
+}
+
+// ==================== zoom out 耗时分解（每个变体独立进程跑） ====================
+//
+// 跑法：**逐个 filter 分别运行**，让每个变体独占一个进程。
+//
+//   RenderxGLTests --gtest_filter=*ZoomOutBreakdownCullMerge*
+//   RenderxGLTests --gtest_filter=*ZoomOutBreakdownNoCull*
+//   RenderxGLTests --gtest_filter=*ZoomOutBreakdownNoMerge*
+//   RenderxGLTests --gtest_filter=*ZoomOutBreakdownNeither*
+//
+// 为什么必须拆进程：同一进程里连跑多个变体时，累积分配（每个列表 20 万条
+// Entry）会改变内存状态，实测同一场景的耗时差异可达 2.4 倍——上一轮那个
+// 假的「15% 优化收益」就是这么来的（见设计文档 §14.1）。
+
+namespace
+{
+    struct ZoomOutMeasurement
+    {
+        double msPerFrame = 0.0;
+        uint32_t drawCalls = 0;
+    };
+
+    struct BenchPositions
+    {
+        std::vector<float> xs;
+        std::vector<float> ys;
+    };
+
+    /// 固定种子生成图元位置，保证各变体跑的是同一份场景
+    BenchPositions makeBenchPositions(uint32_t count)
+    {
+        constexpr float kSpan = 10000.0f;
+        std::mt19937 rng(20260813u);
+        std::uniform_real_distribution<float> coord(0.0f, kSpan - 10.0f);
+
+        BenchPositions positions;
+        positions.xs.resize(count);
+        positions.ys.resize(count);
+        for (uint32_t i = 0; i < count; ++i)
+        {
+            positions.xs[i] = coord(rng);
+            positions.ys[i] = coord(rng);
+        }
+        return positions;
+    }
+
+    /// 全图（zoom out）单变体测量：20 万条全部可见，走退化回退的线性路径。
+    /// 多轮取最小值，抑制环境噪声。
+    ZoomOutMeasurement measureZoomOut(RuntimeHandle runtime, SessionHandle session,
+                                      const BenchPositions& positions, uint8_t culling,
+                                      uint8_t merging, const char* label)
+    {
+        constexpr uint32_t kFrames = 5;
+        constexpr uint32_t kRounds = 7;
+        constexpr float kSpan = 10000.0f;
+
+        const uint32_t count = static_cast<uint32_t>(positions.xs.size());
+        const uint32_t stride = rxVertexStride(VertexFormat::P3C3);
+        const BufferHandle buffer =
+            makeVertexBuffer(runtime, static_cast<uint64_t>(count) * 2u * stride);
+
+        DrawListDesc listDesc{};
+        listDesc.initialCapacity = count;
+        listDesc.enableCulling = culling;
+        listDesc.enableMerging = merging;
+        const DrawListHandle list = rxDrawListCreate(runtime, &listDesc);
+
+        for (uint32_t i = 0; i < count; ++i)
+        {
+            const float x = positions.xs[i];
+            const float y = positions.ys[i];
+            const float box[4] = { x, y, x + 5.0f, y + 5.0f };
+            const DrawCommand command =
+                makeListCommand(buffer, i * 2u * stride, 2, 1, PrimitiveTopology::Lines);
+            rxDrawListUpsert(runtime, list, i, &command, box);
+        }
+
+        const float fullView[4] = { 0.0f, 0.0f, kSpan, kSpan };
+        for (uint32_t f = 0; f < 3; ++f)
+        {
+            rxSessionBeginFrame(session);
+            rxSessionSubmitDrawList(session, list, fullView);
+            rxSessionEndFrame(session);
+        }
+
+        ZoomOutMeasurement result{};
+        double best = 0.0;
+        for (uint32_t r = 0; r < kRounds; ++r)
+        {
+            const auto start = std::chrono::steady_clock::now();
+            for (uint32_t f = 0; f < kFrames; ++f)
+            {
+                rxSessionBeginFrame(session);
+                rxSessionSubmitDrawList(session, list, fullView);
+                FrameStats frameStats{};
+                rxSessionGetStats(session, &frameStats);
+                result.drawCalls = frameStats.drawCallCount;
+                rxSessionEndFrame(session);
+            }
+            const double average = elapsedMs(start) / kFrames;
+            best = (r == 0) ? average : (std::min)(best, average);
+        }
+        result.msPerFrame = best;
+
+        std::cout << "[bench] " << label << ": " << best
+                  << " ms/frame, drawCalls=" << result.drawCalls << "\n";
+        std::cout << std::flush;
+
+        rxDrawListDestroy(runtime, list);
+        rxBufferDestroy(runtime, buffer);
+        return result;
+    }
+
+    /// 规模取 20 万：够大到能体现 O(n) 行为，又不会让内存压力主导结果
+    constexpr uint32_t kZoomOutCount = 200000;
+}  // namespace
+
+TEST_F(RxIncrementalFixture, ZoomOutBreakdownCullMerge)
+{
+    const BenchPositions positions = makeBenchPositions(kZoomOutCount);
+    const ZoomOutMeasurement measured =
+        measureZoomOut(runtime, session, positions, 1, 1, "cull+merge");
+    EXPECT_GT(measured.drawCalls, 0u);
+}
+
+TEST_F(RxIncrementalFixture, ZoomOutBreakdownNoCull)
+{
+    // 关掉判交：与 CullMerge 的差值即判交成本
+    const BenchPositions positions = makeBenchPositions(kZoomOutCount);
+    const ZoomOutMeasurement measured =
+        measureZoomOut(runtime, session, positions, 0, 1, "no-cull");
+    EXPECT_GT(measured.drawCalls, 0u);
+}
+
+TEST_F(RxIncrementalFixture, ZoomOutBreakdownNoMerge)
+{
+    // 关掉合批：draw call 数应等于图元数
+    const BenchPositions positions = makeBenchPositions(kZoomOutCount);
+    const ZoomOutMeasurement measured =
+        measureZoomOut(runtime, session, positions, 1, 0, "no-merge");
+    EXPECT_EQ(measured.drawCalls, kZoomOutCount);
+}
+
+TEST_F(RxIncrementalFixture, ZoomOutBreakdownNeither)
+{
+    // 既不算也不合：纯遍历 + 输出成本基线
+    const BenchPositions positions = makeBenchPositions(kZoomOutCount);
+    const ZoomOutMeasurement measured =
+        measureZoomOut(runtime, session, positions, 0, 0, "neither");
+    EXPECT_EQ(measured.drawCalls, kZoomOutCount);
 }
 

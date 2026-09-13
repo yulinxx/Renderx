@@ -28,11 +28,32 @@
 #include "rhi/rhiLog.h"
 
 #include <cstdint>
+#include <unordered_map>
 #include <vector>
 
 namespace Render::RT::detail
 {
     struct Runtime;
+
+    // ---- 2D 分层哈希网格：空间索引 ----
+    // 每层一个格子边长，层 l 的边长 = kGridBaseCellSize << l（2 的幂次）。
+    // 图元按 AABB 最大边长选「能容纳它的最细层」，保证单个图元至多覆盖 2x2 个格。
+    constexpr float kGridBaseCellSize = 256.0f;
+    constexpr int kGridLevelCount = 12;
+    constexpr uint16_t kInvalidGridLevel = 0xFFFF;
+
+    /// 一个格子内的 slot 列表（无序，摘除用 swap-and-pop）
+    struct GridCell
+    {
+        std::vector<uint32_t> slots;
+    };
+
+    /// 一层网格：哈希映射 (cx,cy) -> 格子
+    struct GridLayer
+    {
+        std::unordered_map<uint64_t, GridCell> cells;
+        float cellSize = 0.0f;
+    };
 
     // ======================================================================
     // 持久几何仓
@@ -190,6 +211,10 @@ namespace Render::RT::detail
             float bounds[6]{};
             uint8_t boundsKind = BoundsNone;
             uint8_t alive = 0;
+            /// 所在网格层；kInvalidGridLevel 表示未入索引（无包围盒或 3D 条目）。
+            uint16_t gridLevel = kInvalidGridLevel;
+            /// 帧内去重标记，防止跨格图元在查询时被重复收集。
+            uint32_t frameStamp = 0;
         };
 
         static bool canMerge(const DrawCommand& a, const DrawCommand& b);
@@ -202,6 +227,32 @@ namespace Render::RT::detail
         const std::vector<DrawCommand>& resolveImpl(const float* viewBounds, const RxFrustum* frustum,
                                                     uint32_t& culledOut, uint32_t& mergedOut);
 
+        /// 把一条命令追加到 m_resolved，可与末尾合并则合并（合批规则唯一实现点）
+        void appendResolved(const DrawCommand& command, uint32_t& mergedOut);
+
+        /// 线性路径：遍历有序 m_order，逐条判交 + 合批。2D/3D 判据二选一。
+        void resolveLinear(bool cull2D, const float* viewBounds, bool cull3D,
+                           const RxFrustum* frustum, uint32_t& culledOut, uint32_t& mergedOut);
+
+        /// 2D 空间索引路径：网格粗筛 -> 退化回退 -> 精确判交 -> 排序 -> 合批。
+        void resolveIndexed2D(const float viewBounds[4], uint32_t& culledOut,
+                              uint32_t& mergedOut);
+
+        /// 把 slot 插入 2D 网格索引（按 bounds 选层，覆盖格至多 2x2）
+        void indexInsert(uint32_t slot, const float bounds[4]);
+
+        /// 把 slot 从 2D 网格索引摘除（按记录在 Entry 里的 bounds 与层重算格子）
+        void indexRemove(uint32_t slot);
+
+        /// 清空整张网格（clear 时用，比逐条摘除快）
+        void indexClear();
+
+        /// 把非 2D 条目（无包围盒 / 3D 包围盒）加入「永可见」列表
+        void indexAddNonIndexed(uint32_t slot);
+
+        /// 从「永可见」列表摘除一个 slot（swap-and-pop）
+        void indexRemoveNonIndexed(uint32_t slot);
+
         Runtime* m_owner = nullptr;
         /// 按 slot 直接下标。槽位由调用方分配，通常与业务图元一一对应，
         /// 因此稠密数组比哈希表更合适（查找是每帧热路径）。
@@ -209,8 +260,18 @@ namespace Render::RT::detail
         /// 存活槽位，按 sortKey 排序后的顺序
         std::vector<uint32_t> m_order;
         std::vector<DrawCommand> m_resolved;
+        /// 2D 分层网格索引（每层一个 GridLayer）
+        std::vector<GridLayer> m_grid;
+        /// 非 2D 条目（无包围盒 / 3D 包围盒）的 slot，2D 视口下照常画、不裁
+        std::vector<uint32_t> m_nonIndexed;
+        /// 帧内可见候选（复用缓冲，避免每帧分配）
+        std::vector<uint32_t> m_visible;
+        /// 帧内去重标记（每次 resolve 递增）
+        uint32_t m_stamp = 0;
 
         uint32_t m_entryCount = 0;
+        /// 当前入 2D 网格索引的条目数（用于统计剔除数，避免遍历全部条目）
+        uint32_t m_indexed2DCount = 0;
         uint32_t m_sortCount = 0;
         uint32_t m_lastVisible = 0;
         uint32_t m_lastDrawCalls = 0;

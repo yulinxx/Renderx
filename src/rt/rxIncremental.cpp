@@ -7,6 +7,7 @@
 #include "rt/rxInternal.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 
 namespace Render::RT::detail
@@ -47,6 +48,42 @@ namespace Render::RT::detail
                 }
             }
             return false;
+        }
+
+        /// 把两个 int32 格子坐标编码成一个 uint64 哈希键（双射，无碰撞）
+        uint64_t encodeGridCell(int32_t cx, int32_t cy)
+        {
+            return (static_cast<uint64_t>(static_cast<uint32_t>(cx)) << 32) |
+                   static_cast<uint32_t>(cy);
+        }
+
+        /// 按 AABB 最大边长选层：cellSize >= maxExtent 的最细层
+        uint16_t selectGridLevel(float maxExtent)
+        {
+            if (maxExtent <= kGridBaseCellSize)
+            {
+                return 0;
+            }
+            float threshold = kGridBaseCellSize * 2.0f;
+            for (int level = 1; level < kGridLevelCount; ++level)
+            {
+                if (maxExtent <= threshold)
+                {
+                    return static_cast<uint16_t>(level);
+                }
+                threshold *= 2.0f;
+            }
+            return static_cast<uint16_t>(kGridLevelCount - 1);
+        }
+
+        /// 计算 AABB 覆盖的格子坐标范围（含两端）
+        void gridCellRange(const float bounds[4], float cellSize,
+                           int32_t& cxMin, int32_t& cxMax, int32_t& cyMin, int32_t& cyMax)
+        {
+            cxMin = static_cast<int32_t>(std::floor(bounds[0] / cellSize));
+            cxMax = static_cast<int32_t>(std::floor(bounds[2] / cellSize));
+            cyMin = static_cast<int32_t>(std::floor(bounds[1] / cellSize));
+            cyMax = static_cast<int32_t>(std::floor(bounds[3] / cellSize));
         }
     }  // namespace
 
@@ -479,6 +516,12 @@ namespace Render::RT::detail
             m_order.reserve(desc.initialCapacity);
             m_resolved.reserve(desc.initialCapacity);
         }
+        m_grid.resize(kGridLevelCount);
+        for (int i = 0; i < kGridLevelCount; ++i)
+        {
+            m_grid[i].cellSize = kGridBaseCellSize * static_cast<float>(1 << i);
+        }
+        m_visible.reserve(desc.initialCapacity != 0 ? desc.initialCapacity : 4096);
         return true;
     }
 
@@ -490,7 +533,11 @@ namespace Render::RT::detail
         m_order.shrink_to_fit();
         m_resolved.clear();
         m_resolved.shrink_to_fit();
+        m_grid.clear();
+        m_visible.clear();
+        m_visible.shrink_to_fit();
         m_entryCount = 0;
+        m_indexed2DCount = 0;
         m_owner = nullptr;
     }
 
@@ -539,6 +586,28 @@ namespace Render::RT::detail
         const bool wasAlive = entry.alive != 0;
         const uint64_t oldSortKey = entry.command.sortKey;
 
+        // 新包围盒类型：无包围盒视作 BoundsNone，决定条目最终落 2D 索引还是「永可见」列表。
+        const uint8_t newBoundsKind = bounds ? boundsKind : static_cast<uint8_t>(BoundsNone);
+        const bool wasIndexed2D = wasAlive && entry.gridLevel != kInvalidGridLevel;
+        const bool willBeIndexed2D = newBoundsKind == BoundsAabb2;
+
+        // 摘除旧位置：只改颜色/顶点范围不碰索引，与「sortKey 变了才重排」同一思路。
+        bool boundsChanged = false;
+        if (wasIndexed2D)
+        {
+            boundsChanged = !willBeIndexed2D ||
+                            entry.bounds[0] != bounds[0] || entry.bounds[1] != bounds[1] ||
+                            entry.bounds[2] != bounds[2] || entry.bounds[3] != bounds[3];
+            if (boundsChanged)
+            {
+                indexRemove(slot);
+            }
+        }
+        else if (wasAlive && willBeIndexed2D)
+        {
+            indexRemoveNonIndexed(slot);
+        }
+
         entry.command = command;
         if (bounds)
         {
@@ -552,6 +621,19 @@ namespace Render::RT::detail
         else
         {
             entry.boundsKind = static_cast<uint8_t>(BoundsNone);
+        }
+
+        // 插入新位置。
+        if (willBeIndexed2D)
+        {
+            if (!wasIndexed2D || boundsChanged)
+            {
+                indexInsert(slot, entry.bounds);
+            }
+        }
+        else if (!wasAlive || wasIndexed2D)
+        {
+            indexAddNonIndexed(slot);
         }
 
         if (!wasAlive)
@@ -579,6 +661,14 @@ namespace Render::RT::detail
         {
             return RxResult::ErrorInvalidArgument;
         }
+        if (m_entries[slot].gridLevel != kInvalidGridLevel)
+        {
+            indexRemove(slot);
+        }
+        else
+        {
+            indexRemoveNonIndexed(slot);
+        }
         m_entries[slot] = Entry{};
         m_entryCount -= 1;
         m_orderDirty = true;
@@ -592,6 +682,8 @@ namespace Render::RT::detail
             return RxResult::ErrorInvalidHandle;
         }
         // 保留容量：清空后通常紧接着重建同量级的场景
+        indexClear();
+        m_nonIndexed.clear();
         std::fill(m_entries.begin(), m_entries.end(), Entry{});
         m_order.clear();
         m_resolved.clear();
@@ -665,6 +757,244 @@ namespace Render::RT::detail
         return b.vertexOffset == a.vertexOffset + a.vertexCount * stride;
     }
 
+    void DrawList::appendResolved(const DrawCommand& command, uint32_t& mergedOut)
+    {
+        if (m_enableMerging && !m_resolved.empty() && canMerge(m_resolved.back(), command))
+        {
+            DrawCommand& target = m_resolved.back();
+            target.vertexCount += command.vertexCount;
+            target.indexCount += command.indexCount;
+            // userData 归属变得不明确：合并后的 draw 对应多个条目。
+            // 置 0 而不是保留第一个——保留会让调用方误以为能靠它反查图元。
+            target.userData = 0;
+            mergedOut += 1;
+            return;
+        }
+        m_resolved.push_back(command);
+    }
+
+    void DrawList::resolveLinear(bool cull2D, const float* viewBounds, bool cull3D,
+                                 const RxFrustum* frustum, uint32_t& culledOut,
+                                 uint32_t& mergedOut)
+    {
+        // 两个判据各自独立生效：条目带的是哪一种包围盒，就用对应那一种去裁。
+        // 类型不匹配时一律不裁（宁可多画）——混用两种 upsert 的列表里，
+        // 用 2D 矩形去裁 3D 条目正是当初「斜视角误裁」的来源。
+        for (uint32_t slot : m_order)
+        {
+            const Entry& entry = m_entries[slot];
+            if (entry.command.vertexCount == 0 && entry.command.indexCount == 0)
+            {
+                continue;
+            }
+            if (cull2D && entry.boundsKind == BoundsAabb2)
+            {
+                const bool disjoint = entry.bounds[2] < viewBounds[0] ||
+                                      entry.bounds[0] > viewBounds[2] ||
+                                      entry.bounds[3] < viewBounds[1] ||
+                                      entry.bounds[1] > viewBounds[3];
+                if (disjoint)
+                {
+                    culledOut += 1;
+                    continue;
+                }
+            }
+            else if (cull3D && entry.boundsKind == BoundsAabb3)
+            {
+                if (boundsOutsideFrustum(entry.bounds, frustum->planes))
+                {
+                    culledOut += 1;
+                    continue;
+                }
+            }
+            appendResolved(entry.command, mergedOut);
+        }
+    }
+
+    void DrawList::resolveIndexed2D(const float viewBounds[4], uint32_t& culledOut,
+                                    uint32_t& mergedOut)
+    {
+        // 1. 网格粗筛收集候选：跨格图元用 frameStamp 去重，保证每个 slot 只进一次。
+        m_visible.clear();
+        ++m_stamp;
+        const uint32_t stamp = m_stamp;
+        for (int level = 0; level < kGridLevelCount; ++level)
+        {
+            const float cellSize = m_grid[level].cellSize;
+            int32_t cxMin, cxMax, cyMin, cyMax;
+            gridCellRange(viewBounds, cellSize, cxMin, cxMax, cyMin, cyMax);
+            for (int32_t cy = cyMin; cy <= cyMax; ++cy)
+            {
+                for (int32_t cx = cxMin; cx <= cxMax; ++cx)
+                {
+                    auto it = m_grid[level].cells.find(encodeGridCell(cx, cy));
+                    if (it == m_grid[level].cells.end())
+                    {
+                        continue;
+                    }
+                    for (uint32_t slot : it->second.slots)
+                    {
+                        Entry& entry = m_entries[slot];
+                        if (entry.frameStamp != stamp)
+                        {
+                            entry.frameStamp = stamp;
+                            m_visible.push_back(slot);
+                        }
+                    }
+                }
+            }
+        }
+
+        // 网格候选数（仅 2D 索引条目，已用 frameStamp 去重）。
+        // 并入非 2D 条目之前记录：后面补统计「被网格直接排除的条目数」要用它。
+        const uint32_t gridCandidateCount = static_cast<uint32_t>(m_visible.size());
+
+        // 并入非 2D 条目：无包围盒 / 3D 包围盒在 2D 视口下不裁，照常画。
+        for (uint32_t slot : m_nonIndexed)
+        {
+            Entry& entry = m_entries[slot];
+            if (entry.frameStamp != stamp)
+            {
+                entry.frameStamp = stamp;
+                m_visible.push_back(slot);
+            }
+        }
+
+        // 2. 退化回退：候选超过一半条目时，网格路径收益消失，回退线性路径。
+        //    回退分支由 resolveLinear 独立统计，因此这里的补统计必须放在其后。
+        if (m_visible.size() * 2 > m_entryCount)
+        {
+            m_visible.clear();
+            resolveLinear(true, viewBounds, false, nullptr, culledOut, mergedOut);
+            return;
+        }
+
+        // 3. 补统计被网格直接排除的 2D 条目：它们不进候选，但确实未提交给 GPU。
+        //    不补这一笔，culledCommandCount 会小于线性路径，两套口径不一致。
+        culledOut += m_indexed2DCount - gridCandidateCount;
+
+        // 4. 精确判交：网格是粗筛选，cell 相交不等于 AABB 相交；
+        //    非 2D 条目不判交（类型不匹配一律不裁，宁可多画）。
+        uint32_t write = 0;
+        for (uint32_t slot : m_visible)
+        {
+            const Entry& entry = m_entries[slot];
+            if (entry.command.vertexCount == 0 && entry.command.indexCount == 0)
+            {
+                continue;
+            }
+            if (entry.boundsKind == BoundsAabb2)
+            {
+                const bool disjoint = entry.bounds[2] < viewBounds[0] ||
+                                      entry.bounds[0] > viewBounds[2] ||
+                                      entry.bounds[3] < viewBounds[1] ||
+                                      entry.bounds[1] > viewBounds[3];
+                if (disjoint)
+                {
+                    culledOut += 1;
+                    continue;
+                }
+            }
+            m_visible[write++] = slot;
+        }
+        m_visible.resize(write);
+
+        // 4. 按 sortKey 排序：合批要求同状态相邻。
+        const std::vector<Entry>& entries = m_entries;
+        std::stable_sort(m_visible.begin(), m_visible.end(),
+                         [&entries](uint32_t a, uint32_t b) {
+                             return entries[a].command.sortKey < entries[b].command.sortKey;
+                         });
+
+        // 5. 合批。
+        for (uint32_t slot : m_visible)
+        {
+            appendResolved(m_entries[slot].command, mergedOut);
+        }
+    }
+
+    void DrawList::indexInsert(uint32_t slot, const float bounds[4])
+    {
+        const float extent = (std::max)(bounds[2] - bounds[0], bounds[3] - bounds[1]);
+        const uint16_t level = selectGridLevel(extent);
+        m_entries[slot].gridLevel = level;
+
+        const float cellSize = m_grid[level].cellSize;
+        int32_t cxMin, cxMax, cyMin, cyMax;
+        gridCellRange(bounds, cellSize, cxMin, cxMax, cyMin, cyMax);
+        for (int32_t cy = cyMin; cy <= cyMax; ++cy)
+        {
+            for (int32_t cx = cxMin; cx <= cxMax; ++cx)
+            {
+                m_grid[level].cells[encodeGridCell(cx, cy)].slots.push_back(slot);
+            }
+        }
+        m_indexed2DCount += 1;
+    }
+
+    void DrawList::indexRemove(uint32_t slot)
+    {
+        Entry& entry = m_entries[slot];
+        if (entry.gridLevel == kInvalidGridLevel)
+        {
+            return;
+        }
+        const uint16_t level = entry.gridLevel;
+        const float cellSize = m_grid[level].cellSize;
+        int32_t cxMin, cxMax, cyMin, cyMax;
+        gridCellRange(entry.bounds, cellSize, cxMin, cxMax, cyMin, cyMax);
+        for (int32_t cy = cyMin; cy <= cyMax; ++cy)
+        {
+            for (int32_t cx = cxMin; cx <= cxMax; ++cx)
+            {
+                auto it = m_grid[level].cells.find(encodeGridCell(cx, cy));
+                if (it == m_grid[level].cells.end())
+                {
+                    continue;
+                }
+                std::vector<uint32_t>& slots = it->second.slots;
+                for (size_t i = 0; i < slots.size(); ++i)
+                {
+                    if (slots[i] == slot)
+                    {
+                        slots[i] = slots.back();
+                        slots.pop_back();
+                        break;
+                    }
+                }
+            }
+        }
+        entry.gridLevel = kInvalidGridLevel;
+        m_indexed2DCount -= 1;
+    }
+
+    void DrawList::indexClear()
+    {
+        for (GridLayer& layer : m_grid)
+        {
+            layer.cells.clear();
+        }
+        m_indexed2DCount = 0;
+    }
+
+    void DrawList::indexAddNonIndexed(uint32_t slot)
+    {
+        m_nonIndexed.push_back(slot);
+    }
+
+    void DrawList::indexRemoveNonIndexed(uint32_t slot)
+    {
+        for (size_t i = 0; i < m_nonIndexed.size(); ++i)
+        {
+            if (m_nonIndexed[i] == slot)
+            {
+                m_nonIndexed[i] = m_nonIndexed.back();
+                m_nonIndexed.pop_back();
+                return;
+            }
+        }
+    }
+
     const std::vector<DrawCommand>& DrawList::resolve(const float* viewBounds, uint32_t& culledOut,
                                                       uint32_t& mergedOut)
     {
@@ -705,57 +1035,21 @@ namespace Render::RT::detail
             m_sortCount += 1;
         }
 
-        // 两个判据各自独立生效：条目带的是哪一种包围盒，就用对应那一种去裁。
-        // 类型不匹配时一律不裁（宁可多画）——混用两种 upsert 的列表里，
-        // 用 2D 矩形去裁 3D 条目正是当初「斜视角误裁」的来源。
         const bool cull2D = m_enableCulling && viewBounds != nullptr;
         const bool cull3D = m_enableCulling && frustum != nullptr;
-        uint32_t visible = 0;
 
-        for (uint32_t slot : m_order)
+        if (cull2D)
         {
-            const Entry& entry = m_entries[slot];
-            if (entry.command.vertexCount == 0 && entry.command.indexCount == 0)
-            {
-                continue;
-            }
-            if (cull2D && entry.boundsKind == BoundsAabb2)
-            {
-                const bool disjoint = entry.bounds[2] < viewBounds[0] ||
-                                      entry.bounds[0] > viewBounds[2] ||
-                                      entry.bounds[3] < viewBounds[1] ||
-                                      entry.bounds[1] > viewBounds[3];
-                if (disjoint)
-                {
-                    culledOut += 1;
-                    continue;
-                }
-            }
-            else if (cull3D && entry.boundsKind == BoundsAabb3)
-            {
-                if (boundsOutsideFrustum(entry.bounds, frustum->planes))
-                {
-                    culledOut += 1;
-                    continue;
-                }
-            }
-            visible += 1;
-
-            if (m_enableMerging && !m_resolved.empty() && canMerge(m_resolved.back(), entry.command))
-            {
-                DrawCommand& target = m_resolved.back();
-                target.vertexCount += entry.command.vertexCount;
-                target.indexCount += entry.command.indexCount;
-                // userData 归属变得不明确：合并后的 draw 对应多个条目。
-                // 置 0 而不是保留第一个——保留会让调用方误以为能靠它反查图元。
-                target.userData = 0;
-                mergedOut += 1;
-                continue;
-            }
-            m_resolved.push_back(entry.command);
+            // 2D 走空间索引：网格粗筛 + 退化回退 + 精确判交 + 排序 + 合批
+            resolveIndexed2D(viewBounds, culledOut, mergedOut);
+        }
+        else
+        {
+            // 3D 视锥剔除（线性）或 无剔除（全量合批）
+            resolveLinear(false, nullptr, cull3D, frustum, culledOut, mergedOut);
         }
 
-        m_lastVisible = visible;
+        m_lastVisible = static_cast<uint32_t>(m_resolved.size()) + mergedOut;
         m_lastDrawCalls = static_cast<uint32_t>(m_resolved.size());
         return m_resolved;
     }
