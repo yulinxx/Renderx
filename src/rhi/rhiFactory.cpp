@@ -61,8 +61,15 @@ namespace Render::RHI
             // 实际失败在 createDevice 里报告（GL 函数加载失败）。
             return true;
         case BackendKind::Metal:
+#if defined(__APPLE__)
+            // 与 GL 同一策略：后端编译进来即视为可用，真正的失败
+            // （本机没有 Metal 设备）在 createDevice 里报告。
+            return true;
+#else
+            return false;
+#endif
         case BackendKind::Vulkan:
-            // Phase 7 / Phase 8 落地前明确返回不可用，
+            // Phase 8 落地前明确返回不可用，
             // 而不是「有个空壳实现，跑起来才发现什么都没画」。
             return false;
         }
@@ -71,12 +78,11 @@ namespace Render::RHI
 
     BackendKind preferredBackend()
     {
-        // 选择顺序按平台原生程度排列，但仅返回**已实现**的后端。
-        // Metal/Vulkan 落地后在此调整顺序，同时更新 isBackendAvailable。
-        if (isBackendAvailable(BackendKind::Metal))
-        {
-            return BackendKind::Metal;
-        }
+        // 自动选择只考虑**已经能承担完整渲染**的后端。
+        // Metal 当前只覆盖到设备/表面/资源（M1），管线与绘制尚未实现，
+        // 因此在 macOS 上选中它会得到最坏的结果：能创建设备、画不出东西。
+        // M2 完成后把 Metal 提到最前（不再经过 isBackendAvailable 判断，
+        // 因为「已编译」与「能渲染」是两件事）。
         if (isBackendAvailable(BackendKind::Vulkan))
         {
             return BackendKind::Vulkan;
@@ -101,9 +107,13 @@ namespace Render::RHI
         case BackendKind::OpenGL:
             return createGlDevice(desc);
         case BackendKind::Metal:
-            logger.error("[rhi] Metal 后端尚未实现（Phase 7）。"
-                         "不做静默回退：请显式选择 OpenGL，或等待 Metal 落地。");
+#if defined(__APPLE__)
+            return createMetalDevice(desc);
+#else
+            logger.error("[rhi] Metal 后端只在 Apple 平台编译，当前平台没有该后端。"
+                         "不做静默回退：请显式选择 OpenGL。");
             return nullptr;
+#endif
         case BackendKind::Vulkan:
             logger.error("[rhi] Vulkan 后端尚未实现（Phase 8）。"
                          "不做静默回退：请显式选择 OpenGL，或等待 Vulkan 落地。");

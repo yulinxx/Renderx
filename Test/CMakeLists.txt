@@ -73,6 +73,18 @@ set(RENDERX_GL_INTERNAL_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/../src/c_api/rxCApi.cpp"
 )
 
+# Metal 后端只在 Apple 平台编译，而 rhiFactory.cpp 在 Apple 上会引用
+# createMetalDevice —— 测试目标必须一并链接这些源文件，否则 macOS 上会
+# 出现「未定义的符号 createMetalDevice」。非 Apple 平台无此问题。
+# 源文件直接复用父级 CMakeLists 收集的 RENDER_OBJC_SOURCES（src 下全部
+# .mm，即 Metal 后端），避免在测试里再硬编码一遍文件路径。
+if(APPLE)
+    list(APPEND RENDERX_GL_INTERNAL_SOURCES ${RENDER_OBJC_SOURCES})
+    enable_language(OBJCXX)
+    # 与主目标一致：Metal 源开启 ARC（只能按源文件设置）
+    set_source_files_properties(${RENDER_OBJC_SOURCES} PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+endif()
+
 add_executable(RenderxGLTests ${RENDERX_GL_TEST_SOURCES} ${RENDERX_GL_INTERNAL_SOURCES})
 
 target_compile_features(RenderxGLTests PRIVATE cxx_std_17)
@@ -105,6 +117,20 @@ if(WIN32)
     target_link_libraries(RenderxGLTests PRIVATE opengl32)
 endif()
 
+# Apple 平台测试目标也要链接 Metal 框架：它编译了 metalDevice.mm
+if(APPLE)
+    find_library(METAL_FRAMEWORK Metal REQUIRED)
+    find_library(QUARTZCORE_FRAMEWORK QuartzCore REQUIRED)
+    find_library(FOUNDATION_FRAMEWORK Foundation REQUIRED)
+    find_library(APPKIT_FRAMEWORK AppKit REQUIRED)
+    target_link_libraries(RenderxGLTests PRIVATE
+        ${METAL_FRAMEWORK}
+        ${QUARTZCORE_FRAMEWORK}
+        ${FOUNDATION_FRAMEWORK}
+        ${APPKIT_FRAMEWORK}
+    )
+endif()
+
 target_link_libraries(RenderxGLTests PRIVATE
     GTest::gtest
     GTest::gtest_main
@@ -118,6 +144,12 @@ gtest_discover_tests(RenderxGLTests)
 # ============================================================
 
 set_property(TARGET RenderxTests RenderxGLTests PROPERTY FOLDER "Tests")
+
+# 关闭 unity build：RhiCoreTests.cpp 用 using namespace Render::RHI，
+# RxRuntimeTests.cpp 用 using namespace Render::RT，合并进同一翻译单元后
+# Capabilities / BufferDesc / SurfaceDesc / FrameStats 等同名类型全部歧义。
+# 与 Engine2DTests 的处理一致（测试目标不需要 unity 的编译加速）。
+set_target_properties(RenderxGLTests PROPERTIES UNITY_BUILD OFF)
 
 if(MSVC)
     target_compile_options(RenderxTests PRIVATE /utf-8)

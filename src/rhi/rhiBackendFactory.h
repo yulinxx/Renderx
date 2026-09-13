@@ -22,4 +22,14 @@ namespace Render::RHI
     /// OpenGL 后端。上下文由 ISurface 侧管理（当前为宿主注入的 ForeignGlContext）。
     IGpuDevice* createGlDevice(const DeviceDesc& desc);
 
+#if defined(__APPLE__)
+    /**
+     * @brief Metal 后端（仅 Apple 平台编译）
+     *
+     * 非 Apple 平台没有这个符号：Metal 后端只在 APPLE 条件下纳入构建，
+     * 声明也一并条件化，避免在别的平台上写出一个链接期才失败的调用。
+     */
+    IGpuDevice* createMetalDevice(const DeviceDesc& desc);
+#endif
+
 }  // namespace Render::RHI

@@ -47,11 +47,30 @@ file(GLOB_RECURSE RENDER_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
 )
 
-# Metal / Vulkan 后端将在新 RHI（rhiGpuDevice.h）之上重建，
-# 届时按平台条件加入 src/rhi/metal/ 与 src/rhi/vulkan/ 目录。
+# Metal 后端是 Objective-C++（.mm），只在 Apple 平台纳入构建：
+# 其他平台收进来会因为缺少 Metal / QuartzCore 框架直接编译失败。
+# 因此 .mm 不进上面的 GLOB，而在 APPLE 分支里单独收集。
+if(APPLE)
+    enable_language(OBJCXX)
+    file(GLOB_RECURSE RENDER_OBJC_SOURCES CONFIGURE_DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/*.mm"
+    )
+    if(RENDER_OBJC_SOURCES)
+        list(APPEND RENDER_SOURCES ${RENDER_OBJC_SOURCES})
+        # Metal 对象由 ARC 管理：资源记录里的 id<MTL*> 成员随记录析构自动释放，
+        # 手写 release 与 ARC 混用是崩溃与泄漏的常见来源，因此统一开启 ARC。
+        # 只能按源文件设置——把 -fobjc-arc 加到 target 上会让同目标的 C++ 源报错。
+        set_source_files_properties(${RENDER_OBJC_SOURCES} PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+        message(STATUS "[Renderx] Metal backend: ${RENDER_OBJC_SOURCES}")
+    endif()
+endif()
+
+# Vulkan 后端将在新 RHI（rhiGpuDevice.h）之上重建，
+# 届时按平台条件加入 src/rhi/vulkan/ 目录。
 # 旧的 rhiVulkan.cpp / rhiMetal.mm 已删除：前者 vkCreateShaderModule
 # 从未调用（管线永远 0 个 shader stage），后者 include 了不存在的头文件、
 # 类型错乱且从未进入编译。
+# Metal 后端已按上面 APPLE 分支重新落地（src/rhi/metal/）。
 
 # 统一入口要求源文件使用绝对路径（内部 source_group 用 RELATIVE_PATH 拆分），
 # 将上面的相对路径统一归一化
@@ -306,6 +325,21 @@ if(NOT WIN32 AND ${CMAKE_CXX_COMPILER_ID} STREQUAL "GNU")
     )
 endif()
 
+# Metal 后端依赖的系统框架。只在 Apple 平台存在，其他平台连源文件都不参与编译。
+if(APPLE)
+    find_library(METAL_FRAMEWORK Metal REQUIRED)
+    find_library(QUARTZCORE_FRAMEWORK QuartzCore REQUIRED)
+    find_library(FOUNDATION_FRAMEWORK Foundation REQUIRED)
+    find_library(APPKIT_FRAMEWORK AppKit REQUIRED)
+    target_link_libraries(${PROJECT_NAME}
+        PRIVATE
+            ${METAL_FRAMEWORK}
+            ${QUARTZCORE_FRAMEWORK}
+            ${FOUNDATION_FRAMEWORK}
+            ${APPKIT_FRAMEWORK}
+    )
+endif()
+
 # ==================== 资源文件说明 ====================
 #
 # shader：已在构建期编入 DLL（见上方 Shader 嵌入段），不再有运行时拷贝与安装。
@@ -331,7 +365,16 @@ install(DIRECTORY include/render
 )
 
 # ==================== 测试配置 ====================
-find_package(GTest QUIET)
+# Config.cmake 统一 set(BUILD_RENDERX_TESTS OFF)（避免测试代码与主代码冲突），
+# 该普通变量会遮蔽下方 option()。独立构建（Renderx 为顶层项目）不受此约束，
+# 否则 Renderx 的测试永远无法运行。
+if(PROJECT_IS_TOP_LEVEL)
+    set(BUILD_RENDERX_TESTS ON)
+endif()
+
+# 与根 CMakeLists.txt 一致用 CONFIG：vcpkg 的 GTest 是 config 包，
+# 无 CONFIG 时 find_package 走 CMake 内置 FindGTest.cmake 会找不到 vcpkg 里的库。
+find_package(GTest CONFIG QUIET)
 if(GTest_FOUND)
     option(BUILD_RENDERX_TESTS "Build Renderx unit tests" ON)
     if(BUILD_RENDERX_TESTS)
