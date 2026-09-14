@@ -1,6 +1,9 @@
 // 点图元片段着色器（P3C4）—— 圆形裁剪，保留 alpha
 //
 // 与 GLSL 版（src/shader/point_p3c4.frag）对应。
+#include <metal_stdlib>
+using namespace metal;
+
 struct RxFragmentIn
 {
     float4 vColor;

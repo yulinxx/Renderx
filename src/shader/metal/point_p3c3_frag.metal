@@ -2,6 +2,9 @@
 //
 // 与 GLSL 版（src/shader/point_p3c3.frag）对应。GLSL 读 gl_PointCoord，
 // MSL 对应 [[point_coord]]（同样是 [0,1]^2）。discard 对应 discard_fragment()。
+#include <metal_stdlib>
+using namespace metal;
+
 struct RxFragmentIn
 {
     float3 vColor;

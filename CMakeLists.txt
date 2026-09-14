@@ -51,16 +51,22 @@ file(GLOB_RECURSE RENDER_SOURCES CONFIGURE_DEPENDS
 # 其他平台收进来会因为缺少 Metal / QuartzCore 框架直接编译失败。
 # 因此 .mm 不进上面的 GLOB，而在 APPLE 分支里单独收集。
 if(APPLE)
-    enable_language(OBJCXX)
     file(GLOB_RECURSE RENDER_OBJC_SOURCES CONFIGURE_DEPENDS
         "${CMAKE_CURRENT_SOURCE_DIR}/src/*.mm"
     )
     if(RENDER_OBJC_SOURCES)
         list(APPEND RENDER_SOURCES ${RENDER_OBJC_SOURCES})
+        # .mm 由 clang++ 按扩展名自动识别为 Objective-C++（与 Main/UICommon
+        # 目标的做法一致）。切勿设置 LANGUAGE CXX——那会让 CMake 追加
+        # -x c++，强制按纯 C++ 解析，Foundation/Metal 的 ObjC 语法全部报错。
         # Metal 对象由 ARC 管理：资源记录里的 id<MTL*> 成员随记录析构自动释放，
         # 手写 release 与 ARC 混用是崩溃与泄漏的常见来源，因此统一开启 ARC。
         # 只能按源文件设置——把 -fobjc-arc 加到 target 上会让同目标的 C++ 源报错。
-        set_source_files_properties(${RENDER_OBJC_SOURCES} PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+        # SKIP_UNITY_BUILD_INCLUSION：.mm 不能与 .cpp 混进同一个 .cxx unity batch。
+        set_source_files_properties(${RENDER_OBJC_SOURCES} PROPERTIES
+            COMPILE_OPTIONS "-fobjc-arc"
+            SKIP_UNITY_BUILD_INCLUSION ON
+        )
         message(STATUS "[Renderx] Metal backend: ${RENDER_OBJC_SOURCES}")
     endif()
 endif()

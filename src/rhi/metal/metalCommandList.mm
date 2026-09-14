@@ -74,7 +74,7 @@ namespace Render::RHI::metal
         {
             m_device->log().error("[metal] beginRenderPass: no command buffer for this frame "
                                   "(beginFrame not called?)");
-            return RhiResult::ErrorInvalidHandle;
+            return RhiResult::ErrorNotInitialized;
         }
         if (m_renderEncoder != nil)
         {
