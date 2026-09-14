@@ -153,18 +153,15 @@ namespace Render::RHI::gl
             {
                 return;
             }
-            // 通知级刷屏（NVIDIA 会报缓冲区内存位置之类的琐事），降级到 debug
+            // 通知级刷屏（NVIDIA 会报缓冲区内存位置之类的琐事），直接忽略
             if (severity == GL_DEBUG_SEVERITY_NOTIFICATION)
             {
-                log->debug("[gl][driver] %s", message);
                 return;
             }
             // GL_DEBUG_TYPE_OTHER 是驱动的闲聊（"driver allocated storage for
-            // renderbuffer 1" 之类），不是问题。它却常带 LOW 严重度，按 warn 打出来会
-            // 稀释真正的告警 —— 日志里的 warning 必须条条值得看，否则等于没有告警。
+            // renderbuffer 1" 之类），不是问题，忽略以避免刷屏
             if (type == GL_DEBUG_TYPE_OTHER)
             {
-                log->debug("[gl][driver] %s", message);
                 return;
             }
             const char* level = severity == GL_DEBUG_SEVERITY_HIGH     ? "HIGH"
