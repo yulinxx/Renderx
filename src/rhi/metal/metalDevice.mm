@@ -8,9 +8,11 @@
  */
 
 #import <AppKit/AppKit.h>
+#import <dispatch/dispatch.h>
 
 #include "rhi/metal/metalDevice.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 
@@ -36,6 +38,39 @@ namespace Render::RHI::metal
             (void)access;
             return MTLResourceStorageModeShared;
         }
+
+        /**
+         * @brief 按记录里的语言建立 MTLLibrary
+         *
+         * 预编译 metallib 走 data 路径（生产路径）；MSL 文本走 source 路径，
+         * 需运行期编译，只作为没有构建期工具链时的回退。
+         */
+        id<MTLLibrary> createLibrary(id<MTLDevice> device, const MetalShaderRecord& record,
+                                     NSError** error)
+        {
+            if (record.bytes.empty())
+            {
+                return nil;
+            }
+            if (record.language == ShaderLanguage::MetalSource)
+            {
+                NSString* source = [[NSString alloc] initWithBytes:record.bytes.data()
+                                                            length:record.bytes.size()
+                                                          encoding:NSUTF8StringEncoding];
+                if (source == nil)
+                {
+                    return nil;
+                }
+                return [device newLibraryWithSource:source options:nil error:error];
+            }
+            dispatch_data_t data = dispatch_data_create(record.bytes.data(), record.bytes.size(),
+                                                        nullptr, DISPATCH_DATA_DESTRUCTOR_DEFAULT);
+            if (data == nullptr)
+            {
+                return nil;
+            }
+            return [device newLibraryWithData:data error:error];
+        }
     }  // namespace
 
     // ======================================================================
@@ -56,7 +91,7 @@ namespace Render::RHI::metal
         NSView* view = (__bridge NSView*)desc.window.handleA;
         if (view == nil)
         {
-            m_log.error("[metal] createSurface: CocoaNsView 的 handleA 为空");
+            m_log.error("[metal] createSurface: CocoaNsView handleA is null");
             return;
         }
 
@@ -126,7 +161,7 @@ namespace Render::RHI::metal
         m_depthNative = [m_device->nativeDevice() newTextureWithDescriptor:desc];
         if (m_depthNative == nil)
         {
-            m_log.error("[metal] 深度纹理创建失败（%ux%u）", m_extent.width, m_extent.height);
+            m_log.error("[metal] depth texture creation failed (%ux%u)", m_extent.width, m_extent.height);
             return;
         }
 
@@ -148,7 +183,7 @@ namespace Render::RHI::metal
     {
         if (m_layer == nil)
         {
-            m_log.error("[metal] acquireNextImage: 表面未正确初始化");
+            m_log.error("[metal] acquireNextImage: surface is not initialized correctly");
             return RhiResult::ErrorSurfaceLost;
         }
         // 尺寸为 0（窗口最小化）时安全跳过：此时既没有 drawable 也不必渲染
@@ -159,7 +194,7 @@ namespace Render::RHI::metal
         }
         if (m_acquired)
         {
-            m_log.error("[metal] acquireNextImage: 本帧已获取过 drawable");
+            m_log.error("[metal] acquireNextImage: a drawable was already acquired this frame");
             return RhiResult::ErrorUnknown;
         }
 
@@ -170,7 +205,7 @@ namespace Render::RHI::metal
         if (m_drawable == nil)
         {
             dispatch_semaphore_signal(m_inFlight);
-            m_log.error("[metal] acquireNextImage: nextDrawable 返回 nil");
+            m_log.error("[metal] acquireNextImage: nextDrawable returned nil");
             return RhiResult::ErrorSurfaceLost;
         }
 
@@ -189,7 +224,7 @@ namespace Render::RHI::metal
     {
         if (m_layer == nil)
         {
-            m_log.error("[metal] present: 表面未正确初始化");
+            m_log.error("[metal] present: surface is not initialized correctly");
             return RhiResult::ErrorSurfaceLost;
         }
         if (!m_acquired || m_drawable == nil)
@@ -201,14 +236,14 @@ namespace Render::RHI::metal
         id<MTLCommandBuffer> commandBuffer = m_device->commands().commandBuffer();
         if (commandBuffer == nil)
         {
-            m_log.error("[metal] present: 本帧没有命令缓冲，beginFrame 未调用？");
+            m_log.error("[metal] present: no command buffer for this frame (beginFrame not called?)");
             releaseDrawable();
             dispatch_semaphore_signal(m_inFlight);
             return RhiResult::ErrorInvalidHandle;
         }
         if (m_device->commands().inRenderPass())
         {
-            m_log.warn("[metal] present: 仍有未结束的 RenderPass，已自动收尾");
+            m_log.warn("[metal] present: an unfinished RenderPass is still open; ending it now");
             m_device->commands().endRenderPass();
         }
 
@@ -253,13 +288,13 @@ namespace Render::RHI::metal
         m_device = MTLCreateSystemDefaultDevice();
         if (m_device == nil)
         {
-            m_log.error("[metal] MTLCreateSystemDefaultDevice 失败：本机没有可用的 Metal 设备");
+            m_log.error("[metal] MTLCreateSystemDefaultDevice failed: no usable Metal device on this machine");
             return;
         }
         m_queue = [m_device newCommandQueue];
         if (m_queue == nil)
         {
-            m_log.error("[metal] MTLCommandQueue 创建失败");
+            m_log.error("[metal] MTLCommandQueue creation failed");
             m_device = nil;
             return;
         }
@@ -273,8 +308,8 @@ namespace Render::RHI::metal
             // 泄漏是宿主的生命周期错误：surface 必须先于 device 销毁。
             // 这里不代为删除——surface 析构会回调本设备销毁纹理，
             // 在设备析构过程中回调自己是最容易写出 use-after-free 的地方。
-            m_log.error("[metal] 设备销毁时仍有 %zu 个表面未释放"
-                        "（应在 rxRuntimeDestroy 前先销毁全部 Surface）",
+            m_log.error("[metal] %zu surfaces are still alive at device destruction "
+                        "(destroy all surfaces before rxRuntimeDestroy)",
                         m_surfaces.size());
         }
         m_surfaces.clear();
@@ -325,21 +360,21 @@ namespace Render::RHI::metal
         m_caps.storageBufferOffsetAlignment = 256;
         m_caps.maxFramesInFlight = 3;
 
-        m_log.info("[metal] 设备就绪：%s", m_caps.deviceName);
+        m_log.info("[metal] device ready: %s", m_caps.deviceName);
     }
 
     ISurface* MetalDevice::createSurface(const SurfaceDesc& desc)
     {
         if (desc.window.kind != NativeWindow::Kind::CocoaNsView)
         {
-            m_log.error("[metal] createSurface: 仅支持 CocoaNsView（handleA = NSView*），"
-                        "收到 kind=%d。其余窗口形态不在本后端职责内。",
+            m_log.error("[metal] createSurface: only CocoaNsView is supported (handleA = NSView*), "
+                        "got kind=%d; other window kinds are out of this backend's scope.",
                         static_cast<int>(desc.window.kind));
             return nullptr;
         }
         if (m_device == nil)
         {
-            m_log.error("[metal] createSurface: 设备不可用");
+            m_log.error("[metal] createSurface: device is unavailable");
             return nullptr;
         }
 
@@ -371,7 +406,7 @@ namespace Render::RHI::metal
                 return;
             }
         }
-        m_log.warn("[metal] destroySurface: 表面不属于本设备");
+        m_log.warn("[metal] destroySurface: the surface does not belong to this device");
     }
 
     TextureHandle MetalDevice::updateBoundTexture(TextureHandle handle, id<MTLTexture> texture,
@@ -399,18 +434,25 @@ namespace Render::RHI::metal
     {
         if (desc.data == nullptr || desc.sizeBytes == 0)
         {
-            m_log.error("[metal] createShader: 数据为空");
+            m_log.error("[metal] createShader: empty data");
             return ShaderHandle{};
         }
         if (desc.language != ShaderLanguage::MetalLib && desc.language != ShaderLanguage::MetalSource)
         {
-            m_log.error("[metal] createShader: 语言 %d 不是 Metal 可接受的形式（需要 metallib 或 MSL）",
+            m_log.error("[metal] createShader: language %d is not a Metal-acceptable form "
+                        "(expected metallib or MSL source)",
                         static_cast<int>(desc.language));
             return ShaderHandle{};
         }
 
         MetalShaderRecord record{};
         record.language = desc.language;
+        // 入口名随句柄保存：MSL 的顶点/片段函数不能都叫 main，
+        // 「这个句柄当哪一段用」只有调用方知道。
+        if (desc.entryPoint != nullptr && desc.entryPoint[0] != '\0')
+        {
+            record.entryPoint = desc.entryPoint;
+        }
         record.bytes.resize(static_cast<size_t>(desc.sizeBytes));
         std::memcpy(record.bytes.data(), desc.data, static_cast<size_t>(desc.sizeBytes));
         return m_shaders.add(std::move(record));
@@ -420,38 +462,214 @@ namespace Render::RHI::metal
     {
         if (!m_shaders.remove(shader))
         {
-            m_log.warn("[metal] destroyShader: 句柄无效或已销毁");
+            m_log.warn("[metal] destroyShader: invalid or already-destroyed handle");
         }
     }
 
     PipelineHandle MetalDevice::createGraphicsPipeline(const GraphicsPipelineDesc& desc)
     {
-        // M2 落地：MTLRenderPipelineDescriptor + MTLVertexDescriptor 映射。
-        // 现阶段明确失败，避免上层拿到一个「看起来有效但画不出东西」的管线。
-        (void)desc;
-        m_log.error("[metal] createGraphicsPipeline 尚未实现（M2）。当前版本只支持设备/表面/资源。");
-        return PipelineHandle{};
+        const MetalShaderRecord* vs = m_shaders.get(desc.vertexShader);
+        const MetalShaderRecord* fs = m_shaders.get(desc.fragmentShader);
+        if (vs == nullptr || fs == nullptr)
+        {
+            m_log.error("[metal] createGraphicsPipeline: invalid vertex or fragment shader handle");
+            return PipelineHandle{};
+        }
+        if (desc.attributeCount > kMaxVertexAttributes || desc.bufferLayoutCount > kMaxVertexBufferSlots)
+        {
+            m_log.error("[metal] createGraphicsPipeline: too many attributes/buffer slots (attr=%u slots=%u)",
+                        desc.attributeCount, desc.bufferLayoutCount);
+            return PipelineHandle{};
+        }
+        if (desc.pushConstantBytes > kMaxPushConstantBytes)
+        {
+            m_log.error("[metal] createGraphicsPipeline: pushConstantBytes=%u exceeds limit %u",
+                        desc.pushConstantBytes, kMaxPushConstantBytes);
+            return PipelineHandle{};
+        }
+        if (desc.raster.fillMode == FillMode::Wireframe)
+        {
+            // Metal 没有多边形线框模式。这里明确降级为实心并留下记录——
+            // 上层应先查 Capabilities::wireframeFill 再决定是否改走三角化线框。
+            m_log.warn("[metal] createGraphicsPipeline: Wireframe fill is unsupported by Metal; "
+                       "the pipeline renders solid (%s)",
+                       desc.debugName != nullptr ? desc.debugName : "?");
+        }
+
+        NSError* error = nil;
+        id<MTLLibrary> vsLibrary = createLibrary(m_device, *vs, &error);
+        if (vsLibrary == nil)
+        {
+            m_log.error("[metal] createGraphicsPipeline: vertex library failed: %s",
+                        error != nil ? [[error localizedDescription] UTF8String] : "unknown");
+            return PipelineHandle{};
+        }
+        id<MTLLibrary> fsLibrary = createLibrary(m_device, *fs, &error);
+        if (fsLibrary == nil)
+        {
+            m_log.error("[metal] createGraphicsPipeline: fragment library failed: %s",
+                        error != nil ? [[error localizedDescription] UTF8String] : "unknown");
+            return PipelineHandle{};
+        }
+
+        id<MTLFunction> vsFunction =
+            [vsLibrary newFunctionWithName:[NSString stringWithUTF8String:vs->entryPoint.c_str()]];
+        if (vsFunction == nil)
+        {
+            m_log.error("[metal] createGraphicsPipeline: vertex entry point \"%s\" not found",
+                        vs->entryPoint.c_str());
+            return PipelineHandle{};
+        }
+        id<MTLFunction> fsFunction =
+            [fsLibrary newFunctionWithName:[NSString stringWithUTF8String:fs->entryPoint.c_str()]];
+        if (fsFunction == nil)
+        {
+            m_log.error("[metal] createGraphicsPipeline: fragment entry point \"%s\" not found",
+                        fs->entryPoint.c_str());
+            return PipelineHandle{};
+        }
+
+        MTLRenderPipelineDescriptor* native = [[MTLRenderPipelineDescriptor alloc] init];
+        if (desc.debugName != nullptr)
+        {
+            native.label = [NSString stringWithUTF8String:desc.debugName];
+        }
+        native.vertexFunction = vsFunction;
+        native.fragmentFunction = fsFunction;
+
+        // ---- 顶点布局：RHI 的 attributes/bufferLayouts 直接映射为 MTLVertexDescriptor ----
+        MTLVertexDescriptor* vertexDescriptor = [[MTLVertexDescriptor alloc] init];
+        for (uint32_t i = 0; i < desc.bufferLayoutCount; ++i)
+        {
+            const VertexBufferLayout& layout = desc.bufferLayouts[i];
+            if (layout.slot >= kMaxVertexBufferSlots)
+            {
+                continue;
+            }
+            vertexDescriptor.layouts[layout.slot].stride = layout.stride;
+            vertexDescriptor.layouts[layout.slot].stepFunction = layout.perInstance
+                                                                    ? MTLVertexStepFunctionPerInstance
+                                                                    : MTLVertexStepFunctionPerVertex;
+            vertexDescriptor.layouts[layout.slot].stepRate = 1;
+        }
+        for (uint32_t i = 0; i < desc.attributeCount; ++i)
+        {
+            const VertexAttribute& attr = desc.attributes[i];
+            if (attr.bufferSlot >= kMaxVertexBufferSlots)
+            {
+                m_log.error("[metal] createGraphicsPipeline: attribute location=%u references slot=%u "
+                            "beyond limit %u",
+                            attr.location, attr.bufferSlot, kMaxVertexBufferSlots);
+                return PipelineHandle{};
+            }
+            const MTLVertexFormat format = toMetalVertexFormat(attr.type);
+            if (format == MTLVertexFormatInvalid)
+            {
+                m_log.error("[metal] createGraphicsPipeline: attribute location=%u has a type that "
+                            "Metal cannot express (%d)",
+                            attr.location, static_cast<int>(attr.type));
+                return PipelineHandle{};
+            }
+            vertexDescriptor.attributes[attr.location].format = format;
+            vertexDescriptor.attributes[attr.location].offset = attr.offset;
+            vertexDescriptor.attributes[attr.location].bufferIndex = attr.bufferSlot;
+        }
+        native.vertexDescriptor = vertexDescriptor;
+
+        // ---- 颜色附件 ----
+        const uint32_t colorCount = (std::min)(desc.colorAttachmentCount, kMaxColorAttachments);
+        for (uint32_t i = 0; i < colorCount; ++i)
+        {
+            MTLRenderPipelineColorAttachmentDescriptor* color = native.colorAttachments[i];
+            color.pixelFormat = toMetalFormat(desc.colorFormats[i]);
+            const ColorBlendState& blend = desc.blend[i];
+            color.blendingEnabled = blend.enable ? YES : NO;
+            color.sourceRGBBlendFactor = toMetalBlendFactor(blend.srcColor);
+            color.destinationRGBBlendFactor = toMetalBlendFactor(blend.dstColor);
+            color.rgbBlendOperation = toMetalBlendOp(blend.colorOp);
+            color.sourceAlphaBlendFactor = toMetalBlendFactor(blend.srcAlpha);
+            color.destinationAlphaBlendFactor = toMetalBlendFactor(blend.dstAlpha);
+            color.alphaBlendOperation = toMetalBlendOp(blend.alphaOp);
+        }
+
+        // ---- 深度状态（对比/写开关在 MTLDepthStencilState 里，由编码器下发）----
+        id<MTLDepthStencilState> depthState = nil;
+        if (desc.depthStencil.format != Format::Unknown && formatIsDepth(desc.depthStencil.format))
+        {
+            native.depthAttachmentPixelFormat = toMetalFormat(desc.depthStencil.format);
+
+            MTLDepthStencilDescriptor* depthDesc = [[MTLDepthStencilDescriptor alloc] init];
+            // Metal 没有独立的 depth test 开关：关闭测试等价于 compare = Always
+            depthDesc.depthCompareFunction = desc.depthStencil.depthTestEnable
+                                                 ? toMetalCompareOp(desc.depthStencil.depthCompare)
+                                                 : MTLCompareFunctionAlways;
+            depthDesc.depthWriteEnabled = desc.depthStencil.depthWriteEnable ? YES : NO;
+            depthState = [m_device newDepthStencilStateWithDescriptor:depthDesc];
+            if (depthState == nil)
+            {
+                m_log.error("[metal] createGraphicsPipeline: depth-stencil state creation failed");
+                return PipelineHandle{};
+            }
+        }
+
+        id<MTLRenderPipelineState> state = [m_device newRenderPipelineStateWithDescriptor:native
+                                                                                  error:&error];
+        if (state == nil)
+        {
+            m_log.error("[metal] createGraphicsPipeline failed (%s): %s",
+                        desc.debugName != nullptr ? desc.debugName : "?",
+                        error != nil ? [[error localizedDescription] UTF8String] : "unknown");
+            return PipelineHandle{};
+        }
+
+        MetalPipelineRecord record{};
+        record.state = state;
+        record.depthStencilState = depthState;
+        record.topology = desc.topology;
+        record.attributeCount = desc.attributes != nullptr ? desc.attributeCount : 0;
+        for (uint32_t i = 0; i < record.attributeCount; ++i)
+        {
+            record.attributes[i] = desc.attributes[i];
+        }
+        record.bufferLayoutCount = desc.bufferLayouts != nullptr ? desc.bufferLayoutCount : 0;
+        for (uint32_t i = 0; i < record.bufferLayoutCount; ++i)
+        {
+            record.bufferLayouts[i] = desc.bufferLayouts[i];
+        }
+        record.raster = desc.raster;
+        record.depthStencil = desc.depthStencil;
+        record.pushConstantBytes = desc.pushConstantBytes;
+
+        const PipelineHandle handle = m_pipelines.add(std::move(record));
+        if (!handle.valid())
+        {
+            m_log.error("[metal] createGraphicsPipeline: pipeline pool exhausted");
+            return PipelineHandle{};
+        }
+        return handle;
     }
 
     PipelineHandle MetalDevice::createComputePipeline(const ComputePipelineDesc& desc)
     {
         // M3 落地：newComputePipelineStateWithFunction
         (void)desc;
-        m_log.error("[metal] createComputePipeline 尚未实现（M3）。");
+        m_log.error("[metal] createComputePipeline is not implemented yet (M3)");
         return PipelineHandle{};
     }
 
     void MetalDevice::destroyPipeline(PipelineHandle pipeline)
     {
-        (void)pipeline;
-        m_log.warn("[metal] destroyPipeline: 管线尚未实现（M2）");
+        if (!m_pipelines.remove(pipeline))
+        {
+            m_log.warn("[metal] destroyPipeline: invalid or already-destroyed handle");
+        }
     }
 
     BufferHandle MetalDevice::createBuffer(const BufferDesc& desc)
     {
         if (desc.size == 0)
         {
-            m_log.error("[metal] createBuffer: size 为 0");
+            m_log.error("[metal] createBuffer: size is 0");
             return BufferHandle{};
         }
 
@@ -459,7 +677,7 @@ namespace Render::RHI::metal
         id<MTLBuffer> buffer = [m_device newBufferWithLength:desc.size options:options];
         if (buffer == nil)
         {
-            m_log.error("[metal] createBuffer 失败（%llu 字节）",
+            m_log.error("[metal] createBuffer failed (%llu bytes)",
                         static_cast<unsigned long long>(desc.size));
             return BufferHandle{};
         }
@@ -478,7 +696,7 @@ namespace Render::RHI::metal
     {
         if (!m_buffers.remove(buffer))
         {
-            m_log.warn("[metal] destroyBuffer: 句柄无效或已销毁");
+            m_log.warn("[metal] destroyBuffer: invalid or already-destroyed handle");
         }
     }
 
@@ -488,17 +706,17 @@ namespace Render::RHI::metal
         MetalBufferRecord* record = m_buffers.get(buffer);
         if (record == nullptr || record->buffer == nil)
         {
-            m_log.error("[metal] writeBuffer: 缓冲区句柄无效");
+            m_log.error("[metal] writeBuffer: invalid buffer handle");
             return RhiResult::ErrorInvalidArgument;
         }
         if (data == nullptr || sizeBytes == 0)
         {
-            m_log.error("[metal] writeBuffer: 数据为空");
+            m_log.error("[metal] writeBuffer: data is null");
             return RhiResult::ErrorInvalidArgument;
         }
         if (offset + sizeBytes > record->desc.size)
         {
-            m_log.error("[metal] writeBuffer: 越界（缓冲 %llu 字节，请求 %llu+%llu）",
+            m_log.error("[metal] writeBuffer: out of range (buffer %llu bytes, requested %llu+%llu)",
                         static_cast<unsigned long long>(record->desc.size),
                         static_cast<unsigned long long>(offset),
                         static_cast<unsigned long long>(sizeBytes));
@@ -517,12 +735,12 @@ namespace Render::RHI::metal
         MetalBufferRecord* record = m_buffers.get(buffer);
         if (record == nullptr || record->buffer == nil)
         {
-            m_log.error("[metal] mapBuffer: 缓冲区句柄无效");
+            m_log.error("[metal] mapBuffer: invalid buffer handle");
             return range;
         }
         if (offset + sizeBytes > record->desc.size)
         {
-            m_log.error("[metal] mapBuffer: 越界（缓冲 %llu 字节，请求 %llu+%llu）",
+            m_log.error("[metal] mapBuffer: out of range (buffer %llu bytes, requested %llu+%llu)",
                         static_cast<unsigned long long>(record->desc.size),
                         static_cast<unsigned long long>(offset),
                         static_cast<unsigned long long>(sizeBytes));
@@ -588,7 +806,7 @@ namespace Render::RHI::metal
         id<MTLTexture> texture = [m_device newTextureWithDescriptor:native];
         if (texture == nil)
         {
-            m_log.error("[metal] createTexture 失败（%ux%u）", desc.width, desc.height);
+            m_log.error("[metal] createTexture failed (%ux%u)", desc.width, desc.height);
             return TextureHandle{};
         }
         if (desc.debugName != nullptr)
@@ -606,7 +824,7 @@ namespace Render::RHI::metal
     {
         if (!m_textures.remove(texture))
         {
-            m_log.warn("[metal] destroyTexture: 句柄无效或已销毁");
+            m_log.warn("[metal] destroyTexture: invalid or already-destroyed handle");
         }
     }
 
@@ -616,12 +834,12 @@ namespace Render::RHI::metal
         MetalTextureRecord* record = m_textures.get(texture);
         if (record == nullptr || record->texture == nil)
         {
-            m_log.error("[metal] writeTexture: 纹理句柄无效");
+            m_log.error("[metal] writeTexture: invalid texture handle");
             return RhiResult::ErrorInvalidArgument;
         }
         if (data == nullptr || region.width == 0 || region.height == 0)
         {
-            m_log.error("[metal] writeTexture: 区域或数据为空");
+            m_log.error("[metal] writeTexture: region or data is empty");
             return RhiResult::ErrorInvalidArgument;
         }
 
@@ -630,7 +848,7 @@ namespace Render::RHI::metal
         const uint64_t required = static_cast<uint64_t>(tightPitch) * region.height;
         if (sizeBytes < required)
         {
-            m_log.error("[metal] writeTexture: 数据不足（需要 %llu，给了 %llu）",
+            m_log.error("[metal] writeTexture: not enough data (need %llu, got %llu)",
                         static_cast<unsigned long long>(required),
                         static_cast<unsigned long long>(sizeBytes));
             return RhiResult::ErrorInvalidArgument;
@@ -644,7 +862,7 @@ namespace Render::RHI::metal
                                                       options:MTLResourceStorageModeShared];
         if (staging == nil)
         {
-            m_log.error("[metal] writeTexture: 暂存缓冲分配失败");
+            m_log.error("[metal] writeTexture: staging buffer allocation failed");
             return RhiResult::ErrorOutOfMemory;
         }
 
@@ -696,7 +914,7 @@ namespace Render::RHI::metal
         id<MTLSamplerState> sampler = [m_device newSamplerStateWithDescriptor:native];
         if (sampler == nil)
         {
-            m_log.error("[metal] createSampler 失败");
+            m_log.error("[metal] createSampler failed");
             return SamplerHandle{};
         }
 
@@ -710,7 +928,7 @@ namespace Render::RHI::metal
     {
         if (!m_samplers.remove(sampler))
         {
-            m_log.warn("[metal] destroySampler: 句柄无效或已销毁");
+            m_log.warn("[metal] destroySampler: invalid or already-destroyed handle");
         }
     }
 
@@ -732,7 +950,7 @@ namespace Render::RHI::metal
     {
         if (!m_bindGroups.remove(group))
         {
-            m_log.warn("[metal] destroyBindGroup: 句柄无效或已销毁");
+            m_log.warn("[metal] destroyBindGroup: invalid or already-destroyed handle");
         }
     }
 
@@ -740,12 +958,12 @@ namespace Render::RHI::metal
     {
         if (surface == nullptr)
         {
-            m_log.error("[metal] beginFrame: surface 为空");
+            m_log.error("[metal] beginFrame: surface is null");
             return nullptr;
         }
         if (m_inFrame)
         {
-            m_log.error("[metal] beginFrame: 上一帧未 submitFrame");
+            m_log.error("[metal] beginFrame: previous frame was not submitted");
             return nullptr;
         }
 
@@ -757,14 +975,14 @@ namespace Render::RHI::metal
         }
         if (!owned)
         {
-            m_log.error("[metal] beginFrame: 表面不属于本设备");
+            m_log.error("[metal] beginFrame: the surface does not belong to this device");
             return nullptr;
         }
 
         id<MTLCommandBuffer> commandBuffer = [m_queue commandBuffer];
         if (commandBuffer == nil)
         {
-            m_log.error("[metal] beginFrame: MTLCommandBuffer 创建失败");
+            m_log.error("[metal] beginFrame: MTLCommandBuffer creation failed");
             return nullptr;
         }
 
@@ -779,7 +997,7 @@ namespace Render::RHI::metal
     {
         if (!m_inFrame)
         {
-            m_log.error("[metal] submitFrame: 本帧未 beginFrame");
+            m_log.error("[metal] submitFrame: beginFrame was not called for this frame");
             return RhiResult::ErrorUnknown;
         }
         // Metal 的提交与呈现无法分离（presentDrawable 必须在 commit 之前设置），
@@ -804,12 +1022,12 @@ namespace Render::RHI::metal
         MetalTextureRecord* record = m_textures.get(texture);
         if (record == nullptr || record->texture == nil)
         {
-            m_log.error("[metal] readTexture: 纹理句柄无效");
+            m_log.error("[metal] readTexture: invalid texture handle");
             return RhiResult::ErrorInvalidArgument;
         }
         if (outPixels == nullptr || region.width == 0 || region.height == 0)
         {
-            m_log.error("[metal] readTexture: 输出缓冲为空或区域为 0");
+            m_log.error("[metal] readTexture: output buffer is null or the region is empty");
             return RhiResult::ErrorInvalidArgument;
         }
 
@@ -818,7 +1036,7 @@ namespace Render::RHI::metal
         const uint64_t required = static_cast<uint64_t>(tightPitch) * region.height;
         if (bufferSize < required)
         {
-            m_log.error("[metal] readTexture: 输出缓冲不足（需要 %llu，给了 %llu）",
+            m_log.error("[metal] readTexture: output buffer too small (need %llu, got %llu)",
                         static_cast<unsigned long long>(required),
                         static_cast<unsigned long long>(bufferSize));
             return RhiResult::ErrorInvalidArgument;
@@ -833,7 +1051,7 @@ namespace Render::RHI::metal
                                                       options:MTLResourceStorageModeShared];
         if (staging == nil)
         {
-            m_log.error("[metal] readTexture: 暂存缓冲分配失败");
+            m_log.error("[metal] readTexture: staging buffer allocation failed");
             return RhiResult::ErrorOutOfMemory;
         }
 
@@ -913,7 +1131,7 @@ namespace Render::RHI
             delete device;
             return nullptr;
         }
-        logger.debug("[metal] createMetalDevice 成功（%s）", device->capabilities().deviceName);  // 创建 Metal 设备
+        logger.debug("[metal] createMetalDevice succeeded (%s)", device->capabilities().deviceName);  // 创建 Metal 设备
         return device;
     }
 

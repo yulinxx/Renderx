@@ -990,6 +990,55 @@ namespace Render::RT::detail
 
     // ==================== Runtime：管线 ====================
 
+    namespace
+    {
+        /**
+         * @brief GLSL 名 -> Metal metallib 的嵌入名
+         *
+         * 约定（与 CMake 的 .metal 编译规则一致）：
+         *   world_p3c3.vert -> world_p3c3_vert.metallib
+         *   world_p3c3.frag -> world_p3c3_frag.metallib
+         *
+         * 每个 metallib 只含一个入口函数：片段是共享的（world_p3c3.frag 同时
+         * 服务 world_p3c3 与 screen_p3c3 两条管线），把顶点与片段打包进同一份库
+         * 会让「共享片段」无法被独立引用。
+         */
+        bool makeMetalShaderName(const char* glslName, char* out, size_t outSize)
+        {
+            if (glslName == nullptr || out == nullptr || outSize == 0)
+            {
+                return false;
+            }
+            const char* dot = std::strrchr(glslName, '.');
+            if (dot == nullptr || dot == glslName || dot[1] == '\0')
+            {
+                return false;
+            }
+            const int written = std::snprintf(out, outSize, "%.*s_%s.metallib",
+                                              static_cast<int>(dot - glslName), glslName, dot + 1);
+            return written > 0 && static_cast<size_t>(written) < outSize;
+        }
+
+        /// MSL 的顶点/片段函数不能都叫 main，故按 stage 约定入口名
+        const char* metalEntryPointFor(const char* glslName)
+        {
+            if (glslName == nullptr)
+            {
+                return "main";
+            }
+            const char* dot = std::strrchr(glslName, '.');
+            if (dot != nullptr && std::strcmp(dot, ".vert") == 0)
+            {
+                return "vs_main";
+            }
+            if (dot != nullptr && std::strcmp(dot, ".frag") == 0)
+            {
+                return "fs_main";
+            }
+            return "main";
+        }
+    }  // namespace
+
     RHI::ShaderHandle Runtime::shaderByName(const char* name)
     {
         if (!name || !device)
@@ -1002,21 +1051,49 @@ namespace Render::RT::detail
             return cached->second;
         }
 
-        const char* source = shader::glslSource(name);
-        if (!source)
-        {
-            // shaderLibrary 本身不打印日志（保持零业务耦合），
-            // 因此这里把可用条目数一并报出来，便于区分「名字写错」
-            // 与「shader 根本没被嵌进来」。
-            log.error("[rt] 内建 shader \"%s\" 不存在（已嵌入 %u 个条目）", name, shader::count());
-            return {};
-        }
-
+        // 名字刻意不叫 caps：Runtime 已有同名成员，局部变量会遮蔽它（/W4 的 C4458）
+        const RHI::Capabilities& backendCaps = device->capabilities();
         RHI::ShaderDesc desc{};
-        desc.language = RHI::ShaderLanguage::GlslSource;
-        desc.data = source;
-        desc.sizeBytes = std::strlen(source);
         desc.debugName = name;
+
+        if (backendCaps.acceptedShaderLanguage == RHI::ShaderLanguage::MetalLib)
+        {
+            // Metal：GLSL 名映射为 metallib 的嵌入名，入口名按 stage 区分。
+            char metalName[128] = {};
+            if (!makeMetalShaderName(name, metalName, sizeof(metalName)))
+            {
+                log.error("[rt] cannot derive a Metal shader name from \"%s\"", name);
+                return {};
+            }
+            shader::ShaderBlob blob{};
+            if (!shader::find(metalName, shader::Language::MetalLib, &blob) || blob.data == nullptr ||
+                blob.sizeBytes == 0)
+            {
+                // shaderLibrary 本身不打印日志（保持零业务耦合），
+                // 因此这里把可用条目数一并报出来，便于区分「名字写错」
+                // 与「shader 根本没被嵌进来」。
+                log.error("[rt] built-in Metal shader \"%s\" not found (%u entries embedded)", metalName,
+                          shader::count());
+                return {};
+            }
+            desc.language = RHI::ShaderLanguage::MetalLib;
+            desc.data = blob.data;
+            desc.sizeBytes = blob.sizeBytes;
+            desc.entryPoint = metalEntryPointFor(name);
+        }
+        else
+        {
+            const char* source = shader::glslSource(name);
+            if (!source)
+            {
+                log.error("[rt] built-in shader \"%s\" not found (%u entries embedded)", name,
+                          shader::count());
+                return {};
+            }
+            desc.language = RHI::ShaderLanguage::GlslSource;
+            desc.data = source;
+            desc.sizeBytes = std::strlen(source);
+        }
 
         const RHI::ShaderHandle handle = device->createShader(desc);
         if (handle.valid())

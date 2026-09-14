@@ -163,6 +163,50 @@ set(RENDERX_SHADER_INCLUDES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/rx_lighting_3d.glsl
 )
 
+# ==================== Metal shader 编译（仅 Apple 平台） ====================
+#
+# 手写 MSL 在**构建期**用 xcrun metal 编译成 .metallib 再嵌入 DLL，与 GL 侧
+# 「构建期嵌入、运行期零 IO」同一条契约。运行时用 newLibraryWithSource 编译
+# 会把风险从构建期挪回运行期，且首帧要编译十几个 shader。
+#
+# 命名约定必须与 src/rt/rxRuntime.cpp 的 makeMetalShaderName 一致：
+#   src/shader/metal/world_p3c3_vert.metal -> <build>/metallib/world_p3c3_vert.metallib
+# 每个 .metal 只含一个入口函数（vs_main 或 fs_main）。片段是共享的
+# （world_p3c3.frag 同时服务 world_p3c3 与 screen_p3c3），因此不能把顶点与
+# 片段打包进同一份库——那样共享片段无法被独立引用。
+if(APPLE)
+    file(GLOB_RECURSE RENDERX_METAL_SOURCES CONFIGURE_DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/shader/metal/*.metal"
+    )
+    set(RENDERX_METAL_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/shader/metal")
+    set(RENDERX_METALLIB_DIR "${CMAKE_CURRENT_BINARY_DIR}/metallib")
+    set(RENDERX_METALLIB_OUTPUTS)
+    foreach(_metal IN LISTS RENDERX_METAL_SOURCES)
+        get_filename_component(_stem "${_metal}" NAME_WE)
+        # 共享声明文件本身不单独产出 metallib，它只被其它 .metal 包含
+        if(_stem STREQUAL "rx_push_constants")
+            continue()
+        endif()
+        set(_lib "${RENDERX_METALLIB_DIR}/${_stem}.metallib")
+        add_custom_command(
+            OUTPUT "${_lib}"
+            COMMAND ${CMAKE_COMMAND} -E make_directory "${RENDERX_METALLIB_DIR}"
+            # -I 让 MSL 的包含指令找到同目录的共享块声明（rx_push_constants.metal）
+            COMMAND xcrun -sdk macosx metal -std=macos-metal2.0
+                    "-I${RENDERX_METAL_INCLUDE_DIR}"
+                    -c "${_metal}" -o "${_lib}"
+            DEPENDS "${_metal}" "${RENDERX_METAL_INCLUDE_DIR}/rx_push_constants.metal"
+            COMMENT "[Renderx] Compiling Metal shader ${_stem}.metal"
+            VERBATIM
+        )
+        list(APPEND RENDERX_METALLIB_OUTPUTS "${_lib}")
+    endforeach()
+    list(APPEND RENDERX_SHADER_SOURCES ${RENDERX_METALLIB_OUTPUTS})
+    # metallib 也视为普通嵌入条目（.metallib 扩展名已被 EmbedShaders 识别）
+    list(APPEND RENDERX_SHADER_INCLUDES "${RENDERX_METAL_INCLUDE_DIR}/rx_push_constants.metal")
+    message(STATUS "[Renderx] Metal shaders: ${RENDERX_METALLIB_OUTPUTS}")
+endif()
+
 set(RENDERX_EMBED_SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/CMake/EmbedShaders.cmake")
 set(RENDERX_GENERATED_SHADER_CPP "${CMAKE_CURRENT_BINARY_DIR}/generated/shaderBlobs.cpp")
 

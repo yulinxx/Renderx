@@ -98,6 +98,29 @@ namespace Render::RHI::metal
     };
 
     /**
+     * @brief 管线记录
+     *
+     * Metal 的管线状态分两半：不可变部分（着色器、混合、深度、顶点描述）固化在
+     * MTLRenderPipelineState 里；可变部分（视口、裁剪、顶点缓冲绑定、深度偏移）
+     * 由命令编码器下发。因此这里只存前者，外加绘制时要用到的元数据。
+     */
+    struct MetalPipelineRecord
+    {
+        id<MTLRenderPipelineState> state = nil;
+        /// 深度/模板状态。Metal 把深度测试放在 MTLDepthStencilState 里由编码器下发，
+        /// 而不是固化进管线状态对象，因此必须随记录一起保存。
+        id<MTLDepthStencilState> depthStencilState = nil;
+        PrimitiveTopology topology = PrimitiveTopology::TriangleList;
+        uint32_t attributeCount = 0;
+        VertexAttribute attributes[kMaxVertexAttributes]{};
+        uint32_t bufferLayoutCount = 0;
+        VertexBufferLayout bufferLayouts[kMaxVertexBufferSlots]{};
+        RasterState raster{};
+        DepthStencilState depthStencil{};
+        uint32_t pushConstantBytes = 0;
+    };
+
+    /**
      * @brief Metal 命令记录器
      *
      * 与 GlCommandList 的差异：状态不是「下发给全局状态机」，而是写进
@@ -144,12 +167,40 @@ namespace Render::RHI::metal
         Extent2D passExtent() const { return m_passExtent; }
 
     private:
+        /// 顶点缓冲绑定（slot -> buffer/offset）。Metal 必须在 draw 前真正
+        /// setVertexBuffer，无法像 GL 那样让状态机自动生效。
+        struct VertexBinding
+        {
+            BufferHandle buffer{};
+            uint64_t offset = 0;
+        };
+
+        void flushVertexBindings();
+        void flushPushConstants();
+        bool prepareDraw(const char* what);
+
         MetalDevice* m_device = nullptr;
         MetalSurface* m_surface = nullptr;
         id<MTLCommandBuffer> m_commandBuffer = nil;
         id<MTLRenderCommandEncoder> m_renderEncoder = nil;
         FrameStats m_stats{};
         Extent2D m_passExtent{};
+
+        PipelineHandle m_pipelineHandle{};
+        const MetalPipelineRecord* m_pipeline = nullptr;
+
+        VertexBinding m_vertexBindings[kMaxVertexBufferSlots]{};
+        bool m_vertexBindingsDirty = false;
+
+        BufferHandle m_indexBuffer{};
+        uint64_t m_indexOffset = 0;
+        IndexType m_indexType = IndexType::Uint16;
+
+        /// pushConstant 累积缓冲：RHI 允许分片推送（offset + size），而 Metal 的
+        /// setBytes 是整块下发，因此先攒满 128 字节，绘制前一次性发。
+        uint8_t m_pushConstants[kMaxPushConstantBytes]{};
+        uint32_t m_pushConstantHighWater = 0;
+        bool m_pushConstantsDirty = false;
     };
 
     /**
@@ -215,6 +266,7 @@ namespace Render::RHI::metal
         MetalSamplerRecord* samplerRecord(SamplerHandle h) { return m_samplers.get(h); }
         MetalShaderRecord* shaderRecord(ShaderHandle h) { return m_shaders.get(h); }
         MetalBindGroupRecord* bindGroupRecord(BindGroupHandle h) { return m_bindGroups.get(h); }
+        MetalPipelineRecord* pipelineRecord(PipelineHandle h) { return m_pipelines.get(h); }
 
         /**
          * @brief 更新（必要时创建）由表面托管的纹理记录，返回该句柄
@@ -246,6 +298,7 @@ namespace Render::RHI::metal
         ResourcePool<SamplerHandle, MetalSamplerRecord> m_samplers;
         ResourcePool<ShaderHandle, MetalShaderRecord> m_shaders;
         ResourcePool<BindGroupHandle, MetalBindGroupRecord> m_bindGroups;
+        ResourcePool<PipelineHandle, MetalPipelineRecord> m_pipelines;
 
         bool m_inFrame = false;
         MetalSurface* m_frameSurface = nullptr;
