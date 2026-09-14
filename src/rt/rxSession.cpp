@@ -118,8 +118,8 @@ namespace Render::RT::detail
         }
         if (surface->boundSession)
         {
-            runtime->log.error("[rt] rxSessionCreate: 该 Surface 已被另一个 Session 绑定。"
-                               "两个 Session 画同一个窗口会互相覆盖，请每窗口一个 Session");
+runtime->log.error("[rt] rxSessionCreate: surface is already bound to another Session. "
+                                "Two Sessions drawing the same window will overwrite each other; use one Session per window");  // Surface 已被另一个 Session 绑定
             return false;
         }
 
@@ -148,7 +148,7 @@ namespace Render::RT::detail
         {
             // 帧未结束就销毁：命令记录器与后备缓冲都还占着，先补上收尾，
             // 否则设备的 beginFrame/submitFrame 配对被破坏，下一帧直接失败。
-            runtime->log.error("[rt] rxSessionDestroy: 帧未结束即销毁 Session，已强制收尾");
+            runtime->log.error("[rt] rxSessionDestroy: frame not ended, forced cleanup");  // 帧未结束即销毁 Session
             endFrame();
         }
         if (surface && surface->boundSession == this)
@@ -202,7 +202,7 @@ RxResult Session::beginFrame()
         }
         if (inFrame)
         {
-            runtime->log.error("[rt] rxSessionBeginFrame: 上一帧尚未 EndFrame");
+            runtime->log.error("[rt] rxSessionBeginFrame: previous frame not ended");  // 上一帧尚未 EndFrame
             return RxResult::ErrorUnknown;
         }
 
@@ -217,8 +217,8 @@ RxResult Session::beginFrame()
                 // OutOfDate 是正常的窗口尺寸变化，调用方 resize 后重试本帧，不记为错误。
                 if (acquired != RHI::RhiResult::ErrorSwapchainOutOfDate)
                 {
-                    runtime->log.error("[rt] rxSessionBeginFrame: acquireNextImage 失败（%s）",
-                                       RHI::resultName(acquired));
+runtime->log.error("[rt] rxSessionBeginFrame: acquireNextImage failed (%s)",  // acquireNextImage 失败
+                                        RHI::resultName(acquired));
                 }
                 return toRxResult(acquired);
             }
@@ -227,7 +227,7 @@ RxResult Session::beginFrame()
         cmd = runtime->device->beginFrame(surface->rhi);
         if (!cmd)
         {
-            runtime->log.error("[rt] rxSessionBeginFrame: 设备未返回命令记录器");
+            runtime->log.error("[rt] rxSessionBeginFrame: device did not return command recorder");  // 设备未返回命令记录器
             return RxResult::ErrorDeviceLost;
         }
 
@@ -310,8 +310,8 @@ RxResult Session::beginFrame()
         const RHI::RhiResult began = cmd->beginRenderPass(pass);
         if (began != RHI::RhiResult::Ok)
         {
-            runtime->log.error("[rt] rxSessionBeginFrame: beginRenderPass 失败（%s）",
-                               RHI::resultName(began));
+runtime->log.error("[rt] rxSessionBeginFrame: beginRenderPass failed (%s)",  // beginRenderPass 失败
+                                RHI::resultName(began));
             // 设备帧已经开了，必须配对提交，否则后续所有帧都会被判为未配对。
             runtime->device->submitFrame();
             runtime->sessionsInFrame -= 1;
@@ -343,7 +343,7 @@ RxResult Session::beginFrame()
         }
         if (!inFrame)
         {
-            runtime->log.error("[rt] rxSessionAllocTransient: 必须在 BeginFrame/EndFrame 之间调用");
+            runtime->log.error("[rt] rxSessionAllocTransient: must be called between BeginFrame/EndFrame");  // 必须在 BeginFrame/EndFrame 之间调用
             return RxResult::ErrorUnknown;
         }
         if (!runtime->transient.allocate(sizeBytes, out))
@@ -413,7 +413,7 @@ RxResult Session::beginFrame()
             const RHI::BufferHandle vertexBuffer = runtime->resolveBuffer(command.vertexBuffer);
             if (!vertexBuffer.valid())
             {
-                runtime->log.warn("[rt] 第 %u 条命令的顶点缓冲句柄无效，已跳过", index);
+                runtime->log.warn("[rt] command %u has invalid vertex buffer handle, skipped", static_cast<unsigned>(index));  // 顶点缓冲句柄无效
                 continue;
             }
 
@@ -444,10 +444,11 @@ RxResult Session::beginFrame()
             const RHI::PipelineHandle pipeline = runtime->rhiPipeline(pipelineIndex);
             if (!pipeline.valid())
             {
-                runtime->log.warn("[rt] 第 %u 条命令没有可用管线（fmt=%d space=%d topo=%d），已跳过",
-                                  index, static_cast<int>(command.vertexFormat),
-                                  static_cast<int>(command.space),
-                                  static_cast<int>(command.topology));
+runtime->log.warn("[rt] command %u has no available pipeline (fmt=%d space=%d topo=%d), skipped",  // 命令没有可用管线
+                                   static_cast<unsigned>(index),
+                                   static_cast<int>(command.vertexFormat),
+                                   static_cast<int>(command.space),
+                                   static_cast<int>(command.topology));
                 continue;
             }
 
@@ -525,7 +526,7 @@ RxResult Session::beginFrame()
                 }
                 else
                 {
-                    runtime->log.warn("[rt] 第 %u 条命令的纹理句柄无效", index);
+                    runtime->log.warn("[rt] command %u has invalid texture handle", static_cast<unsigned>(index));  // 纹理句柄无效
                 }
             }
 
@@ -537,8 +538,8 @@ RxResult Session::beginFrame()
                 const RHI::BufferHandle indexBuffer = runtime->resolveBuffer(command.indexBuffer);
                 if (!indexBuffer.valid())
                 {
-                    runtime->log.warn("[rt] 第 %u 条命令声明了索引绘制但索引缓冲句柄无效，已跳过",
-                                      index);
+runtime->log.warn("[rt] command %u declares indexed draw but index buffer handle invalid, skipped",  // 索引绘制但索引缓冲句柄无效
+                                       static_cast<unsigned>(index));
                     continue;
                 }
                 cmd->bindIndexBuffer(indexBuffer, command.indexOffset,
@@ -565,7 +566,7 @@ RxResult Session::beginFrame()
         }
         if (!inFrame || !cmd)
         {
-            runtime->log.error("[rt] rxSessionSubmit: 必须在 BeginFrame/EndFrame 之间调用");
+            runtime->log.error("[rt] rxSessionSubmit: must be called between BeginFrame/EndFrame");  // 必须在 BeginFrame/EndFrame 之间调用
             return RxResult::ErrorUnknown;
         }
         if (packet.commandCount == 0)
@@ -635,7 +636,7 @@ RxResult Session::beginFrame()
         }
         if (!inFrame || !cmd)
         {
-            runtime->log.error("[rt] rxSessionSubmitDrawList: 必须在 BeginFrame/EndFrame 之间调用");
+            runtime->log.error("[rt] rxSessionSubmitDrawList: must be called between BeginFrame/EndFrame");  // 必须在 BeginFrame/EndFrame 之间调用
             return RxResult::ErrorUnknown;
         }
 
@@ -678,7 +679,7 @@ RxResult Session::beginFrame()
         }
         if (!inFrame)
         {
-            runtime->log.error("[rt] rxSessionEndFrame: 本帧未 BeginFrame");
+            runtime->log.error("[rt] rxSessionEndFrame: no beginFrame this frame");  // 本帧未 BeginFrame
             return RxResult::ErrorUnknown;
         }
 
@@ -710,16 +711,16 @@ RxResult Session::beginFrame()
 
         if (submitted != RHI::RhiResult::Ok)
         {
-            runtime->log.error("[rt] rxSessionEndFrame: submitFrame 失败（%s）",
-                               RHI::resultName(submitted));
+runtime->log.error("[rt] rxSessionEndFrame: submitFrame failed (%s)",  // submitFrame 失败
+                                RHI::resultName(submitted));
             return toRxResult(submitted);
         }
         if (presented != RHI::RhiResult::Ok)
         {
             if (presented != RHI::RhiResult::ErrorSwapchainOutOfDate)
             {
-                runtime->log.error("[rt] rxSessionEndFrame: present 失败（%s）",
-                                   RHI::resultName(presented));
+runtime->log.error("[rt] rxSessionEndFrame: present failed (%s)",  // present 失败
+                                RHI::resultName(presented));
             }
             return toRxResult(presented);
         }
@@ -776,7 +777,7 @@ RxResult Session::beginFrame()
             // EndFrame 之后后备缓冲已交给呈现，内容不再保证有效。
             // 这里报错而不是「尽力读一次」：读到上一帧或空白画面
             // 比明确失败更难排查。
-            runtime->log.error("[rt] rxSessionReadPixels: 必须在 EndFrame 之前调用");
+            runtime->log.error("[rt] rxSessionReadPixels: must be called before EndFrame");  // 必须在 EndFrame 之前调用
             return RxResult::ErrorUnknown;
         }
 
@@ -784,15 +785,15 @@ RxResult Session::beginFrame()
         const uint64_t required = static_cast<uint64_t>(width) * height * kBytesPerPixel;
         if (outByteCapacity < required)
         {
-            runtime->log.error("[rt] rxSessionReadPixels: 输出缓冲不足（需要 %llu，给了 %llu）",
-                               static_cast<unsigned long long>(required),
-                               static_cast<unsigned long long>(outByteCapacity));
+runtime->log.error("[rt] rxSessionReadPixels: output buffer too small (need %llu, got %llu)",  // 输出缓冲不足
+                                static_cast<unsigned long long>(required),
+                                static_cast<unsigned long long>(outByteCapacity));
             return RxResult::ErrorInvalidArgument;
         }
 
         if (!texture.valid())
         {
-            runtime->log.error("[rt] rxSessionReadPixels: 无效的纹理句柄");
+            runtime->log.error("[rt] rxSessionReadPixels: invalid texture handle");  // 无效的纹理句柄
             return RxResult::ErrorInvalidArgument;
         }
 
@@ -849,8 +850,8 @@ RxResult Session::beginFrame()
 
         if (read != RHI::RhiResult::Ok)
         {
-            runtime->log.error("[rt] rxSessionReadPixels: readTexture 失败（%s）",
-                               RHI::resultName(read));
+runtime->log.error("[rt] rxSessionReadPixels: readTexture failed (%s)",  // readTexture 失败
+                                RHI::resultName(read));
             return toRxResult(read);
         }
 
@@ -888,7 +889,7 @@ RxResult Session::beginFrame()
         }
         if (inFrame)
         {
-            runtime->log.error("[rt] rxSessionSetRenderTarget: 必须在 EndFrame 之后调用");
+            runtime->log.error("[rt] rxSessionSetRenderTarget: must be called after EndFrame");  // 必须在 EndFrame 之后调用
             return RxResult::ErrorUnknown;
         }
 
@@ -939,7 +940,7 @@ RxResult Session::beginFrame()
                 // 容量不足不是错误：调用方按 count == capacity 判断是否需要扩容重试。
                 if (runtime)
                 {
-                    runtime->log.warn("[rt] rxSessionQueryVisibility: 输出容量 %u 已满，结果被截断",
+                    runtime->log.warn("[rt] rxSessionQueryVisibility: output capacity %u full, results truncated",  // 输出容量已满
                                       out->capacity);
                 }
                 break;

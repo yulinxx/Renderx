@@ -39,7 +39,7 @@ namespace Render::RT::detail
 
         if (!device || !desc.data || desc.dataBytes == 0 || desc.pixelHeight <= 0.0f)
         {
-            log.error("[rt] rxFontCreate: 字体数据为空或 pixelHeight 非正");
+            log.error("[rt] rxFontCreate: font data is null or pixelHeight is not positive");  // 字体数据为空或 pixelHeight 非正
             return RxResult::ErrorInvalidArgument;
         }
 
@@ -47,8 +47,8 @@ namespace Render::RT::detail
         const uint32_t height = desc.atlasHeight != 0 ? desc.atlasHeight : kDefaultAtlasSide;
         if (caps.maxTextureSize != 0 && (width > caps.maxTextureSize || height > caps.maxTextureSize))
         {
-            log.error("[rt] rxFontCreate: 图集 %ux%u 超出后端上限 %u", width, height,
-                      caps.maxTextureSize);
+log.error("[rt] rxFontCreate: atlas %ux%u exceeds backend limit %u", width, height,  // 图集超出后端上限
+                       caps.maxTextureSize);
             return RxResult::ErrorInvalidArgument;
         }
 
@@ -61,7 +61,7 @@ namespace Render::RT::detail
         // DLL 不做字体集合解析（那属于字体管理，不是渲染）。
         if (stbtt_InitFont(&font->info, font->data.data(), 0) == 0)
         {
-            log.error("[rt] rxFontCreate: 字体数据无法解析（不是 TTF/OTF？）");
+            log.error("[rt] rxFontCreate: font data cannot be parsed (not TTF/OTF?)");  // 字体数据无法解析
             delete font;
             return RxResult::ErrorInvalidArgument;
         }
@@ -99,7 +99,7 @@ namespace Render::RT::detail
         const RHI::TextureHandle rhiTexture = device->createTexture(texDesc);
         if (!rhiTexture.valid())
         {
-            log.error("[rt] rxFontCreate: 图集纹理创建失败");
+            log.error("[rt] rxFontCreate: atlas texture creation failed");  // 图集纹理创建失败
             delete font;
             return RxResult::ErrorUnknown;
         }
@@ -125,7 +125,7 @@ namespace Render::RT::detail
         Font** found = fonts.find(static_cast<uint64_t>(handle));
         if (!found || !*found)
         {
-            log.warn("[rt] rxFontDestroy: 句柄无效或已销毁");
+            log.warn("[rt] rxFontDestroy: handle invalid or already destroyed");  // 句柄无效或已销毁
             return;
         }
         Font* font = *found;
@@ -299,9 +299,9 @@ namespace Render::RT::detail
             if (!font.warnedFull)
             {
                 font.warnedFull = true;
-                runtime.log.error("[rt] 字形图集 %ux%u 已满，后续字形无法入集；"
-                                  "请用更大的 FontDesc::atlasWidth/atlasHeight 重建字体",
-                                  font.atlasWidth, font.atlasHeight);
+runtime.log.error("[rt] glyph atlas %ux%u is full, subsequent glyphs cannot be added; "
+                                   "rebuild font with larger FontDesc::atlasWidth/atlasHeight",
+                                   font.atlasWidth, font.atlasHeight);  // 字形图集已满
             }
             // 不缓存：换更大的图集重建后仍应能光栅化。
             *outGlyph = GlyphInfo{};

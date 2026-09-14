@@ -110,13 +110,13 @@ namespace Render::RHI
 #if defined(__APPLE__)
             return createMetalDevice(desc);
 #else
-            logger.error("[rhi] Metal 后端只在 Apple 平台编译，当前平台没有该后端。"
-                         "不做静默回退：请显式选择 OpenGL。");
+            logger.error("[rhi] Metal backend is only compiled on Apple platforms, no Metal backend on this platform. "
+                         "No silent fallback: please explicitly select OpenGL.");  // Metal 后端只在 Apple 平台编译
             return nullptr;
 #endif
         case BackendKind::Vulkan:
-            logger.error("[rhi] Vulkan 后端尚未实现（Phase 8）。"
-                         "不做静默回退：请显式选择 OpenGL，或等待 Vulkan 落地。");
+            logger.error("[rhi] Vulkan backend not yet implemented (Phase 8). "
+                         "No silent fallback: please explicitly select OpenGL, or wait for Vulkan.");  // Vulkan 后端尚未实现
             return nullptr;
         }
 

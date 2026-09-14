@@ -93,9 +93,9 @@ namespace Render::RT::detail
         m_maxBytes = desc.maxBytes != 0 ? (std::min)(desc.maxBytes, kAbsoluteMaxBytes) : kAbsoluteMaxBytes;
         if (initial > m_maxBytes)
         {
-            m_owner->log.warn("[rt] rxGeometryStoreCreate: initialBytes(%llu) 超过 maxBytes(%llu)，已钳制",
+            m_owner->log.warn("[rt] rxGeometryStoreCreate: initialBytes(%llu) exceeds maxBytes(%llu), clamped",
                               static_cast<unsigned long long>(initial),
-                              static_cast<unsigned long long>(m_maxBytes));
+                              static_cast<unsigned long long>(m_maxBytes));  // initialBytes 超过 maxBytes，已钳制
             initial = m_maxBytes;
         }
 
@@ -130,8 +130,8 @@ namespace Render::RT::detail
         const RHI::BufferHandle created = m_owner->device->createBuffer(desc);
         if (!created.valid())
         {
-            m_owner->log.error("[rt] 几何仓缓冲创建失败（%llu 字节）",
-                               static_cast<unsigned long long>(capacity));
+m_owner->log.error("[rt] geometry store buffer creation failed (%llu bytes)",  // 几何仓缓冲创建失败
+                                static_cast<unsigned long long>(capacity));
             return false;
         }
 
@@ -146,7 +146,7 @@ namespace Render::RT::detail
             if (!slot)
             {
                 // 槽位应当一直存在（shutdown 才会摘除），走到这里说明句柄表被外部改坏了
-                m_owner->log.error("[rt] 几何仓公共句柄槽位丢失，无法完成扩容");
+                m_owner->log.error("[rt] geometry store public handle slot lost, cannot complete expansion");  // 几何仓公共句柄槽位丢失
                 m_owner->device->destroyBuffer(created);
                 return false;
             }
@@ -191,8 +191,8 @@ namespace Render::RT::detail
     {
         if (m_capacity >= m_maxBytes)
         {
-            m_owner->log.error("[rt] 几何仓已达上限 %llu 字节，无法继续分配",
-                               static_cast<unsigned long long>(m_maxBytes));
+m_owner->log.error("[rt] geometry store reached limit %llu bytes, cannot allocate more",  // 几何仓已达上限
+                                static_cast<unsigned long long>(m_maxBytes));
             return false;
         }
 
@@ -205,9 +205,9 @@ namespace Render::RT::detail
         next = (std::min)(alignUp(next, m_granularity), m_maxBytes);
         if (next < requiredCapacity)
         {
-            m_owner->log.error("[rt] 几何仓扩容到上限 %llu 仍不足（需要 %llu）",
-                               static_cast<unsigned long long>(m_maxBytes),
-                               static_cast<unsigned long long>(requiredCapacity));
+m_owner->log.error("[rt] geometry store grew to limit %llu but still insufficient (need %llu)",  // 几何仓扩容到上限仍不足
+                                static_cast<unsigned long long>(m_maxBytes),
+                                static_cast<unsigned long long>(requiredCapacity));
             return false;
         }
 
@@ -327,8 +327,8 @@ namespace Render::RT::detail
         }
 
         // 扩容成功却仍找不到空洞 = 空闲表与容量不一致，属于内部错误
-        m_owner->log.error("[rt] 几何仓扩容后仍无法分配 %llu 字节（空闲表可能已损坏）",
-                           static_cast<unsigned long long>(need));
+m_owner->log.error("[rt] geometry store grew but still cannot allocate %llu bytes (free table may be corrupted)",  // 几何仓扩容后仍无法分配
+                                static_cast<unsigned long long>(need));
         return RxResult::ErrorOutOfMemory;
     }
 
@@ -356,14 +356,14 @@ namespace Render::RT::detail
         const Block* block = m_blocks.find(blockId);
         if (!block)
         {
-            m_owner->log.warn("[rt] rxGeometryWrite: 块 %llu 无效（可能已释放）",
-                              static_cast<unsigned long long>(blockId));
+m_owner->log.warn("[rt] rxGeometryWrite: block %llu invalid (possibly freed)",  // 块无效
+                                static_cast<unsigned long long>(blockId));
             return RxResult::ErrorInvalidHandle;
         }
         if (static_cast<uint64_t>(byteOffset) + sizeBytes > block->size)
         {
-            m_owner->log.error("[rt] rxGeometryWrite: 写入越界（块 %u 字节，请求 %u+%u）", block->size,
-                               byteOffset, sizeBytes);
+m_owner->log.error("[rt] rxGeometryWrite: write out of bounds (block %u bytes, request %u+%u)",  // 写入越界
+                                block->size, byteOffset, sizeBytes);
             return RxResult::ErrorInvalidArgument;
         }
 
@@ -382,8 +382,8 @@ namespace Render::RT::detail
         const Block* block = m_blocks.find(blockId);
         if (!block)
         {
-            m_owner->log.warn("[rt] rxGeometryFree: 块 %llu 已释放或从未存在",
-                              static_cast<unsigned long long>(blockId));
+m_owner->log.warn("[rt] rxGeometryFree: block %llu already freed or never existed",  // 块已释放或从未存在
+                                static_cast<unsigned long long>(blockId));
             return RxResult::ErrorInvalidHandle;
         }
 
@@ -422,8 +422,8 @@ namespace Render::RT::detail
                 m_buffer, range.offset, m_shadow.data() + range.offset, range.size);
             if (wrote != RHI::RhiResult::Ok)
             {
-                m_owner->log.error("[rt] 几何仓上传失败（offset=%u size=%u，%s）", range.offset,
-                                   range.size, RHI::resultName(wrote));
+m_owner->log.error("[rt] geometry store upload failed (offset=%u size=%u, %s)", range.offset,  // 几何仓上传失败
+                                    range.size, RHI::resultName(wrote));
                 result = RxResult::ErrorDeviceLost;
                 return;
             }
@@ -553,9 +553,9 @@ namespace Render::RT::detail
         constexpr uint32_t kMaxSlot = 1u << 24;  // 1600 万槽 ≈ 上限
         if (slot >= kMaxSlot)
         {
-            m_owner->log.error("[rt] rxDrawListUpsert: 槽号 %u 过大（上限 %u）。"
-                               "槽号应紧凑分配，不要直接用图元的 64 位 ID",
-                               slot, kMaxSlot);
+m_owner->log.error("[rt] rxDrawListUpsert: slot %u too large (limit %u). "
+                                "Slots should be compactly allocated, not use the 64-bit ID of the primitive directly",
+                                slot, kMaxSlot);  // 槽号过大
             return RxResult::ErrorInvalidArgument;
         }
         if (slot >= m_entries.size())

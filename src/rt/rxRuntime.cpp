@@ -298,7 +298,7 @@ namespace Render::RT::detail
         m_buffer = m_device->createBuffer(desc);
         if (!m_buffer.valid())
         {
-            m_log.error("[rt] 瞬态环形缓冲创建失败（%llu 字节）",
+            m_log.error("[rt] transient ring buffer creation failed (%llu bytes)",  // 瞬态环形缓冲创建失败
                         static_cast<unsigned long long>(desc.size));
             return false;
         }
@@ -388,11 +388,11 @@ namespace Render::RT::detail
 
         // 超出单帧容量：单独开一个缓冲，本帧末释放。
         // 不做回绕覆盖——覆盖已提交命令引用的数据会让画面随机缺块。
-        m_log.warn("[rt] 瞬态缓冲单帧容量不足（已用 %llu / %llu 字节），"
-                   "为本次 %llu 字节分配临时缓冲。建议增大 RuntimeDesc::transientBufferBytes",
-                   static_cast<unsigned long long>(m_cursor - m_segmentBase),
-                   static_cast<unsigned long long>(m_capacity),
-                   static_cast<unsigned long long>(sizeBytes));
+m_log.warn("[rt] transient buffer single-frame capacity insufficient (used %llu / %llu bytes), "
+                    "allocating temporary buffer for %llu bytes this frame. Increase RuntimeDesc::transientBufferBytes",
+                    static_cast<unsigned long long>(m_cursor - m_segmentBase),
+                    static_cast<unsigned long long>(m_capacity),
+                    static_cast<unsigned long long>(sizeBytes));  // 瞬态缓冲单帧容量不足
 
         Overflow overflow{};
         RHI::BufferDesc desc{};
@@ -403,7 +403,7 @@ namespace Render::RT::detail
         overflow.buffer = m_device->createBuffer(desc);
         if (!overflow.buffer.valid())
         {
-            m_log.error("[rt] 瞬态溢出缓冲创建失败");
+            m_log.error("[rt] transient overflow buffer creation failed");  // 瞬态溢出缓冲创建失败
             return false;
         }
         overflow.staging.assign(static_cast<size_t>(aligned), 0);
@@ -508,7 +508,7 @@ namespace Render::RT::detail
             desc.transientBufferBytes != 0 ? desc.transientBufferBytes : kDefaultTransientBytes;
         if (transientBytes > kMaxTransientBytes)
         {
-            log.warn("[rt] transientBufferBytes=%llu 超过单段上限 %llu，已钳制",
+            log.warn("[rt] transientBufferBytes=%llu exceeds per-segment limit %llu, clamped",  // 超过单段上限
                      static_cast<unsigned long long>(transientBytes),
                      static_cast<unsigned long long>(kMaxTransientBytes));
             transientBytes = kMaxTransientBytes;
@@ -528,7 +528,7 @@ namespace Render::RT::detail
 
         if (!ensureDefaultPipelines())
         {
-            log.warn("[rt] 部分内建管线创建失败，相关绘制会被跳过");
+            log.warn("[rt] some built-in pipelines failed to create, related draws will be skipped");  // 部分内建管线创建失败
         }
 
         log.debug("[rt] Runtime ready: backend=%s device=%s transient=%llu bytes",  // Runtime 就绪
@@ -550,14 +550,14 @@ namespace Render::RT::detail
         }
         if (!sessions.empty())
         {
-            log.error("[rt] Runtime 销毁时仍有 %zu 个 Session 未销毁（宿主生命周期错误）",
+            log.error("[rt] Runtime destroyed with %zu sessions still alive (host lifecycle error)",  // Runtime 销毁时仍有 Session 未销毁
                       sessions.size());
         }
         sessions.clear();
 
         if (!surfaces.empty())
         {
-            log.error("[rt] Runtime 销毁时仍有 %zu 个 Surface 未销毁（宿主生命周期错误）",
+            log.error("[rt] Runtime destroyed with %zu surfaces still alive (host lifecycle error)",  // Runtime 销毁时仍有 Surface 未销毁
                       surfaces.size());
         }
         for (Surface* surface : surfaces)
@@ -662,7 +662,7 @@ namespace Render::RT::detail
         }
 
         materials.clear();
-        log.info("[rt] Runtime 已销毁");
+        log.info("[rt] Runtime destroyed");  // Runtime 已销毁
     }
 
     // ==================== Runtime：缓冲 ====================
@@ -671,7 +671,7 @@ namespace Render::RT::detail
     {
         if (!device || desc.sizeBytes == 0)
         {
-            log.error("[rt] rxBufferCreate: sizeBytes 为 0");
+            log.error("[rt] rxBufferCreate: sizeBytes is 0");  // sizeBytes 为 0
             return BufferHandle::Invalid;
         }
         RHI::BufferDesc rhiDesc{};
@@ -705,12 +705,12 @@ namespace Render::RT::detail
         const RHI::BufferHandle rhi = resolveBuffer(handle);
         if (!rhi.valid())
         {
-            log.warn("[rt] rxBufferDestroy: 句柄无效或已销毁");
+            log.warn("[rt] rxBufferDestroy: handle invalid or already destroyed");  // 句柄无效或已销毁
             return;
         }
         if (handle == transient.publicHandle())
         {
-            log.error("[rt] rxBufferDestroy: 不能销毁瞬态环形缓冲，它由 Runtime 拥有");
+            log.error("[rt] rxBufferDestroy: cannot destroy transient ring buffer, it is owned by Runtime");  // 不能销毁瞬态环形缓冲
             return;
         }
         device->destroyBuffer(rhi);
@@ -735,7 +735,7 @@ namespace Render::RT::detail
     {
         if (!device || desc.width == 0 || desc.height == 0)
         {
-            log.error("[rt] rxTextureCreate: 尺寸为 0");
+            log.error("[rt] rxTextureCreate: dimensions are 0");  // 尺寸为 0
             return TextureHandle::Invalid;
         }
         RHI::TextureDesc rhiDesc{};
@@ -765,7 +765,7 @@ namespace Render::RT::detail
         const RHI::TextureHandle* found = textures.find(static_cast<uint64_t>(handle));
         if (!found)
         {
-            log.warn("[rt] rxTextureDestroy: 句柄无效或已销毁");
+            log.warn("[rt] rxTextureDestroy: handle invalid or already destroyed");  // 句柄无效或已销毁
             return;
         }
         // 该纹理的绑定组随之失效，必须一并销毁，否则下次同句柄值
@@ -796,15 +796,15 @@ namespace Render::RT::detail
     {
         if (!device || desc.width == 0 || desc.height == 0)
         {
-            log.error("[rt] rxTextureCreateRenderTarget: 尺寸为 0");
+            log.error("[rt] rxTextureCreateRenderTarget: dimensions are 0");  // 尺寸为 0
             return TextureHandle::Invalid;
         }
-        // 必须包含 ColorAttachment 或 DepthStencilAttachment
+        // Must include ColorAttachment or DepthStencilAttachment
         const bool hasColor = (static_cast<uint32_t>(desc.usage) & static_cast<uint32_t>(TextureUsageFlag::ColorAttachment)) != 0;
         const bool hasDepth = (static_cast<uint32_t>(desc.usage) & static_cast<uint32_t>(TextureUsageFlag::DepthStencilAttachment)) != 0;
         if (!hasColor && !hasDepth)
         {
-            log.error("[rt] rxTextureCreateRenderTarget: 必须包含 ColorAttachment 或 DepthStencilAttachment 用途");
+            log.error("[rt] rxTextureCreateRenderTarget: must include ColorAttachment or DepthStencilAttachment usage");  // 必须包含 ColorAttachment 或 DepthStencilAttachment 用途
             return TextureHandle::Invalid;
         }
 
@@ -876,7 +876,7 @@ namespace Render::RT::detail
     {
         if (materials.size() >= 0xFFFF)
         {
-            log.error("[rt] rxMaterialAdd: 材质数量已达 uint16 上限");
+            log.error("[rt] rxMaterialAdd: material count reached uint16 limit");  // 材质数量已达 uint16 上限
             return 0;
         }
         materials.push_back(desc);
@@ -926,7 +926,7 @@ namespace Render::RT::detail
         GeometryStore* store = resolveGeometryStore(handle);
         if (!store)
         {
-            log.warn("[rt] rxGeometryStoreDestroy: 句柄无效或已销毁");
+            log.warn("[rt] rxGeometryStoreDestroy: handle invalid or already destroyed");  // 句柄无效或已销毁
             return;
         }
         // 仓销毁后，任何仍引用它的 DrawCommand 都会在 resolveBuffer 时拿到
@@ -980,7 +980,7 @@ namespace Render::RT::detail
         DrawList* list = resolveDrawList(handle);
         if (!list)
         {
-            log.warn("[rt] rxDrawListDestroy: 句柄无效或已销毁");
+            log.warn("[rt] rxDrawListDestroy: handle invalid or already destroyed");  // 句柄无效或已销毁
             return;
         }
         list->shutdown();
@@ -1122,9 +1122,9 @@ namespace Render::RT::detail
         }
         if (!pair.vertex || !pair.fragment)
         {
-            log.error("[rt] 无法为 vertexFormat=%d space=%d 找到内建 shader"
-                      "（该组合没有语义正确的着色器，见 defaultShadersFor）",
-                      static_cast<int>(key.vertexFormat), static_cast<int>(key.space));
+            log.error("[rt] cannot find built-in shader for vertexFormat=%d space=%d "
+                      "(no semantically correct shader for this combination, see defaultShadersFor)",
+                      static_cast<int>(key.vertexFormat), static_cast<int>(key.space));  // 无法为 vertexFormat space 找到内建 shader
             return 0;
         }
 
@@ -1203,7 +1203,7 @@ namespace Render::RT::detail
         }
         if (pipelines.size() >= 0xFFFF)
         {
-            log.error("[rt] 管线数量已达 uint16 上限");
+            log.error("[rt] pipeline count reached uint16 limit");  // 管线数量已达 uint16 上限
             device->destroyPipeline(handle);
             return 0;
         }
@@ -1479,7 +1479,7 @@ namespace Render::RT::detail
             }
             else
             {
-                log.error("[rt] 内建管线 %s 创建失败", entry.label);
+                log.error("[rt] built-in pipeline %s creation failed", entry.label);  // 内建管线创建失败
             }
         }
 
@@ -1498,7 +1498,7 @@ namespace Render::RT::detail
         }
         if (desc.width == 0 || desc.height == 0)
         {
-            log.error("[rt] rxSurfaceCreate: 尺寸为 0");
+            log.error("[rt] rxSurfaceCreate: dimensions are 0");  // 尺寸为 0
             return SurfaceHandle::Invalid;
         }
 
@@ -1569,7 +1569,7 @@ namespace Render::RT::detail
                 return surface;
             }
         }
-        log.error("[rt] Surface 句柄不属于本 Runtime（已销毁或来自其他 Runtime）");
+        log.error("[rt] Surface handle does not belong to this Runtime (destroyed or from another Runtime)");  // Surface 句柄不属于本 Runtime
         return nullptr;
     }
 
@@ -1582,7 +1582,7 @@ namespace Render::RT::detail
         }
         if (surface->boundSession)
         {
-            log.error("[rt] rxSurfaceDestroy: 该表面上仍有 Session，请先销毁 Session");
+            log.error("[rt] rxSurfaceDestroy: surface still has bound sessions, destroy sessions first");  // 该表面上仍有 Session
             return;
         }
         device->destroySurface(surface->rhi);

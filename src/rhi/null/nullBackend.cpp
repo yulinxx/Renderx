@@ -99,13 +99,13 @@ namespace Render::RHI
             {
                 if (m_inRenderPass)
                 {
-                    m_log.error("[null] beginRenderPass: 上一个 RenderPass 未结束");
+                    m_log.error("[null] beginRenderPass: previous RenderPass not ended");  // 上一个 RenderPass 未结束
                     return RhiResult::ErrorInvalidArgument;
                 }
                 if (desc.colorAttachmentCount > kMaxColorAttachments)
                 {
-                    m_log.error("[null] beginRenderPass: colorAttachmentCount=%u 超过上限 %u",
-                                desc.colorAttachmentCount, kMaxColorAttachments);
+                    m_log.error("[null] beginRenderPass: colorAttachmentCount=%u exceeds limit %u",
+                                desc.colorAttachmentCount, kMaxColorAttachments);  // colorAttachmentCount 超过上限
                     return RhiResult::ErrorInvalidArgument;
                 }
                 m_inRenderPass = true;
@@ -116,7 +116,7 @@ namespace Render::RHI
             {
                 if (!m_inRenderPass)
                 {
-                    m_log.error("[null] endRenderPass: 当前不在 RenderPass 内");
+                    m_log.error("[null] endRenderPass: not in a RenderPass");  // 当前不在 RenderPass 内
                     return;
                 }
                 m_inRenderPass = false;
@@ -141,7 +141,7 @@ namespace Render::RHI
             {
                 if (set >= kMaxDescriptorSets)
                 {
-                    m_log.error("[null] bindBindGroup: set=%u 超过上限 %u", set, kMaxDescriptorSets);
+                    m_log.error("[null] bindBindGroup: set=%u exceeds limit %u", set, kMaxDescriptorSets);  // set 超过上限
                     return;
                 }
                 m_stats.bindGroupSwitches += 1;
@@ -155,8 +155,8 @@ namespace Render::RHI
                 }
                 if (offsetBytes + sizeBytes > kMaxPushConstantBytes)
                 {
-                    m_log.error("[null] pushConstants: offset=%u size=%u 超过 kMaxPushConstantBytes=%u",
-                                offsetBytes, sizeBytes, kMaxPushConstantBytes);
+                    m_log.error("[null] pushConstants: offset=%u size=%u exceeds kMaxPushConstantBytes=%u",
+                                offsetBytes, sizeBytes, kMaxPushConstantBytes);  // offset size 超过 kMaxPushConstantBytes
                     return;
                 }
                 std::memcpy(m_pushConstants + offsetBytes, data, sizeBytes);
@@ -202,7 +202,7 @@ namespace Render::RHI
             {
                 if (m_inRenderPass)
                 {
-                    m_log.error("[null] dispatchCompute 必须在 RenderPass 之外调用");
+                    m_log.error("[null] dispatchCompute must be called outside RenderPass");  // dispatchCompute 必须在 RenderPass 之外调用
                     return;
                 }
                 if (groupsX == 0 || groupsY == 0 || groupsZ == 0)
@@ -220,7 +220,7 @@ namespace Render::RHI
             {
                 if (m_inRenderPass)
                 {
-                    m_log.error("[null] copyTextureToBuffer 必须在 RenderPass 之外调用");
+                    m_log.error("[null] copyTextureToBuffer must be called outside RenderPass");  // copyTextureToBuffer 必须在 RenderPass 之外调用
                 }
             }
 
@@ -236,7 +236,7 @@ namespace Render::RHI
             {
                 if (!m_inRenderPass)
                 {
-                    m_log.error("[null] %s 必须在 beginRenderPass / endRenderPass 之间调用", what);
+                    m_log.error("[null] %s must be called between beginRenderPass / endRenderPass", what);  // 必须在 beginRenderPass / endRenderPass 之间调用
                     return false;
                 }
                 return true;
@@ -283,7 +283,7 @@ namespace Render::RHI
             {
                 if (!m_acquired)
                 {
-                    m_log.error("[null] present: 未先调用 acquireNextImage");
+                    m_log.error("[null] present: must call acquireNextImage first");  // 未先调用 acquireNextImage
                     return RhiResult::ErrorInvalidArgument;
                 }
                 m_acquired = false;
@@ -352,7 +352,7 @@ namespace Render::RHI
                 m_caps.storageBufferOffsetAlignment = 256;
                 m_caps.maxFramesInFlight = 2;
 
-                m_log.info("[null] 设备已创建");
+                m_log.info("[null] Device created");  // 设备已创建
             }
 
             ~NullDevice() override
@@ -362,14 +362,14 @@ namespace Render::RHI
                     // 契约是「所有 ISurface 必须先销毁」。这里不静默清理，
                     // 因为静默清理会掩盖宿主的生命周期错误（旧实现的
                     // Runtime::destroy 双重释放就是这么被掩盖了半年）。
-                    m_log.error("[null] 设备销毁时仍有 %zu 个表面未销毁", m_surfaces.size());
+                    m_log.error("[null] Device destroyed with %zu surfaces still alive", m_surfaces.size());  // 设备销毁时仍有表面未销毁
                     for (NullSurface* s : m_surfaces)
                     {
                         delete s;
                     }
                     m_surfaces.clear();
                 }
-                m_log.info("[null] 设备已销毁");
+                m_log.info("[null] Device destroyed");  // 设备已销毁
             }
 
             const Capabilities& capabilities() const override { return m_caps; }
@@ -386,8 +386,8 @@ namespace Render::RHI
                                             : createSurfaceAttachment(desc.depthFormat, desc.initialExtent,
                                                                       TextureUsage::DepthStencilAttachment));
                 m_surfaces.push_back(surface);
-                m_log.debug("[null] createSurface: %ux%u（当前表面数 %zu）", desc.initialExtent.width,
-                            desc.initialExtent.height, m_surfaces.size());
+                m_log.debug("[null] createSurface: %ux%u (surface count: %zu)", desc.initialExtent.width,
+                            desc.initialExtent.height, m_surfaces.size());  // 创建表面
                 return surface;
             }
 
@@ -411,7 +411,7 @@ namespace Render::RHI
                     delete s;
                     return;
                 }
-                m_log.error("[null] destroySurface: 表面不属于本设备");
+                m_log.error("[null] destroySurface: surface does not belong to this device");  // 表面不属于本设备
             }
 
             TextureHandle createSurfaceAttachment(Format format, Extent2D extent, TextureUsage usage)
@@ -431,12 +431,12 @@ namespace Render::RHI
             {
                 if (!desc.data || desc.sizeBytes == 0)
                 {
-                    m_log.error("[null] createShader: 空字节码");
+                    m_log.error("[null] createShader: empty bytecode");  // 空字节码
                     return ShaderHandle{};
                 }
                 if (desc.language != m_caps.acceptedShaderLanguage)
                 {
-                    m_log.error("[null] createShader: 语言 %d 与后端接受的 %d 不匹配",
+                    m_log.error("[null] createShader: language %d does not match backend accepted %d",
                                 static_cast<int>(desc.language),
                                 static_cast<int>(m_caps.acceptedShaderLanguage));
                     return ShaderHandle{};
@@ -448,7 +448,7 @@ namespace Render::RHI
             {
                 if (shader.valid() && !m_shaders.remove(shader))
                 {
-                    m_log.warn("[null] destroyShader: 句柄已失效（重复销毁？）");
+                    m_log.warn("[null] destroyShader: handle already invalid (double destroy?)");  // 句柄已失效（重复销毁？）
                 }
             }
 
@@ -458,19 +458,19 @@ namespace Render::RHI
             {
                 if (!m_shaders.get(desc.vertexShader) || !m_shaders.get(desc.fragmentShader))
                 {
-                    m_log.error("[null] createGraphicsPipeline: 顶点或片段着色器句柄无效");
+                    m_log.error("[null] createGraphicsPipeline: vertex or fragment shader handle invalid");  // 顶点或片段着色器句柄无效
                     return PipelineHandle{};
                 }
                 if (desc.attributeCount > kMaxVertexAttributes)
                 {
-                    m_log.error("[null] createGraphicsPipeline: attributeCount=%u 超过上限 %u",
-                                desc.attributeCount, kMaxVertexAttributes);
+                    m_log.error("[null] createGraphicsPipeline: attributeCount=%u exceeds limit %u",
+                                desc.attributeCount, kMaxVertexAttributes);  // attributeCount 超过上限
                     return PipelineHandle{};
                 }
                 if (desc.pushConstantBytes > kMaxPushConstantBytes)
                 {
-                    m_log.error("[null] createGraphicsPipeline: pushConstantBytes=%u 超过上限 %u",
-                                desc.pushConstantBytes, kMaxPushConstantBytes);
+                    m_log.error("[null] createGraphicsPipeline: pushConstantBytes=%u exceeds limit %u",
+                                desc.pushConstantBytes, kMaxPushConstantBytes);  // pushConstantBytes 超过上限
                     return PipelineHandle{};
                 }
                 return m_pipelines.add(
@@ -481,7 +481,7 @@ namespace Render::RHI
             {
                 if (!m_shaders.get(desc.computeShader))
                 {
-                    m_log.error("[null] createComputePipeline: 计算着色器句柄无效");
+                    m_log.error("[null] createComputePipeline: compute shader handle invalid");  // 计算着色器句柄无效
                     return PipelineHandle{};
                 }
                 return m_pipelines.add(NullPipelineRecord{ true, desc.pushConstantBytes, 0 });
@@ -491,7 +491,7 @@ namespace Render::RHI
             {
                 if (pipeline.valid() && !m_pipelines.remove(pipeline))
                 {
-                    m_log.warn("[null] destroyPipeline: 句柄已失效（重复销毁？）");
+                    m_log.warn("[null] destroyPipeline: handle already invalid (double destroy?)");  // 句柄已失效（重复销毁？）
                 }
             }
 
@@ -501,7 +501,7 @@ namespace Render::RHI
             {
                 if (desc.size == 0)
                 {
-                    m_log.error("[null] createBuffer: size 为 0");
+                    m_log.error("[null] createBuffer: size is 0");  // size 为 0
                     return BufferHandle{};
                 }
                 NullBufferRecord record{};
@@ -514,7 +514,7 @@ namespace Render::RHI
             {
                 if (buffer.valid() && !m_buffers.remove(buffer))
                 {
-                    m_log.warn("[null] destroyBuffer: 句柄已失效（重复销毁？）");
+                    m_log.warn("[null] destroyBuffer: handle already invalid (double destroy?)");  // 句柄已失效（重复销毁？）
                 }
             }
 
@@ -528,7 +528,7 @@ namespace Render::RHI
                 }
                 if (offset + sizeBytes > record->desc.size)
                 {
-                    m_log.error("[null] writeBuffer 越界: offset=%llu size=%llu 缓冲大小=%llu",
+                    m_log.error("[null] writeBuffer out of bounds: offset=%llu size=%llu bufferSize=%llu",
                                 static_cast<unsigned long long>(offset),
                                 static_cast<unsigned long long>(sizeBytes),
                                 static_cast<unsigned long long>(record->desc.size));
@@ -548,18 +548,18 @@ namespace Render::RHI
                 }
                 if (record->desc.access == MemoryAccess::GpuOnly)
                 {
-                    m_log.error("[null] mapBuffer: GpuOnly 缓冲不可映射");
+                    m_log.error("[null] mapBuffer: GpuOnly buffer cannot be mapped");  // GpuOnly 缓冲不可映射
                     return MappedRange{};
                 }
                 if (record->mapped)
                 {
-                    m_log.error("[null] mapBuffer: 该缓冲已处于映射状态");
+                    m_log.error("[null] mapBuffer: buffer is already mapped");  // 该缓冲已处于映射状态
                     return MappedRange{};
                 }
                 const uint64_t size = sizeBytes == 0 ? record->desc.size - offset : sizeBytes;
                 if (offset + size > record->desc.size)
                 {
-                    m_log.error("[null] mapBuffer 越界");
+                    m_log.error("[null] mapBuffer: out of bounds");  // mapBuffer 越界
                     return MappedRange{};
                 }
                 record->mapped = true;
@@ -577,7 +577,7 @@ namespace Render::RHI
                 }
                 if (!record->mapped)
                 {
-                    m_log.warn("[null] unmapBuffer: 该缓冲未处于映射状态");
+                    m_log.warn("[null] unmapBuffer: buffer is not mapped");  // 该缓冲未处于映射状态
                     return;
                 }
                 record->mapped = false;
@@ -591,19 +591,19 @@ namespace Render::RHI
             {
                 if (desc.width == 0 || desc.height == 0)
                 {
-                    m_log.error("[null] createTexture: 尺寸为 0");
+                    m_log.error("[null] createTexture: dimensions are 0");  // 尺寸为 0
                     return TextureHandle{};
                 }
                 if (desc.width > m_caps.maxTextureSize || desc.height > m_caps.maxTextureSize)
                 {
-                    m_log.error("[null] createTexture: %ux%u 超过 maxTextureSize=%u", desc.width, desc.height,
+                    m_log.error("[null] createTexture: %ux%u exceeds maxTextureSize=%u", desc.width, desc.height,
                                 m_caps.maxTextureSize);
                     return TextureHandle{};
                 }
                 const uint32_t pixelSize = formatByteSize(desc.format);
                 if (pixelSize == 0)
                 {
-                    m_log.error("[null] createTexture: 未知格式");
+                    m_log.error("[null] createTexture: unknown format");  // 未知格式
                     return TextureHandle{};
                 }
                 NullTextureRecord record{};
@@ -617,7 +617,7 @@ namespace Render::RHI
             {
                 if (texture.valid() && !m_textures.remove(texture))
                 {
-                    m_log.warn("[null] destroyTexture: 句柄已失效（重复销毁？）");
+                    m_log.warn("[null] destroyTexture: handle already invalid (double destroy?)");  // 句柄已失效（重复销毁？）
                 }
             }
 
@@ -639,16 +639,16 @@ namespace Render::RHI
                     static_cast<uint32_t>(region.x) + region.width > record->desc.width ||
                     static_cast<uint32_t>(region.y) + region.height > record->desc.height)
                 {
-                    m_log.error("[null] writeTexture: 区域超出纹理范围");
+                    m_log.error("[null] writeTexture: region exceeds texture bounds");  // 区域超出纹理范围
                     return RhiResult::ErrorInvalidArgument;
                 }
                 const uint32_t pixelSize = formatByteSize(record->desc.format);
                 const uint64_t needed = static_cast<uint64_t>(region.width) * region.height * pixelSize;
                 if (sizeBytes < needed)
                 {
-                    m_log.error("[null] writeTexture: 数据不足，需要 %llu 字节，给了 %llu",
+                    m_log.error("[null] writeTexture: insufficient data, need %llu bytes, got %llu",
                                 static_cast<unsigned long long>(needed),
-                                static_cast<unsigned long long>(sizeBytes));
+                                static_cast<unsigned long long>(sizeBytes));  // 数据不足
                     return RhiResult::ErrorInvalidArgument;
                 }
                 const auto* src = static_cast<const uint8_t*>(data);
@@ -672,7 +672,7 @@ namespace Render::RHI
             {
                 if (sampler.valid() && !m_samplers.remove(sampler))
                 {
-                    m_log.warn("[null] destroySampler: 句柄已失效（重复销毁？）");
+                    m_log.warn("[null] destroySampler: handle already invalid (double destroy?)");  // 句柄已失效（重复销毁？）
                 }
             }
 
@@ -684,7 +684,7 @@ namespace Render::RHI
                 {
                     if (!m_buffers.get(desc.buffers[i].buffer))
                     {
-                        m_log.error("[null] createBindGroup: buffers[%u] 句柄无效", i);
+                        m_log.error("[null] createBindGroup: buffers[%u] handle invalid", i);  // buffers[i] 句柄无效
                         return BindGroupHandle{};
                     }
                 }
@@ -692,7 +692,7 @@ namespace Render::RHI
                 {
                     if (!m_textures.get(desc.textures[i].texture))
                     {
-                        m_log.error("[null] createBindGroup: textures[%u] 句柄无效", i);
+                        m_log.error("[null] createBindGroup: textures[%u] handle invalid", i);  // textures[i] 句柄无效
                         return BindGroupHandle{};
                     }
                 }
@@ -703,7 +703,7 @@ namespace Render::RHI
             {
                 if (group.valid() && !m_bindGroups.remove(group))
                 {
-                    m_log.warn("[null] destroyBindGroup: 句柄已失效（重复销毁？）");
+                    m_log.warn("[null] destroyBindGroup: handle already invalid (double destroy?)");  // 句柄已失效（重复销毁？）
                 }
             }
 
@@ -713,12 +713,12 @@ namespace Render::RHI
             {
                 if (!surface)
                 {
-                    m_log.error("[null] beginFrame: surface 为空");
+                    m_log.error("[null] beginFrame: surface is null");  // surface 为空
                     return nullptr;
                 }
                 if (m_inFrame)
                 {
-                    m_log.error("[null] beginFrame: 上一帧未 submitFrame");
+                    m_log.error("[null] beginFrame: previous frame not submitted");  // 上一帧未 submitFrame
                     return nullptr;
                 }
                 m_inFrame = true;
@@ -730,12 +730,12 @@ namespace Render::RHI
             {
                 if (!m_inFrame)
                 {
-                    m_log.error("[null] submitFrame: 未先调用 beginFrame");
+                    m_log.error("[null] submitFrame: no beginFrame called");  // 未先调用 beginFrame
                     return RhiResult::ErrorInvalidArgument;
                 }
                 if (m_commands.inRenderPass())
                 {
-                    m_log.error("[null] submitFrame: RenderPass 未结束");
+                    m_log.error("[null] submitFrame: RenderPass not ended");  // RenderPass 未结束
                     return RhiResult::ErrorInvalidArgument;
                 }
                 m_inFrame = false;

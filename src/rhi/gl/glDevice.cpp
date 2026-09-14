@@ -109,7 +109,7 @@ namespace Render::RHI::gl
     {
         if (!m_acquired)
         {
-            m_log.error("[gl] present: 未先调用 acquireNextImage");
+            m_log.error("[gl] present: must call acquireNextImage first");  // 未先调用 acquireNextImage
             return RhiResult::ErrorInvalidArgument;
         }
         m_acquired = false;
@@ -223,7 +223,7 @@ namespace Render::RHI::gl
     {
         if (!m_surfaces.empty())
         {
-            m_log.error("[gl] 设备销毁时仍有 %zu 个表面未销毁（宿主生命周期错误）", m_surfaces.size());
+            m_log.error("[gl] Device destroyed with %zu surfaces still alive (host lifecycle error)", m_surfaces.size());  // 设备销毁时仍有表面未销毁
             for (GlSurface* s : m_surfaces)
             {
                 delete s;
@@ -347,9 +347,7 @@ namespace Render::RHI::gl
     {
         if (desc.window.kind != NativeWindow::Kind::ForeignGlContext)
         {
-            m_log.error("[gl] createSurface: 仅支持 ForeignGlContext（宿主自建上下文），"
-                        "收到 kind=%d。自建 WGL/GLX/NSOpenGL 上下文不在本后端职责内。",
-                        static_cast<int>(desc.window.kind));
+            m_log.error("[gl] createSurface: only ForeignGlContext (host-owned context) is supported, got kind=%d. Host-owned WGL/GLX/NSOpenGL contexts are not in this backend's scope.", static_cast<int>(desc.window.kind));  // 仅支持 ForeignGlContext
             return nullptr;
         }
 
@@ -374,7 +372,7 @@ namespace Render::RHI::gl
             }
             if (m_frameSurface == m_surfaces[i])
             {
-                m_log.error("[gl] destroySurface: 该表面正处于 beginFrame 中");
+                m_log.error("[gl] destroySurface: surface is in beginFrame");  // 该表面正处于 beginFrame 中
                 m_frameSurface = nullptr;
                 m_inFrame = false;
             }
@@ -383,7 +381,7 @@ namespace Render::RHI::gl
             m_surfaces.pop_back();
             return;
         }
-        m_log.error("[gl] destroySurface: 表面不属于本设备");
+        m_log.error("[gl] destroySurface: surface does not belong to this device");  // 表面不属于本设备
     }
 
     // ==================== 着色器与管线 ====================
@@ -392,12 +390,12 @@ namespace Render::RHI::gl
     {
         if (!desc.data || desc.sizeBytes == 0)
         {
-            m_log.error("[gl] createShader: 空源码");
+            m_log.error("[gl] createShader: empty source");  // 空源码
             return ShaderHandle{};
         }
         if (desc.language != ShaderLanguage::GlslSource)
         {
-            m_log.error("[gl] createShader: 本后端只接受 GlslSource，收到 language=%d",
+            m_log.error("[gl] createShader: this backend only accepts GlslSource, got language=%d",  // 本后端只接受 GlslSource
                         static_cast<int>(desc.language));
             return ShaderHandle{};
         }
@@ -417,7 +415,7 @@ namespace Render::RHI::gl
     {
         if (shader.valid() && !m_shaders.remove(shader))
         {
-            m_log.warn("[gl] destroyShader: 句柄已失效（重复销毁？）");
+            m_log.warn("[gl] destroyShader: handle already invalid (double destroy?)");  // 句柄已失效（重复销毁？）
         }
     }
 
@@ -452,7 +450,7 @@ namespace Render::RHI::gl
                                     : stage == GL_FRAGMENT_SHADER ? "fragment"
                                     : stage == GL_COMPUTE_SHADER  ? "compute"
                                                                   : "unknown";
-            m_log.error("[gl] 着色器编译失败（stage=%s(0x%04X), pipeline=%s）：%s", stageWord, stage,
+            m_log.error("[gl] shader compilation failed (stage=%s(0x%04X), pipeline=%s): %s", stageWord, stage,  // 着色器编译失败
                         debugName ? debugName : "?", log.data());
             m_gl.DeleteShader(name);
             return 0;
@@ -466,19 +464,19 @@ namespace Render::RHI::gl
         const GlShaderRecord* fs = m_shaders.get(desc.fragmentShader);
         if (!vs || !fs)
         {
-            m_log.error("[gl] createGraphicsPipeline: 顶点或片段着色器句柄无效（vs=%s fs=%s）",
+            m_log.error("[gl] createGraphicsPipeline: vertex or fragment shader handle invalid (vs=%s fs=%s)",  // 顶点或片段着色器句柄无效
                         vs ? "ok" : "无效", fs ? "ok" : "无效");
             return PipelineHandle{};
         }
         if (desc.attributeCount > kMaxVertexAttributes || desc.bufferLayoutCount > kMaxVertexBufferSlots)
         {
-            m_log.error("[gl] createGraphicsPipeline: 顶点属性/绑定槽数量超限（attr=%u slots=%u）",
+            m_log.error("[gl] createGraphicsPipeline: vertex attributes/binding slots exceed limit (attr=%u slots=%u)",  // 顶点属性/绑定槽数量超限
                         desc.attributeCount, desc.bufferLayoutCount);
             return PipelineHandle{};
         }
         if (desc.pushConstantBytes > kMaxPushConstantBytes)
         {
-            m_log.error("[gl] createGraphicsPipeline: pushConstantBytes=%u 超过上限 %u",
+            m_log.error("[gl] createGraphicsPipeline: pushConstantBytes=%u exceeds limit %u",  // pushConstantBytes 超过上限
                         desc.pushConstantBytes, kMaxPushConstantBytes);
             return PipelineHandle{};
         }
@@ -514,7 +512,7 @@ namespace Render::RHI::gl
             {
                 m_gl.GetProgramInfoLog(program, length, nullptr, log.data());
             }
-            m_log.error("[gl] 管线链接失败（%s）：%s", desc.debugName ? desc.debugName : "?", log.data());
+            m_log.error("[gl] pipeline link failed (%s): %s", desc.debugName ? desc.debugName : "?", log.data());  // 管线链接失败
             m_gl.DeleteProgram(program);
             return PipelineHandle{};
         }
@@ -550,10 +548,10 @@ namespace Render::RHI::gl
             {
                 // 不当作错误：着色器可能仍用独立 uniform（迁移期）。
                 // 但要留下明确记录，否则「pushConstants 写了却没生效」很难查。
-                m_log.warn("[gl] 管线 %s 声明了 %u 字节 pushConstant，"
-                           "但着色器里找不到 uniform block \"%s\"，本管线的 pushConstants 将无效",
-                           desc.debugName ? desc.debugName : "?", desc.pushConstantBytes,
-                           kPushConstantBlockName);
+m_log.warn("[gl] pipeline %s declares %u bytes pushConstant, "
+                            "but shader lacks uniform block \"%s\", pushConstants will have no effect",
+                            desc.debugName ? desc.debugName : "?", desc.pushConstantBytes,
+                            kPushConstantBlockName);  // 管线声明了 pushConstant 但找不到 uniform block
             }
             else
             {
@@ -581,7 +579,7 @@ namespace Render::RHI::gl
                     const GLuint blockIndex = m_gl.GetUniformBlockIndex(program, slot.glName);
                     if (blockIndex == GL_INVALID_INDEX)
                     {
-                        m_log.warn("[gl] 管线 %s：uniform block \"%s\"（set=%u binding=%u）未找到",
+                        m_log.warn("[gl] pipeline %s: uniform block \"%s\" (set=%u binding=%u) not found",  // uniform block 未找到
                                    desc.debugName ? desc.debugName : "?", slot.glName, slot.set,
                                    slot.binding);
                     }
@@ -597,8 +595,8 @@ namespace Render::RHI::gl
                 mapping.glSlot = nextUboBinding++;
                 // SSBO 的块绑定需要 glShaderStorageBlockBinding（GL 4.3），
                 // 未纳入函数表；着色器需自行写 layout(binding = N)。
-                m_log.debug("[gl] 管线 %s：StorageBuffer set=%u binding=%u 使用 GL binding=%u，"
-                            "着色器需显式声明 layout(binding = %u)",
+m_log.debug("[gl] pipeline %s: StorageBuffer set=%u binding=%u uses GL binding=%u, "
+                             "shader must explicitly declare layout(binding = %u)",  // StorageBuffer 使用 GL binding
                             desc.debugName ? desc.debugName : "?", slot.set, slot.binding, mapping.glSlot,
                             mapping.glSlot);
                 break;
@@ -612,7 +610,7 @@ namespace Render::RHI::gl
                     const GLint location = m_gl.GetUniformLocation(program, slot.glName);
                     if (location < 0)
                     {
-                        m_log.warn("[gl] 管线 %s：采样器 uniform \"%s\"（set=%u binding=%u）未找到",
+                        m_log.warn("[gl] pipeline %s: sampler uniform \"%s\" (set=%u binding=%u) not found",  // 采样器 uniform 未找到
                                    desc.debugName ? desc.debugName : "?", slot.glName, slot.set,
                                    slot.binding);
                     }
@@ -649,14 +647,14 @@ namespace Render::RHI::gl
             // Windows/Linux 的 GL 4.6 上下文里函数指针必然已解析。
             // 调用方必须以本身的 Capabilities::computeShaders 先判定，
             // 不支持时降级到 CPU 路径（rxSessionQueryVisibility 等）。
-            m_log.error("[gl] createComputePipeline: 当前上下文不支持计算着色器"
-                        "（需要 GL 4.3+ / 计算着色器，macOS 请走 CPU 剔除路径）");
+            m_log.error("[gl] createComputePipeline: compute shaders not supported in current context "
+                        "(requires GL 4.3+ / compute shaders, use CPU path on macOS)");  // 当前上下文不支持计算着色器
             return PipelineHandle{};
         }
         const GlShaderRecord* cs = m_shaders.get(desc.computeShader);
         if (!cs)
         {
-            m_log.error("[gl] createComputePipeline: 计算着色器句柄无效");
+            m_log.error("[gl] createComputePipeline: compute shader handle invalid");  // 计算着色器句柄无效
             return PipelineHandle{};
         }
 
@@ -682,7 +680,7 @@ namespace Render::RHI::gl
             {
                 m_gl.GetProgramInfoLog(program, length, nullptr, log.data());
             }
-            m_log.error("[gl] 计算管线链接失败（%s）：%s", desc.debugName ? desc.debugName : "?",
+            m_log.error("[gl] compute pipeline link failed (%s): %s", desc.debugName ? desc.debugName : "?",  // 计算管线链接失败
                         log.data());
             m_gl.DeleteProgram(program);
             return PipelineHandle{};
@@ -719,7 +717,7 @@ namespace Render::RHI::gl
         {
             if (pipeline.valid())
             {
-                m_log.warn("[gl] destroyPipeline: 句柄已失效（重复销毁？）");
+                m_log.warn("[gl] destroyPipeline: handle already invalid (double destroy?)");  // 句柄已失效（重复销毁？）
             }
             return;
         }
@@ -740,7 +738,7 @@ namespace Render::RHI::gl
     {
         if (desc.size == 0)
         {
-            m_log.error("[gl] createBuffer: size 为 0");
+            m_log.error("[gl] createBuffer: size is 0");  // size 为 0
             return BufferHandle{};
         }
         if (!m_gl.GenBuffers)
@@ -793,7 +791,7 @@ namespace Render::RHI::gl
         {
             if (buffer.valid())
             {
-                m_log.warn("[gl] destroyBuffer: 句柄已失效（重复销毁？）");
+                m_log.warn("[gl] destroyBuffer: handle already invalid (double destroy?)");  // 句柄已失效（重复销毁？）
             }
             return;
         }
@@ -821,7 +819,7 @@ namespace Render::RHI::gl
         }
         if (offset + sizeBytes > record->desc.size)
         {
-            m_log.error("[gl] writeBuffer 越界：offset=%llu size=%llu 缓冲=%llu",
+            m_log.error("[gl] writeBuffer out of bounds: offset=%llu size=%llu buffer=%llu",  // writeBuffer 越界
                         static_cast<unsigned long long>(offset),
                         static_cast<unsigned long long>(sizeBytes),
                         static_cast<unsigned long long>(record->desc.size));
@@ -843,18 +841,18 @@ namespace Render::RHI::gl
         }
         if (record->desc.access == MemoryAccess::GpuOnly)
         {
-            m_log.error("[gl] mapBuffer: GpuOnly 缓冲不可映射");
+            m_log.error("[gl] mapBuffer: GpuOnly buffer cannot be mapped");  // GpuOnly 缓冲不可映射
             return MappedRange{};
         }
         if (record->mappedPtr)
         {
-            m_log.error("[gl] mapBuffer: 该缓冲已处于映射状态");
+            m_log.error("[gl] mapBuffer: buffer is already mapped");  // 该缓冲已处于映射状态
             return MappedRange{};
         }
         const uint64_t size = sizeBytes == 0 ? record->desc.size - offset : sizeBytes;
         if (offset + size > record->desc.size)
         {
-            m_log.error("[gl] mapBuffer 越界");
+            m_log.error("[gl] mapBuffer: out of bounds");  // mapBuffer 越界
             return MappedRange{};
         }
 
@@ -882,7 +880,7 @@ namespace Render::RHI::gl
         m_gl.BindBuffer(record->target, 0);
         if (!ptr)
         {
-            m_log.error("[gl] mapBuffer 失败（GL 返回空指针）");
+            m_log.error("[gl] mapBuffer failed (GL returned null pointer)");  // mapBuffer 失败（GL 返回空指针）
             return MappedRange{};
         }
         record->mappedPtr = ptr;
@@ -921,19 +919,19 @@ namespace Render::RHI::gl
     {
         if (desc.width == 0 || desc.height == 0)
         {
-            m_log.error("[gl] createTexture: 尺寸为 0");
+            m_log.error("[gl] createTexture: dimensions are 0");  // 尺寸为 0
             return TextureHandle{};
         }
         if (desc.width > m_caps.maxTextureSize || desc.height > m_caps.maxTextureSize)
         {
-            m_log.error("[gl] createTexture: %ux%u 超过 maxTextureSize=%u", desc.width, desc.height,
+            m_log.error("[gl] createTexture: %ux%u exceeds maxTextureSize=%u", desc.width, desc.height,  // createTexture 超过 maxTextureSize
                         m_caps.maxTextureSize);
             return TextureHandle{};
         }
         const GLenum internalFormat = toGlInternalFormat(desc.format);
         if (internalFormat == 0 || !m_gl.GenTextures)
         {
-            m_log.error("[gl] createTexture: 不支持的格式 %d", static_cast<int>(desc.format));
+            m_log.error("[gl] createTexture: unsupported format %d", static_cast<int>(desc.format));  // 不支持的格式
             return TextureHandle{};
         }
 
@@ -962,7 +960,7 @@ namespace Render::RHI::gl
         {
             if (texture.valid())
             {
-                m_log.warn("[gl] destroyTexture: 句柄已失效（重复销毁？）");
+                m_log.warn("[gl] destroyTexture: handle already invalid (double destroy?)");  // 句柄已失效（重复销毁？）
             }
             return;
         }
@@ -988,7 +986,7 @@ namespace Render::RHI::gl
         }
         if (sizeBytes < static_cast<uint64_t>(region.width) * region.height * pixelSize)
         {
-            m_log.error("[gl] writeTexture: 数据不足");
+            m_log.error("[gl] writeTexture: insufficient data");  // 数据不足
             return RhiResult::ErrorInvalidArgument;
         }
 
@@ -1018,7 +1016,7 @@ namespace Render::RHI::gl
     {
         if (sampler.valid() && !m_samplers.remove(sampler))
         {
-            m_log.warn("[gl] destroySampler: 句柄已失效（重复销毁？）");
+            m_log.warn("[gl] destroySampler: handle already invalid (double destroy?)");  // 句柄已失效（重复销毁？）
         }
     }
 
@@ -1031,7 +1029,7 @@ namespace Render::RHI::gl
         {
             if (!m_buffers.get(desc.buffers[i].buffer))
             {
-                m_log.error("[gl] createBindGroup: buffers[%u] 句柄无效", i);
+                m_log.error("[gl] createBindGroup: buffers[%u] handle invalid", i);  // buffers[i] 句柄无效
                 return BindGroupHandle{};
             }
             record.buffers.push_back(desc.buffers[i]);
@@ -1040,7 +1038,7 @@ namespace Render::RHI::gl
         {
             if (!m_textures.get(desc.textures[i].texture))
             {
-                m_log.error("[gl] createBindGroup: textures[%u] 句柄无效", i);
+                m_log.error("[gl] createBindGroup: textures[%u] handle invalid", i);  // textures[i] 句柄无效
                 return BindGroupHandle{};
             }
             record.textures.push_back(desc.textures[i]);
@@ -1052,7 +1050,7 @@ namespace Render::RHI::gl
     {
         if (group.valid() && !m_bindGroups.remove(group))
         {
-            m_log.warn("[gl] destroyBindGroup: 句柄已失效（重复销毁？）");
+            m_log.warn("[gl] destroyBindGroup: handle already invalid (double destroy?)");  // 句柄已失效（重复销毁？）
         }
     }
 
@@ -1062,12 +1060,12 @@ namespace Render::RHI::gl
     {
         if (!surface)
         {
-            m_log.error("[gl] beginFrame: surface 为空");
+            m_log.error("[gl] beginFrame: surface is null");  // surface 为空
             return nullptr;
         }
         if (m_inFrame)
         {
-            m_log.error("[gl] beginFrame: 上一帧未 submitFrame");
+            m_log.error("[gl] beginFrame: previous frame not submitted");  // 上一帧未 submitFrame
             return nullptr;
         }
 
@@ -1079,7 +1077,7 @@ namespace Render::RHI::gl
         }
         if (!owned)
         {
-            m_log.error("[gl] beginFrame: 表面不属于本设备");
+            m_log.error("[gl] beginFrame: surface does not belong to this device");  // 表面不属于本设备
             return nullptr;
         }
 
@@ -1093,12 +1091,12 @@ namespace Render::RHI::gl
     {
         if (!m_inFrame)
         {
-            m_log.error("[gl] submitFrame: 未先调用 beginFrame");
+            m_log.error("[gl] submitFrame: no beginFrame called");  // 未先调用 beginFrame
             return RhiResult::ErrorInvalidArgument;
         }
         if (m_commands.inRenderPass())
         {
-            m_log.error("[gl] submitFrame: RenderPass 未结束");
+            m_log.error("[gl] submitFrame: RenderPass not ended");  // RenderPass 未结束
             return RhiResult::ErrorInvalidArgument;
         }
 
@@ -1205,7 +1203,7 @@ namespace Render::RHI::gl
             const GLenum status = m_gl.CheckFramebufferStatus(GL_FRAMEBUFFER);
             if (status != GL_FRAMEBUFFER_COMPLETE)
             {
-                m_log.error("[gl] 帧缓冲不完整（status=0x%04X，color=%u depth=%u）", status, colorCount,
+                m_log.error("[gl] framebuffer incomplete (status=0x%04X, color=%u depth=%u)", status, colorCount,  // 帧缓冲不完整
                             depthName);
                 m_gl.BindFramebuffer(GL_FRAMEBUFFER, 0);
                 m_gl.DeleteFramebuffers(1, &entry.fbo);
@@ -1301,7 +1299,7 @@ namespace Render::RHI::gl
         uint32_t leaked = m_buffers.size() + m_textures.size() + m_pipelines.size();
         if (leaked > 0)
         {
-            m_log.warn("[gl] 设备销毁时仍有 %u 个资源未释放（buffers=%u textures=%u pipelines=%u）",
+            m_log.warn("[gl] Device destroyed with %u unreleased resources (buffers=%u textures=%u pipelines=%u)",  // 设备销毁时仍有资源未释放
                        leaked, m_buffers.size(), m_textures.size(), m_pipelines.size());
         }
 
