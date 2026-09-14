@@ -83,7 +83,6 @@ namespace Render::RHI::metal
         , m_extent(desc.initialExtent)
         , m_colorFormat(desc.preferredColorFormat)
         , m_depthFormat(desc.depthFormat)
-        , m_presentMode(desc.presentMode)
         , m_log(logger)
     {
         m_inFlight = dispatch_semaphore_create(3);
@@ -156,7 +155,7 @@ namespace Render::RHI::metal
         desc.width = m_extent.width;
         desc.height = m_extent.height;
         desc.usage = MTLTextureUsageRenderTarget;
-        desc.storageMode = MTLResourceStorageModePrivate;
+        desc.storageMode = MTLStorageModePrivate;
 
         m_depthNative = [m_device->nativeDevice() newTextureWithDescriptor:desc];
         if (m_depthNative == nil)
@@ -239,7 +238,7 @@ namespace Render::RHI::metal
             m_log.error("[metal] present: no command buffer for this frame (beginFrame not called?)");
             releaseDrawable();
             dispatch_semaphore_signal(m_inFlight);
-            return RhiResult::ErrorInvalidHandle;
+            return RhiResult::ErrorNotInitialized;
         }
         if (m_device->commands().inRenderPass())
         {

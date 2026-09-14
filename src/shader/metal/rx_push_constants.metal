@@ -24,6 +24,9 @@
 //   uMatSpecular  112..127  （vec3 112..123 + shininess 124..127）
 // ============================================================================
 
+#include <metal_stdlib>
+using namespace metal;
+
 #ifndef RX_PUSH_CONSTANTS_METAL
 #define RX_PUSH_CONSTANTS_METAL
 

@@ -80,9 +80,13 @@ set(RENDERX_GL_INTERNAL_SOURCES
 # .mm，即 Metal 后端），避免在测试里再硬编码一遍文件路径。
 if(APPLE)
     list(APPEND RENDERX_GL_INTERNAL_SOURCES ${RENDER_OBJC_SOURCES})
-    enable_language(OBJCXX)
-    # 与主目标一致：Metal 源开启 ARC（只能按源文件设置）
-    set_source_files_properties(${RENDER_OBJC_SOURCES} PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+    # 与主目标一致：Metal 源开启 ARC（只能按源文件设置）。
+    # 不设置 LANGUAGE CXX：clang++ 按 .mm 扩展名自动按 Objective-C++ 解析；
+    # 设置后 CMake 会追加 -x c++ 导致 ObjC 头编译失败。
+    set_source_files_properties(${RENDER_OBJC_SOURCES} PROPERTIES
+        COMPILE_OPTIONS "-fobjc-arc"
+        SKIP_UNITY_BUILD_INCLUSION ON
+    )
 endif()
 
 add_executable(RenderxGLTests ${RENDERX_GL_TEST_SOURCES} ${RENDERX_GL_INTERNAL_SOURCES})

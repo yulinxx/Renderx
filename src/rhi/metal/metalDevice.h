@@ -82,7 +82,6 @@ namespace Render::RHI::metal
         Extent2D m_extent{};
         Format m_colorFormat = Format::BGRA8Unorm;
         Format m_depthFormat = Format::Unknown;
-        PresentMode m_presentMode = PresentMode::Fifo;
 
         CAMetalLayer* m_layer = nil;
         dispatch_semaphore_t m_inFlight = nil;
