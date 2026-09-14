@@ -86,6 +86,7 @@ extern "C" bool gl_loader_load(GLFuncs* out, void* getProcAddress)
     f.DrawElementsInstanced = (PFNGLDRAWELEMENTSINSTANCEDPROC)getProc("glDrawElementsInstanced");
     f.DrawArraysIndirect = (PFNGLDRAWARRAYSINDIRECTPROC)getProc("glDrawArraysIndirect");
     f.DrawElementsIndirect = (PFNGLDRAWELEMENTSINDIRECTPROC)getProc("glDrawElementsIndirect");
+    f.MultiDrawArrays = (PFNGLMULTIDRAWARRAYSPROC)getProc("glMultiDrawArrays");
     f.MultiDrawArraysIndirect = (PFNGLMULTIDRAWARRAYSINDIRECTPROC)getProc("glMultiDrawArraysIndirect");
     f.MultiDrawElementsIndirect = (PFNGLMULTIDRAWELEMENTSINDIRECTPROC)getProc("glMultiDrawElementsIndirect");
 

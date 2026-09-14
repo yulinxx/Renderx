@@ -434,6 +434,22 @@ namespace Render::RHI
         uint32_t height = 0;
     };
 
+    /**
+     * @brief 多段绘制里的一段
+     *
+     * firstVertex 是**相对当前已绑定顶点缓冲偏移**的顶点序号，与 draw() 的
+     * firstVertex 同一坐标系；vertexCount 为该段的顶点数。
+     *
+     * 之所以把「一段」表达成序号而不是字节偏移：GL 的多段入口
+     * （glMultiDrawArrays）只接受序号数组，字节偏移在驱动内部也是先除步长。
+     * 调用方必须保证每段起点与本段基准偏移之差是步长的整数倍，否则拼不出来。
+     */
+    struct DrawRange
+    {
+        uint32_t firstVertex = 0;
+        uint32_t vertexCount = 0;
+    };
+
     struct ColorRgba
     {
         float r = 0.0f;

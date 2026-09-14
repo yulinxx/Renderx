@@ -372,6 +372,8 @@ typedef void(RENDER_GLAPI* PFNGLDRAWELEMENTSINSTANCEDPROC)(
     GLenum mode, GLsizei count, GLenum type, const void* indices, GLsizei instancecount);
 typedef void(RENDER_GLAPI* PFNGLDRAWARRAYSINDIRECTPROC)(GLenum mode, const void* indirect);
 typedef void(RENDER_GLAPI* PFNGLDRAWELEMENTSINDIRECTPROC)(GLenum mode, GLenum type, const void* indirect);
+typedef void(RENDER_GLAPI* PFNGLMULTIDRAWARRAYSPROC)(
+    GLenum mode, const GLint* first, const GLsizei* count, GLsizei drawcount);
 typedef void(RENDER_GLAPI* PFNGLMULTIDRAWARRAYSINDIRECTPROC)(
     GLenum mode, const void* indirect, GLsizei drawcount, GLsizei stride);
 typedef void(RENDER_GLAPI* PFNGLMULTIDRAWELEMENTSINDIRECTPROC)(
@@ -555,6 +557,7 @@ struct GLFuncs
     PFNGLDRAWELEMENTSINSTANCEDPROC DrawElementsInstanced;
     PFNGLDRAWARRAYSINDIRECTPROC DrawArraysIndirect;
     PFNGLDRAWELEMENTSINDIRECTPROC DrawElementsIndirect;
+    PFNGLMULTIDRAWARRAYSPROC MultiDrawArrays;
     PFNGLMULTIDRAWARRAYSINDIRECTPROC MultiDrawArraysIndirect;
     PFNGLMULTIDRAWELEMENTSINDIRECTPROC MultiDrawElementsIndirect;
 

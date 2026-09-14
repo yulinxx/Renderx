@@ -67,6 +67,32 @@ namespace Render::RHI
         virtual void draw(uint32_t vertexCount, uint32_t instanceCount, uint32_t firstVertex,
                           uint32_t firstInstance) = 0;
 
+        /**
+         * @brief 一次提交多段不连续的顶点区间，共用当前管线与全部绑定状态
+         *
+         * 为什么需要它：CAD 场景里每个图元各自占用几何仓的一段，段与段之间因
+         * 分配粒度对齐必然存在空隙；折线又都是 LineStrip —— 把两段拼成一次
+         * draw 会多画一条连接线。所以「先合成长区间」这条路对折线走不通，
+         * 只能一次提交多段。
+         *
+         * 逐段调用 draw() 的代价是每段一次驱动入口与状态校验，实测每次约
+         * 0.4us；70 万段就是 0.28 秒，装不进一帧。
+         *
+         * ranges 里的 firstVertex 相对**当前已绑定的顶点缓冲偏移**，因此本调用
+         * 之前必须已按该批次的基准偏移调用过 bindVertexBuffer。
+         *
+         * 默认实现逐段调用 draw()，语义完全等价（只是慢）；后端可覆写成一次
+         * glMultiDrawArrays，Metal 侧则可把多段编码进同一个 encoder。
+         */
+        virtual void drawMulti(const DrawRange* ranges, uint32_t rangeCount, uint32_t instanceCount,
+                               uint32_t firstInstance)
+        {
+            for (uint32_t i = 0; i < rangeCount; ++i)
+            {
+                draw(ranges[i].vertexCount, instanceCount, ranges[i].firstVertex, firstInstance);
+            }
+        }
+
         virtual void drawIndexed(uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex,
                                  int32_t vertexOffset, uint32_t firstInstance) = 0;
 

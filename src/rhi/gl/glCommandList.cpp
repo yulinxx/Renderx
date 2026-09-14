@@ -608,6 +608,46 @@ else
         m_stats.drawCalls += 1;
     }
 
+    void GlCommandList::drawMulti(const DrawRange* ranges, uint32_t rangeCount, uint32_t instanceCount,
+                                  uint32_t firstInstance)
+    {
+        if (ranges == nullptr || rangeCount == 0 || !prepareDraw("drawMulti"))
+        {
+            return;
+        }
+        if (rangeCount == 1)
+        {
+            // 单段没必要走多段入口：多段数组要整份拷给驱动，反而更贵
+            draw(ranges[0].vertexCount, instanceCount, ranges[0].firstVertex, firstInstance);
+            return;
+        }
+
+        const GLFuncs& f = m_device->gl();
+        if (instanceCount > 1 || firstInstance != 0 || f.MultiDrawArrays == nullptr)
+        {
+            // 两种退让：glMultiDrawArrays 没有实例化版本，也没有 baseInstance；
+            // 入口缺失时同样逐段发。语义与多段完全一致，只是慢。
+            for (uint32_t i = 0; i < rangeCount; ++i)
+            {
+                draw(ranges[i].vertexCount, instanceCount, ranges[i].firstVertex, firstInstance);
+            }
+            return;
+        }
+
+        // 复用缓冲：一帧里会有多批，每批都新建两个数组不值当。
+        // 段的顶点数也可能到十万量级，这里只是两遍 O(n) 的类型转换。
+        m_multiFirst.resize(rangeCount);
+        m_multiCount.resize(rangeCount);
+        for (uint32_t i = 0; i < rangeCount; ++i)
+        {
+            m_multiFirst[i] = static_cast<GLint>(ranges[i].firstVertex);
+            m_multiCount[i] = static_cast<GLsizei>(ranges[i].vertexCount);
+        }
+        f.MultiDrawArrays(boundPipeline()->topology, m_multiFirst.data(), m_multiCount.data(),
+                          static_cast<GLsizei>(rangeCount));
+        m_stats.drawCalls += 1;
+    }
+
     void GlCommandList::drawIndexed(uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex,
                                     int32_t vertexOffset, uint32_t firstInstance)
     {

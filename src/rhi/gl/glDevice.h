@@ -113,6 +113,8 @@ namespace Render::RHI::gl
         void pushConstants(uint32_t offsetBytes, uint32_t sizeBytes, const void* data) override;
         void draw(uint32_t vertexCount, uint32_t instanceCount, uint32_t firstVertex,
                   uint32_t firstInstance) override;
+        void drawMulti(const DrawRange* ranges, uint32_t rangeCount, uint32_t instanceCount,
+                       uint32_t firstInstance) override;
         void drawIndexed(uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex,
                          int32_t vertexOffset, uint32_t firstInstance) override;
         void drawIndirect(BufferHandle argsBuffer, uint64_t offsetBytes, uint32_t drawCount,
@@ -169,6 +171,11 @@ namespace Render::RHI::gl
         uint8_t m_pushConstants[kMaxPushConstantBytes]{};
         uint32_t m_pushConstantHighWater = 0;
         bool m_pushConstantsDirty = false;
+
+        // drawMulti 的段表：glMultiDrawArrays 只吃 GLint/GLsizei 数组，
+        // 逐次调用都新建两个数组不值当，这里跨批复用。
+        std::vector<GLint> m_multiFirst;
+        std::vector<GLsizei> m_multiCount;
     };
 
     /**

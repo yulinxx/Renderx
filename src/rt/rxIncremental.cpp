@@ -17,12 +17,47 @@ namespace Render::RT::detail
     {
         constexpr uint64_t kDefaultInitialBytes = 4ull * 1024ull * 1024ull;
         constexpr uint32_t kDefaultGranularity = 256;
+        /// 分配粒度的下限。顶点属性（float / uint32 / uchar4 归一化色）只要求
+        /// 4 字节对齐，因此这是粒度真正需要满足的约束。见 initialize() 里的说明。
+        constexpr uint32_t kMinGranularity = 4;
         /// 单个仓的上限：offset 是 uint32，超过 4GB 无法表达
         constexpr uint64_t kAbsoluteMaxBytes = 0xFFFFFFFFull;
+
+        /// 一个多段批次最多容纳多少段。段表要整份交给驱动（glMultiDrawArrays
+        /// 的 first/count 两个数组），几十万段一次交出去既费内存也没必要；
+        /// 拆成若干批还能让驱动边提交边绘制。取 32768：70 万图元约 22 次调用，
+        /// 每次的段表 256KB。
+        constexpr uint32_t kMaxRangesPerBatch = 32768;
 
         uint64_t alignUp(uint64_t value, uint64_t alignment)
         {
             return (value + alignment - 1) / alignment * alignment;
+        }
+
+        /**
+         * @brief 一条命令的顶点数是否落在完整的图元边界上
+         *
+         * 合批会把两条命令的顶点区间首尾拼成一次 draw，而列表型拓扑是按顺序
+         * 成组消费顶点的：若前一段的顶点数不是完整图元数，它的「多余顶点」会
+         * 与后一段的首顶点配成一条本不存在的线（LineList 奇数顶点）或一个跨越
+         * 两段的三角形（TriangleList 非 3 的倍数）。这类错误只表现为多画，
+         * 在密集图形里几乎看不出来，因此必须在合批前挡住。
+         */
+        bool isPrimitiveAligned(const PrimitiveTopology topology, uint32_t vertexCount)
+        {
+            switch (topology)
+            {
+            case PrimitiveTopology::Points:
+                // 每个顶点独立，任意数量都能拼接
+                return true;
+            case PrimitiveTopology::Lines:
+                return vertexCount % 2 == 0;
+            case PrimitiveTopology::Triangles:
+                return vertexCount % 3 == 0;
+            default:
+                // Strip / Loop 本身就不可拼接（见 canMerge）
+                return false;
+            }
         }
 
         /**
@@ -81,9 +116,18 @@ namespace Render::RT::detail
         }
 
         m_granularity = desc.granularity != 0 ? desc.granularity : kDefaultGranularity;
-        // 顶点属性最坏对齐是 16 字节（vec4），粒度必须是它的倍数，
-        // 否则块起始偏移可能不满足属性对齐要求，某些驱动上会直接画错。
-        m_granularity = static_cast<uint32_t>(alignUp(m_granularity, 16));
+        // 粒度只要求满足顶点属性的**实际**对齐：float / uint32 / uchar4 归一化色
+        // 都是 4 字节对齐，因此 4 的倍数就够，取 16 是过度保守。
+        //
+        // 这里曾经强制取 16 的倍数（按 vec4 最坏情况），代价是**块大小被撑到
+        // 16 的倍数**，而顶点步长通常是 24 / 28 / 36（都不是 16 的倍数），
+        // 于是块与块之间必然留下空隙。DrawList 的合批要求顶点区间字节连续
+        // （b.vertexOffset == a.vertexOffset + a.vertexCount * stride），
+        // 有孔隙就永远合不上——实测 70 万图元 0 次合批、每帧 70 万次 draw call。
+        //
+        // 放开到 4 之后，调用方只要把粒度设成步长的约数（例如 P3C3 的 24 用 8），
+        // 块就能紧排，合批才会真正生效。
+        m_granularity = static_cast<uint32_t>(alignUp(m_granularity, kMinGranularity));
 
         m_forIndices = desc.forIndices != 0;
 
@@ -514,6 +558,8 @@ m_owner->log.error("[rt] geometry store upload failed (offset=%u size=%u, %s)", 
         m_order.shrink_to_fit();
         m_resolved.clear();
         m_resolved.shrink_to_fit();
+        m_ranges.clear();
+        m_ranges.shrink_to_fit();
         m_grid.clear();
         m_visible.clear();
         m_visible.shrink_to_fit();
@@ -668,24 +714,20 @@ m_owner->log.error("[rt] rxDrawListUpsert: slot %u too large (limit %u). "
         std::fill(m_entries.begin(), m_entries.end(), Entry{});
         m_order.clear();
         m_resolved.clear();
+        m_ranges.clear();
         m_entryCount = 0;
         m_orderDirty = true;
         return RxResult::Ok;
     }
 
-    bool DrawList::canMerge(const DrawCommand& a, const DrawCommand& b)
+    bool DrawList::isIndexedDraw(const DrawCommand& command)
     {
-        // 只有列表型拓扑可以拼接。Strip/Loop 合并会把两条独立折线连起来，
-        // 多画一段——而且这种错误在密集图形里几乎看不出来。
-        switch (a.topology)
-        {
-        case PrimitiveTopology::Points:
-        case PrimitiveTopology::Lines:
-        case PrimitiveTopology::Triangles:
-            break;
-        default:
-            return false;
-        }
+        return command.indexCount > 0 && command.indexType != IndexType::None;
+    }
+
+    bool DrawList::canBatchSharedState(const DrawCommand& a, const DrawCommand& b)
+    {
+        // 拓扑必须一致：一次提交沿用的是一套管线固定状态
         if (a.topology != b.topology)
         {
             return false;
@@ -697,7 +739,7 @@ m_owner->log.error("[rt] rxDrawListUpsert: slot %u too large (limit %u). "
             return false;
         }
 
-        // 任何影响管线或绑定的字段不同都不能合并
+        // 任何影响管线或绑定的字段不同都不能共批
         if (a.pipelineIndex != b.pipelineIndex || a.space != b.space ||
             a.vertexFormat != b.vertexFormat || a.materialIndex != b.materialIndex ||
             a.texture != b.texture || a.lineWidth != b.lineWidth || a.pointSize != b.pointSize)
@@ -709,49 +751,108 @@ m_owner->log.error("[rt] rxDrawListUpsert: slot %u too large (limit %u). "
             return false;
         }
 
-        const bool aIndexed = a.indexCount > 0 && a.indexType != IndexType::None;
-        const bool bIndexed = b.indexCount > 0 && b.indexType != IndexType::None;
+        // 索引绘制的索引值相对 vertexBuffer 起点是绝对值，解释方式与非索引
+        // 不同，两者不能混进同一批次。
+        const bool aIndexed = isIndexedDraw(a);
+        const bool bIndexed = isIndexedDraw(b);
         if (aIndexed != bIndexed)
         {
             return false;
         }
-
         if (aIndexed)
         {
-            // 索引绘制：索引值是相对 vertexBuffer 起点的绝对值，
-            // 因此还要求两者的 vertexOffset 完全相同，否则索引解释会错位。
-            if (a.indexBuffer != b.indexBuffer || a.indexType != b.indexType ||
-                a.vertexOffset != b.vertexOffset)
-            {
-                return false;
-            }
-            const uint32_t indexStride = a.indexType == IndexType::Uint32 ? 4u : 2u;
-            return b.indexOffset == a.indexOffset + a.indexCount * indexStride;
+            // 索引区间也要归属同一个坐标系：vertexOffset 必须完全相同
+            return a.indexBuffer == b.indexBuffer && a.indexType == b.indexType &&
+                   a.vertexOffset == b.vertexOffset;
         }
+        return true;
+    }
 
-        // 非索引绘制：顶点必须字节连续
-        const uint32_t stride = rxVertexStride(a.vertexFormat);
-        if (stride == 0)
+    void DrawList::beginBatch(const DrawCommand& command)
+    {
+        ResolvedBatch batch{};
+        batch.command = command;
+        batch.rangeBegin = static_cast<uint32_t>(m_ranges.size());
+        if (isIndexedDraw(command))
         {
-            return false;
+            // 索引绘制不用段表：命令自带 indexOffset/indexCount，且它永远独占批次
+            batch.rangeCount = 0;
         }
-        return b.vertexOffset == a.vertexOffset + a.vertexCount * stride;
+        else
+        {
+            // 批次基准偏移就是本命令的偏移，因此首段起点恒为 0
+            batch.rangeCount = 1;
+            m_ranges.push_back(RHI::DrawRange{ 0, command.vertexCount });
+        }
+        m_resolved.push_back(batch);
     }
 
     void DrawList::appendResolved(const DrawCommand& command, uint32_t& mergedOut)
     {
-        if (m_enableMerging && !m_resolved.empty() && canMerge(m_resolved.back(), command))
+        if (!m_enableMerging || m_resolved.empty() ||
+            !canBatchSharedState(m_resolved.back().command, command))
         {
-            DrawCommand& target = m_resolved.back();
-            target.vertexCount += command.vertexCount;
-            target.indexCount += command.indexCount;
-            // userData 归属变得不明确：合并后的 draw 对应多个条目。
-            // 置 0 而不是保留第一个——保留会让调用方误以为能靠它反查图元。
-            target.userData = 0;
-            mergedOut += 1;
+            beginBatch(command);
             return;
         }
-        m_resolved.push_back(command);
+
+        ResolvedBatch& tail = m_resolved.back();
+        if (isIndexedDraw(command))
+        {
+            // 索引绘制即便状态相同也不能共批：批次只记录一套 indexOffset/
+            // indexCount，两条命令的索引区间未必相接。
+            beginBatch(command);
+            return;
+        }
+
+        const uint32_t stride = rxVertexStride(command.vertexFormat);
+        if (stride == 0 || command.vertexOffset < tail.command.vertexOffset)
+        {
+            beginBatch(command);
+            return;
+        }
+
+        // 段起点要换算成整数顶点序号，也就是块偏移之差必须是步长的整数倍。
+        // 分配粒度不能整除顶点步长时（例如粒度 16、步长 24）块之间有空隙，
+        // 换算不出整数、只能另起一批 —— 这正是「粒度必须能整除步长」的由来。
+        const uint32_t deltaBytes = command.vertexOffset - tail.command.vertexOffset;
+        if (deltaBytes % stride != 0)
+        {
+            beginBatch(command);
+            return;
+        }
+
+        RHI::DrawRange& last = m_ranges.back();
+        const uint32_t firstVertex = deltaBytes / stride;
+        // 并段：列表型拓扑、与末段字节连续、且末段边界落在完整图元上。
+        // 并段后段表不增长，多段提交的数组更短，驱动侧也更省。
+        //
+        // LineStrip 永远走不到这里：isPrimitiveAligned 对 Strip 返回 false，
+        // 因为把两条独立折线并成一段会多画一条连接线。
+        const bool contiguous = firstVertex == last.firstVertex + last.vertexCount;
+        if (contiguous && isPrimitiveAligned(tail.command.topology, last.vertexCount))
+        {
+            last.vertexCount += command.vertexCount;
+        }
+        else
+        {
+            // 段数上限：段表要整份交给驱动，几十万段一次交出去既费内存也没必要，
+            // 拆成若干批反而让驱动能边提交边绘制。
+            if (tail.rangeCount >= kMaxRangesPerBatch)
+            {
+                beginBatch(command);
+                return;
+            }
+            m_ranges.push_back(RHI::DrawRange{ firstVertex, command.vertexCount });
+            tail.rangeCount += 1;
+        }
+
+        // 累计顶点数只用于统计与日志，绘制以段表为准
+        tail.command.vertexCount += command.vertexCount;
+        // userData 归属变得不明确：一个批次对应多个条目。
+        // 置 0 而不是保留第一个——保留会让调用方误以为能靠它反查图元。
+        tail.command.userData = 0;
+        mergedOut += 1;
     }
 
     void DrawList::resolveLinear(bool cull2D, const float* viewBounds, bool cull3D,
@@ -976,25 +1077,26 @@ m_owner->log.error("[rt] rxDrawListUpsert: slot %u too large (limit %u). "
         }
     }
 
-    const std::vector<DrawCommand>& DrawList::resolve(const float* viewBounds, uint32_t& culledOut,
-                                                      uint32_t& mergedOut)
+    const std::vector<ResolvedBatch>& DrawList::resolve(const float* viewBounds, uint32_t& culledOut,
+                                                        uint32_t& mergedOut)
     {
         return resolveImpl(viewBounds, nullptr, culledOut, mergedOut);
     }
 
-    const std::vector<DrawCommand>& DrawList::resolveFrustum(const RxFrustum* frustum,
-                                                             uint32_t& culledOut, uint32_t& mergedOut)
+    const std::vector<ResolvedBatch>& DrawList::resolveFrustum(const RxFrustum* frustum,
+                                                               uint32_t& culledOut, uint32_t& mergedOut)
     {
         return resolveImpl(nullptr, frustum, culledOut, mergedOut);
     }
 
-    const std::vector<DrawCommand>& DrawList::resolveImpl(const float* viewBounds,
-                                                          const RxFrustum* frustum,
-                                                          uint32_t& culledOut, uint32_t& mergedOut)
+    const std::vector<ResolvedBatch>& DrawList::resolveImpl(const float* viewBounds,
+                                                            const RxFrustum* frustum,
+                                                            uint32_t& culledOut, uint32_t& mergedOut)
     {
         culledOut = 0;
         mergedOut = 0;
         m_resolved.clear();
+        m_ranges.clear();
 
         if (m_orderDirty)
         {

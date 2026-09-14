@@ -135,6 +135,9 @@ namespace Render::RT::detail
     struct Runtime;
     struct Surface;
     struct Session;
+    /// 保留式绘制列表解析出来的批次（定义见 rxIncremental.h）。Session 只按
+    /// 指针使用它，因此这里前置声明即可。
+    struct ResolvedBatch;
 
     /// 公共日志回调 → RHI 日志回调的桥。
     /// 两侧的 LogLevel 是不同的枚举类型（公共 ABI 与内部 RHI 必须独立演进），
@@ -482,6 +485,27 @@ namespace Render::RT::detail
 
     // ==================== Session ====================
 
+    /**
+     * @brief 状态绑定的冗余消除缓存
+     *
+     * 一次提交里连续命令的状态大多相同，逐条重绑会把驱动压垮（每次绑定的
+     * 校验开销与一次 draw 同量级）。DrawPacket 与 DrawList 两条路径共用它，
+     * 保证「哪次绑定可以省」只有一处判断。
+     */
+    struct DrawStateCache
+    {
+        uint16_t boundPipeline = 0;
+        /// 存的是**公共 ABI 句柄**而不是 RHI 句柄：命令里带的是前者，
+        /// 冗余消除比较的是「和上一条命令是不是同一个」，不需要解析。
+        BufferHandle boundVertexBuffer{};
+        uint64_t boundVertexOffset = UINT64_MAX;
+        TextureHandle boundTexture{};
+        /// 光照绑定组本帧是否已绑到当前管线上。换管线会失效。
+        bool boundLighting = false;
+        PushConstants pushed{};
+        bool pushedValid = false;
+    };
+
     struct Session
     {
         Runtime* runtime = nullptr;
@@ -594,7 +618,7 @@ namespace Render::RT::detail
         /**
          * @brief 逐条绑定并绘制
          *
-         * 两条提交路径（DrawPacket / DrawList）共用同一份冗余消除逻辑。
+         * 两条提交路径（DrawPacket / DrawList 单命令）共用同一份冗余消除逻辑。
          * 分成两份实现过一次就必然随时间走偏，而「少消除一次绑定」
          * 不会报错，只是变慢——这类退化没人会注意到。
          *
@@ -602,6 +626,32 @@ namespace Render::RT::detail
          */
         void recordCommands(const DrawCommand* commands, const uint32_t* order, uint32_t count,
                             PushConstants& push);
+
+        /**
+         * @brief 按批次提交保留式绘制列表
+         *
+         * 与 recordCommands 共用同一份状态绑定与冗余消除（见 DrawStateCache），
+         * 区别只在「一次批次如何发出绘制」：
+         * - 索引绘制（rangeCount == 0）走 drawIndexed，与原路径完全一致；
+         * - 单段批次走 draw，firstVertex 相对批次基准偏移；
+         * - 多段批次走 drawMulti，一次提交 N 段不连续的顶点区间。
+         *
+         * 用指针 + 个数而不是 vector 引用：ResolvedBatch 定义在 rxIncremental.h，
+         * 这里只需要前置声明，避免两个内部头互相包含。
+         */
+        void recordBatches(const ResolvedBatch* batches, uint32_t batchCount,
+                           const RHI::DrawRange* ranges, uint32_t rangeCount, PushConstants& push);
+
+        /**
+         * @brief 绑定一条命令的全部状态，并消除与上一份状态的冗余
+         *
+         * @param index    命令下标，仅用于日志
+         * @param cache    上一份状态（跨命令保留），函数内按需更新
+         * @param push     pushConstant 暂存；调用方需在整段提交结束后复位
+         * @return false 表示该命令不可绘制（缺缓冲/管线），调用方应跳过
+         */
+        bool bindCommandState(const DrawCommand& command, uint32_t index, DrawStateCache& cache,
+                              PushConstants& push);
 
     };
 

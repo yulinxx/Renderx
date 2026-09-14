@@ -174,6 +174,23 @@ namespace Render::RT::detail
     // ======================================================================
 
     /**
+     * @brief 一批共用状态、可一次提交的绘制
+     *
+     * 一个批次对应**一次** draw（单段时是 draw，多段时是 drawMulti）。批次里的
+     * 段表由命令行解释：非索引绘制用 rangeBegin/rangeCount 指向 DrawList 的段表，
+     * firstVertex 相对 command.vertexOffset（批次基准字节偏移）计算。
+     *
+     * 索引绘制不使用段表（rangeCount 恒为 0）：索引值是相对 vertexOffset 的
+     * 绝对值，拼接会让解释错位，因此索引命令永远独占一个批次。
+     */
+    struct ResolvedBatch
+    {
+        DrawCommand command{};
+        uint32_t rangeBegin = 0;
+        uint32_t rangeCount = 0;
+    };
+
+    /**
      * @brief DLL 侧持有的 DrawCommand 集合
      *
      * 调用方按槽位 upsert，只在图元真正变化时调用。每帧提交时 DLL 做：
@@ -183,13 +200,26 @@ namespace Render::RT::detail
      *      DLL 侧，调用方不必每帧再传一遍——那份传输本身就是 O(n)。
      *   2. **排序**：只在有 upsert/remove 后重排，不是每帧。
      *      稳定排序保证同 sortKey 的条目维持插入顺序。
-     *   3. **合批**：相邻条目状态相同且顶点区间连续时合成一次 draw。
+     *   3. **成批**：相邻条目状态相同时并进同一个批次，一次提交。
      *
-     * 合批的安全边界（写在这里是因为搞错会静默画错）：
-     * - 只有 **列表型拓扑**（Points / Lines / Triangles）可以合并。
-     *   Strip / Loop 合并会把两条独立折线连起来，多画一段。
+     * 批内两种合段方式，按拓扑自动选择：
+     * - **并段**：列表型拓扑且顶点区间字节连续、边界落在完整图元上时，把两条
+     *   命令并成一个区间。段表因此不增长。
+     * - **多段**：其余情况（典型是 LineStrip —— 拼接两段会多画一条连接线）
+     *   各自留一段，交由 drawMulti 一次提交。
+     *
+     * 成批与几何仓的分配粒度绑在一起：段起点必须能换算成整数顶点序号，也就是
+     * 块偏移之差必须是顶点步长的整数倍。粒度不能整除步长时块之间出现空隙，
+     * 换算不出整数，于是一个批次都建不起来（见 GeometryStore::initialize）。
+     *
+     * 并段的安全边界（写在这里是因为搞错会静默画错）：
+     * - 并段只对 **列表型拓扑**（Points / Lines / Triangles）成立。Strip / Loop
+     *   并段会把两条独立折线连起来，多画一段；它们只能靠多段提交成批。
      * - 必须 instanceCount == 1：实例化绘制的语义不可拼接。
      * - 顶点必须字节连续：`b.vertexOffset == a.vertexOffset + a.vertexCount * stride`。
+     * - **并段边界必须落在完整图元上**：LineList 的前一段顶点数必须是偶数、
+     *   TriangleList 必须是 3 的倍数，否则前一段的「多余顶点」会与后一段的
+     *   首顶点配成一个跨段图元（多画一条线 / 一个三角形）。
      */
     class DrawList
     {
@@ -204,25 +234,29 @@ namespace Render::RT::detail
         void fillStats(DrawListStats* out) const;
 
         /**
-         * @brief 解析出本帧要绘制的命令序列（2D：世界矩形剔除）
+         * @brief 解析出本帧要绘制的批次（2D：世界矩形剔除）
          *
          * @param viewBounds 世界空间 (minX,minY,maxX,maxY)；nullptr 表示不剔除
          * @param culledOut  被剔除的条目数
-         * @param mergedOut  合批省下的 draw 数
-         * @return 内部缓存的命令数组，下一次 resolve 前保持有效
+         * @param mergedOut  被并进已有批次的命令数（= 合批省下的 draw 数）
+         * @return 内部缓存的批次数组，下一次 resolve 前保持有效；
+         *         各批次引用的段表用 resolvedRanges() 取
          */
-        const std::vector<DrawCommand>& resolve(const float* viewBounds, uint32_t& culledOut,
-                                                uint32_t& mergedOut);
+        const std::vector<ResolvedBatch>& resolve(const float* viewBounds, uint32_t& culledOut,
+                                                  uint32_t& mergedOut);
 
         /**
-         * @brief 解析出本帧要绘制的命令序列（3D：六平面视锥剔除）
+         * @brief 解析出本帧要绘制的批次（3D：六平面视锥剔除）
          *
          * @param frustum   世界空间视锥；nullptr 表示不剔除
          * @param culledOut 被剔除的条目数
-         * @param mergedOut 合批省下的 draw 数
+         * @param mergedOut 被并进已有批次的命令数
          */
-        const std::vector<DrawCommand>& resolveFrustum(const RxFrustum* frustum, uint32_t& culledOut,
-                                                       uint32_t& mergedOut);
+        const std::vector<ResolvedBatch>& resolveFrustum(const RxFrustum* frustum, uint32_t& culledOut,
+                                                         uint32_t& mergedOut);
+
+        /// 上一次 resolve 产生的段表。批次里的 rangeBegin/rangeCount 指向它。
+        const std::vector<RHI::DrawRange>& resolvedRanges() const { return m_ranges; }
 
     private:
         /// 包围盒种类。0 表示「无包围盒」，该条目任何判据下都不剔除。
@@ -246,24 +280,32 @@ namespace Render::RT::detail
             uint32_t frameStamp = 0;
         };
 
-        static bool canMerge(const DrawCommand& a, const DrawCommand& b);
+        /// 两条命令能否共用一次提交（状态全同）。**不含**几何区间的判定：
+        /// 区间连续只影响「并段」与否，不连续照样能靠多段提交共批。
+        static bool canBatchSharedState(const DrawCommand& a, const DrawCommand& b);
+
+        /// 是否为索引绘制。索引值相对 vertexOffset 是绝对值，不能与他人共批。
+        static bool isIndexedDraw(const DrawCommand& command);
 
         /// 写入主体：两种包围盒契约只差拷贝长度与种类标记
         RxResult upsertImpl(uint32_t slot, const DrawCommand& command, const float* bounds,
                             uint8_t boundsKind);
 
-        /// 两种判据共用的主体：排序/剔除/合批只写一遍
-        const std::vector<DrawCommand>& resolveImpl(const float* viewBounds, const RxFrustum* frustum,
-                                                    uint32_t& culledOut, uint32_t& mergedOut);
+        /// 两种判据共用的主体：排序/剔除/成批只写一遍
+        const std::vector<ResolvedBatch>& resolveImpl(const float* viewBounds, const RxFrustum* frustum,
+                                                      uint32_t& culledOut, uint32_t& mergedOut);
 
-        /// 把一条命令追加到 m_resolved，可与末尾合并则合并（合批规则唯一实现点）
+        /// 把一条命令追加到批次序列：能并进末尾批次则并进去（成批规则唯一实现点）
         void appendResolved(const DrawCommand& command, uint32_t& mergedOut);
 
-        /// 线性路径：遍历有序 m_order，逐条判交 + 合批。2D/3D 判据二选一。
+        /// 开一个新批次，命令独占它（索引绘制、以及任何无法并进末尾批次的情况）
+        void beginBatch(const DrawCommand& command);
+
+        /// 线性路径：遍历有序 m_order，逐条判交 + 成批。2D/3D 判据二选一。
         void resolveLinear(bool cull2D, const float* viewBounds, bool cull3D,
                            const RxFrustum* frustum, uint32_t& culledOut, uint32_t& mergedOut);
 
-        /// 2D 空间索引路径：网格粗筛 -> 退化回退 -> 精确判交 -> 排序 -> 合批。
+        /// 2D 空间索引路径：网格粗筛 -> 退化回退 -> 精确判交 -> 排序 -> 成批。
         void resolveIndexed2D(const float viewBounds[4], uint32_t& culledOut,
                               uint32_t& mergedOut);
 
@@ -288,7 +330,10 @@ namespace Render::RT::detail
         std::vector<Entry> m_entries;
         /// 存活槽位，按 sortKey 排序后的顺序
         std::vector<uint32_t> m_order;
-        std::vector<DrawCommand> m_resolved;
+        /// 本帧的批次序列（一个批次 = 一次 draw / drawMulti）
+        std::vector<ResolvedBatch> m_resolved;
+        /// 本帧所有批次的段表，批次用 rangeBegin/rangeCount 引用它
+        std::vector<RHI::DrawRange> m_ranges;
         /// 2D 分层网格索引（每层一个 GridLayer）
         std::vector<GridLayer> m_grid;
         /// 非 2D 条目（无包围盒 / 3D 包围盒）的 slot，2D 视口下照常画、不裁

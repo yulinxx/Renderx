@@ -1433,6 +1433,122 @@ TEST_F(RxIncrementalFixture, DrawListMergesContiguousListTopologies)
     rxBufferDestroy(runtime, buffer);
 }
 
+TEST_F(RxIncrementalFixture, DrawListBatchesTightBlocksFromRealAllocator)
+{
+    // 回归：合批要求顶点区间字节连续，而几何仓的块大小是按粒度向上取整的，
+    // 因此粒度必须能整除顶点步长（P3C3 步长 24，粒度取 8），块才会紧排。
+    //
+    // 这个用例刻意走**真实分配器**，而不是手工构造 offset —— 已有的那批合批
+    // 用例全是手工 offset，正是它们掩盖了「分配器与合批前置条件互相矛盾」：
+    // 上线实测 70 万图元 0 次合批、每帧 70 万次 draw call（每次约 0.4us，
+    // 光提交就 0.33 秒，装不进一帧）。
+    const GeometryStoreDesc storeDesc = makeStoreDesc(1u << 16, 1u << 20, 8);
+    const GeometryStoreHandle store = rxGeometryStoreCreate(runtime, &storeDesc);
+    ASSERT_TRUE(rxValid(store));
+
+    DrawListDesc listDesc{};
+    listDesc.initialCapacity = 8;
+    listDesc.enableMerging = 1;
+    const DrawListHandle list = rxDrawListCreate(runtime, &listDesc);
+    ASSERT_TRUE(rxValid(list));
+
+    const uint32_t stride = rxVertexStride(VertexFormat::P3C3);
+    ASSERT_EQ(stride, 24u);
+    // 6 个顶点 = 144 字节：既是粒度 8 的倍数（块紧排），也是 3 的倍数
+    // （TriangleList 的图元边界，否则会被拼接守卫拦下）
+    constexpr uint32_t kVertexCount = 6;
+    const uint32_t bytes = kVertexCount * stride;
+
+    const BufferHandle buffer = rxGeometryStoreGetBuffer(runtime, store);
+    ASSERT_TRUE(rxValid(buffer));
+
+    constexpr uint32_t kPieces = 3;
+    uint32_t expectedOffset = 0;
+    for (uint32_t i = 0; i < kPieces; ++i)
+    {
+        GeometryBlock block{};
+        ASSERT_EQ(rxGeometryAlloc(runtime, store, bytes, &block), RxResult::Ok);
+        // 紧排：第 i 块必须紧接前一块，中间不能有粒度补白
+        EXPECT_EQ(block.offset, expectedOffset)
+            << "粒度不能整除步长时块之间会出现空隙，合批必然一次都不发生";
+        expectedOffset += bytes;
+
+        const DrawCommand command =
+            makeListCommand(buffer, block.offset, kVertexCount, 1, PrimitiveTopology::Triangles);
+        ASSERT_EQ(rxDrawListUpsert(runtime, list, i, &command, nullptr), RxResult::Ok);
+    }
+
+    ASSERT_EQ(rxSessionBeginFrame(session), RxResult::Ok);
+    ASSERT_EQ(rxSessionSubmitDrawList(session, list, nullptr), RxResult::Ok);
+
+    FrameStats frame{};
+    ASSERT_EQ(rxSessionGetStats(session, &frame), RxResult::Ok);
+    EXPECT_EQ(frame.mergedDrawCount, kPieces - 1) << "紧密相邻的三段应合成一次 draw";
+    EXPECT_EQ(frame.drawCallCount, 1u);
+    ASSERT_EQ(rxSessionEndFrame(session), RxResult::Ok);
+
+    rxDrawListDestroy(runtime, list);
+    rxGeometryStoreDestroy(runtime, store);
+}
+
+TEST_F(RxIncrementalFixture, DrawListRefusesToFuseAcrossPrimitiveBoundary)
+{
+    // 并段会把两段顶点首尾拼成**一个区间**，而列表型拓扑是按顺序成组消费顶点的：
+    // 前一段的顶点数不是完整图元数时，它的「多余顶点」会和后一段的首顶点配成
+    // 一个本不存在的图元。这类错误只表现为多画，在密集图形里几乎看不出来。
+    //
+    // 注意区分两件事：
+    //   - 成批（一次提交多段）：跨段边界天然安全，图元数不变；
+    //   - 并段（合成一个区间）：只有边界落在完整图元上才安全。
+    // 因此这里用**图元数**而不是 drawCallCount 来判定——两种做法都只出 1 次 draw。
+    DrawListDesc listDesc{};
+    listDesc.initialCapacity = 4;
+    listDesc.enableMerging = 1;
+    const DrawListHandle list = rxDrawListCreate(runtime, &listDesc);
+    ASSERT_TRUE(rxValid(list));
+
+    const BufferHandle buffer = makeVertexBuffer(runtime, 4096);
+    ASSERT_TRUE(rxValid(buffer));
+
+    const uint32_t stride = rxVertexStride(VertexFormat::P3C3);
+
+    // 5 个顶点的 LineList：末尾那个顶点本来会被 GL 忽略，一旦与下一段并成一个
+    // 区间，它就会和下一段的首顶点连成一条多余的线（3 条 → 4 条）。
+    const DrawCommand oddLines = makeListCommand(buffer, 0, 5, 1, PrimitiveTopology::Lines);
+    const DrawCommand nextLines = makeListCommand(buffer, 5 * stride, 3, 1, PrimitiveTopology::Lines);
+    ASSERT_EQ(rxDrawListUpsert(runtime, list, 0, &oddLines, nullptr), RxResult::Ok);
+    ASSERT_EQ(rxDrawListUpsert(runtime, list, 1, &nextLines, nullptr), RxResult::Ok);
+
+    ASSERT_EQ(rxSessionBeginFrame(session), RxResult::Ok);
+    ASSERT_EQ(rxSessionSubmitDrawList(session, list, nullptr), RxResult::Ok);
+
+    FrameStats frame{};
+    ASSERT_EQ(rxSessionGetStats(session, &frame), RxResult::Ok);
+    // 5/2 + 3/2 = 2 + 1 = 3 条线。若被并成一个 8 顶点的区间就是 4 条。
+    EXPECT_EQ(frame.lineCount, 3u) << "奇数顶点的 LineList 不能与后续段并成一个区间";
+    EXPECT_EQ(frame.drawCallCount, 1u) << "两段仍应成批为一次提交";
+    ASSERT_EQ(rxSessionEndFrame(session), RxResult::Ok);
+
+    // 对照：前一段 6 个顶点落在 3 的倍数上，边界合法，允许并成一个区间。
+    // 分开画是 2 + 1 = 3 个三角形，并成 9 顶点也是 3 个——因此这里用 drawCallCount
+    // 无法区分，改用一个「并段才会多画」的构造：4 + 5 顶点。
+    ASSERT_EQ(rxDrawListClear(runtime, list), RxResult::Ok);
+    const DrawCommand trisAligned = makeListCommand(buffer, 0, 6, 1, PrimitiveTopology::Triangles);
+    const DrawCommand trisNext = makeListCommand(buffer, 6 * stride, 3, 1, PrimitiveTopology::Triangles);
+    ASSERT_EQ(rxDrawListUpsert(runtime, list, 0, &trisAligned, nullptr), RxResult::Ok);
+    ASSERT_EQ(rxDrawListUpsert(runtime, list, 1, &trisNext, nullptr), RxResult::Ok);
+
+    ASSERT_EQ(rxSessionBeginFrame(session), RxResult::Ok);
+    ASSERT_EQ(rxSessionSubmitDrawList(session, list, nullptr), RxResult::Ok);
+    ASSERT_EQ(rxSessionGetStats(session, &frame), RxResult::Ok);
+    EXPECT_EQ(frame.triangleCount, 3u) << "6 与 3 都落在 3 的倍数上，并段前后都是 3 个三角形";
+    EXPECT_EQ(frame.drawCallCount, 1u);
+    ASSERT_EQ(rxSessionEndFrame(session), RxResult::Ok);
+
+    rxDrawListDestroy(runtime, list);
+    rxBufferDestroy(runtime, buffer);
+}
+
 TEST_F(RxIncrementalFixture, DrawListNeverMergesStripOrLoopTopologies)
 {
     DrawListDesc listDesc{};
@@ -1446,8 +1562,9 @@ TEST_F(RxIncrementalFixture, DrawListNeverMergesStripOrLoopTopologies)
 
     const uint32_t stride = rxVertexStride(VertexFormat::P3C3);
     // 顶点区间连续、状态完全相同 —— 唯一的区别是拓扑是 LineStrip。
-    // 合并会把两条独立折线连起来，多画一段；这种错误在密集图形里
-    // 几乎看不出来，因此必须在这里锁住。
+    // 折线**可以成批**（一次提交多段，每段各自成折线，边界天然安全），
+    // 但**不能并段**：并成一段会把两条独立折线连起来、多画一段。
+    // 这种错误在密集图形里几乎看不出来，因此必须在这里锁住。
     const DrawCommand a = makeListCommand(buffer, 0, 3, 1, PrimitiveTopology::LineStrip);
     const DrawCommand b = makeListCommand(buffer, 3 * stride, 3, 2, PrimitiveTopology::LineStrip);
     ASSERT_EQ(rxDrawListUpsert(runtime, list, 0, &a, nullptr), RxResult::Ok);
@@ -1457,10 +1574,11 @@ TEST_F(RxIncrementalFixture, DrawListNeverMergesStripOrLoopTopologies)
     ASSERT_EQ(rxSessionSubmitDrawList(session, list, nullptr), RxResult::Ok);
     FrameStats frame{};
     ASSERT_EQ(rxSessionGetStats(session, &frame), RxResult::Ok);
-    EXPECT_EQ(frame.mergedDrawCount, 0u);
-    EXPECT_EQ(frame.drawCallCount, 2u);
-    // 两条各 3 顶点的折线各 2 段，合并会变成 5 段
+    // 两条各 3 顶点的折线各 2 段。并成一段会变成 5 段 —— 这条断言是真正的护栏。
     EXPECT_EQ(frame.lineCount, 4u);
+    // 成批后只出一次 draw
+    EXPECT_EQ(frame.drawCallCount, 1u);
+    EXPECT_EQ(frame.mergedDrawCount, 1u);
     EXPECT_EQ(rxSessionEndFrame(session), RxResult::Ok);
 
     rxDrawListDestroy(runtime, list);
@@ -1532,8 +1650,11 @@ TEST_F(RxIncrementalFixture, DrawListDoesNotMergeAcrossCulledEntries)
     FrameStats frame{};
     ASSERT_EQ(rxSessionGetStats(session, &frame), RxResult::Ok);
     EXPECT_EQ(frame.culledCommandCount, 1u);
-    EXPECT_EQ(frame.mergedDrawCount, 0u) << "中间条目被剔除，首尾不得合并";
-    EXPECT_EQ(frame.drawCallCount, 2u);
+    // 首尾两段的顶点区间被剔除的那条隔开，因此只能各成一段。
+    // 若并成一个 9 顶点的区间，GPU 会把中间那条的顶点也画出来（3 个三角形）。
+    EXPECT_EQ(frame.triangleCount, 2u) << "中间条目被剔除，首尾不得并成一个区间";
+    EXPECT_EQ(frame.mergedDrawCount, 1u) << "两段仍应成批为一次提交";
+    EXPECT_EQ(frame.drawCallCount, 1u);
     EXPECT_EQ(rxSessionEndFrame(session), RxResult::Ok);
 
     rxDrawListDestroy(runtime, list);

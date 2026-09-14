@@ -389,17 +389,138 @@ runtime->log.error("[rt] rxSessionBeginFrame: beginRenderPass failed (%s)",  // 
         return hasPacketViewport;
     }
 
+    bool Session::bindCommandState(const DrawCommand& command, uint32_t index, DrawStateCache& cache,
+                                   PushConstants& push)
+    {
+        const RHI::BufferHandle vertexBuffer = runtime->resolveBuffer(command.vertexBuffer);
+        if (!vertexBuffer.valid())
+        {
+            runtime->log.warn("[rt] command %u has invalid vertex buffer handle, skipped", static_cast<unsigned>(index));  // 顶点缓冲句柄无效
+            return false;
+        }
+
+        // 材质提供缺省线宽/点大小，命令里的非零值覆盖它
+        const MaterialDesc* material = command.materialIndex != 0 &&
+                                               command.materialIndex < runtime->materials.size()
+                                           ? &runtime->materials[command.materialIndex]
+                                           : nullptr;
+        float lineWidth = command.lineWidth > 0.0f
+                              ? command.lineWidth
+                              : (material ? material->lineWidth : 1.0f);
+        const float pointSize = command.pointSize > 0.0f
+                                    ? command.pointSize
+                                    : (material ? material->pointSize : 1.0f);
+        if (lineWidth <= 0.0f)
+        {
+            lineWidth = 1.0f;
+        }
+
+        // 线宽属于管线固定状态（Vulkan/Metal 都不能在录制期改），
+        // 因此不同线宽必须落到不同管线。量化避免浮点抖动炸开管线数量。
+        uint16_t pipelineIndex = command.pipelineIndex;
+        if (pipelineIndex == 0)
+        {
+            pipelineIndex = runtime->resolvePipeline(command.vertexFormat, command.space,
+                                                     command.topology, lineWidth);
+        }
+        const RHI::PipelineHandle pipeline = runtime->rhiPipeline(pipelineIndex);
+        if (!pipeline.valid())
+        {
+runtime->log.warn("[rt] command %u has no available pipeline (fmt=%d space=%d topo=%d), skipped",  // 命令没有可用管线
+                               static_cast<unsigned>(index),
+                               static_cast<int>(command.vertexFormat),
+                               static_cast<int>(command.space),
+                               static_cast<int>(command.topology));
+            return false;
+        }
+
+        if (pipelineIndex != cache.boundPipeline)
+        {
+            cmd->bindPipeline(pipeline);
+            cache.boundPipeline = pipelineIndex;
+            stats.pipelineSwitches += 1;
+            // 换管线后 pushConstant 与绑定组的有效性由后端决定，
+            // 统一重推一次比逐后端推理更可靠。
+            cache.pushedValid = false;
+            cache.boundVertexBuffer = BufferHandle::Invalid;
+            cache.boundVertexOffset = UINT64_MAX;
+            cache.boundTexture = TextureHandle::Invalid;
+            cache.boundLighting = false;
+        }
+
+        // 3D 管线的光照绑定组：只有声明了 FrameUniforms 块的管线才绑，
+        // 否则 GL 后端会对每条 2D 命令 warn 一次「未声明 binding 1」。
+        if (!cache.boundLighting && runtime->pipelineNeedsLighting3D(pipelineIndex))
+        {
+            if (runtime->lightingBindGroup.valid())
+            {
+                cmd->bindBindGroup(0, runtime->lightingBindGroup);
+                cache.boundLighting = true;
+            }
+            else
+            {
+                runtime->log.warn("[rt] 3D pipeline bound but lighting uniforms are unavailable, "
+                                  "mesh will render unlit");
+            }
+        }
+
+        push.pointSize = pointSize;
+        // 3D 材质段：无材质时显式复位，否则上一条命令的颜色会泄漏到这条
+        // ——同一帧里 2D 命令不读这段，但相邻的两个 3D 网格会串色。
+        if (material)
+        {
+            std::memcpy(push.matDiffuse, material->color, sizeof(push.matDiffuse));
+            std::memcpy(push.matAmbient, material->ambient, sizeof(push.matAmbient));
+            std::memcpy(push.matSpecular, material->specular, sizeof(push.matSpecular));
+            push.matShininess = material->shininess > 0.0f ? material->shininess : 1.0f;
+        }
+        else
+        {
+            const PushConstants defaults{};
+            std::memcpy(push.matDiffuse, defaults.matDiffuse, sizeof(push.matDiffuse));
+            std::memcpy(push.matAmbient, defaults.matAmbient, sizeof(push.matAmbient));
+            std::memcpy(push.matSpecular, defaults.matSpecular, sizeof(push.matSpecular));
+            push.matShininess = defaults.matShininess;
+        }
+        if (!cache.pushedValid || std::memcmp(&cache.pushed, &push, sizeof(push)) != 0)
+        {
+            cmd->pushConstants(0, kPushConstantBytes, &push);
+            cache.pushed = push;
+            cache.pushedValid = true;
+        }
+
+        // vertexOffset / indexOffset 是**字节**偏移（与 TransientAlloc::offset
+        // 同一坐标系），因此直接作为绑定偏移使用。
+        // 多段提交里 firstVertex 是相对这个偏移算的，所以批次的 vertexOffset
+        // 是整批的基准偏移，而不是其中某一段的起点。
+        if (command.vertexBuffer != cache.boundVertexBuffer ||
+            command.vertexOffset != cache.boundVertexOffset)
+        {
+            cmd->bindVertexBuffer(0, vertexBuffer, command.vertexOffset);
+            cache.boundVertexBuffer = command.vertexBuffer;
+            cache.boundVertexOffset = command.vertexOffset;
+        }
+
+        if (command.texture != TextureHandle::Invalid && command.texture != cache.boundTexture)
+        {
+            const RHI::BindGroupHandle group = runtime->bindGroupForTexture(command.texture);
+            if (group.valid())
+            {
+                cmd->bindBindGroup(0, group);
+                cache.boundTexture = command.texture;
+            }
+            else
+            {
+                runtime->log.warn("[rt] command %u has invalid texture handle", static_cast<unsigned>(index));  // 纹理句柄无效
+            }
+        }
+        return true;
+    }
+
     void Session::recordCommands(const DrawCommand* commands, const uint32_t* order, uint32_t count,
                                  PushConstants& push)
     {
-        uint16_t boundPipeline = 0;
-        BufferHandle boundVertexBuffer = BufferHandle::Invalid;
-        uint64_t boundVertexOffset = UINT64_MAX;
-        TextureHandle boundTexture = TextureHandle::Invalid;
-        /// 光照绑定组本帧是否已绑到当前管线上。换管线会失效（见下）。
-        bool boundLighting = false;
-        PushConstants pushed{};
-        bool pushedValid = false;
+        DrawStateCache cache{};
 
         for (uint32_t i = 0; i < count; ++i)
         {
@@ -410,124 +531,9 @@ runtime->log.error("[rt] rxSessionBeginFrame: beginRenderPass failed (%s)",  // 
                 continue;
             }
 
-            const RHI::BufferHandle vertexBuffer = runtime->resolveBuffer(command.vertexBuffer);
-            if (!vertexBuffer.valid())
+            if (!bindCommandState(command, index, cache, push))
             {
-                runtime->log.warn("[rt] command %u has invalid vertex buffer handle, skipped", static_cast<unsigned>(index));  // 顶点缓冲句柄无效
                 continue;
-            }
-
-            // 材质提供缺省线宽/点大小，命令里的非零值覆盖它
-            const MaterialDesc* material = command.materialIndex != 0 &&
-                                                   command.materialIndex < runtime->materials.size()
-                                               ? &runtime->materials[command.materialIndex]
-                                               : nullptr;
-            float lineWidth = command.lineWidth > 0.0f
-                                  ? command.lineWidth
-                                  : (material ? material->lineWidth : 1.0f);
-            const float pointSize = command.pointSize > 0.0f
-                                        ? command.pointSize
-                                        : (material ? material->pointSize : 1.0f);
-            if (lineWidth <= 0.0f)
-            {
-                lineWidth = 1.0f;
-            }
-
-            // 线宽属于管线固定状态（Vulkan/Metal 都不能在录制期改），
-            // 因此不同线宽必须落到不同管线。量化避免浮点抖动炸开管线数量。
-            uint16_t pipelineIndex = command.pipelineIndex;
-            if (pipelineIndex == 0)
-            {
-                pipelineIndex = runtime->resolvePipeline(command.vertexFormat, command.space,
-                                                         command.topology, lineWidth);
-            }
-            const RHI::PipelineHandle pipeline = runtime->rhiPipeline(pipelineIndex);
-            if (!pipeline.valid())
-            {
-runtime->log.warn("[rt] command %u has no available pipeline (fmt=%d space=%d topo=%d), skipped",  // 命令没有可用管线
-                                   static_cast<unsigned>(index),
-                                   static_cast<int>(command.vertexFormat),
-                                   static_cast<int>(command.space),
-                                   static_cast<int>(command.topology));
-                continue;
-            }
-
-            if (pipelineIndex != boundPipeline)
-            {
-                cmd->bindPipeline(pipeline);
-                boundPipeline = pipelineIndex;
-                stats.pipelineSwitches += 1;
-                // 换管线后 pushConstant 与绑定组的有效性由后端决定，
-                // 统一重推一次比逐后端推理更可靠。
-                pushedValid = false;
-                boundVertexBuffer = BufferHandle::Invalid;
-                boundVertexOffset = UINT64_MAX;
-                boundTexture = TextureHandle::Invalid;
-                boundLighting = false;
-            }
-
-            // 3D 管线的光照绑定组：只有声明了 FrameUniforms 块的管线才绑，
-            // 否则 GL 后端会对每条 2D 命令 warn 一次「未声明 binding 1」。
-            if (!boundLighting && runtime->pipelineNeedsLighting3D(pipelineIndex))
-            {
-                if (runtime->lightingBindGroup.valid())
-                {
-                    cmd->bindBindGroup(0, runtime->lightingBindGroup);
-                    boundLighting = true;
-                }
-                else
-                {
-                    runtime->log.warn("[rt] 3D pipeline bound but lighting uniforms are unavailable, "
-                                      "mesh will render unlit");
-                }
-            }
-
-            push.pointSize = pointSize;
-            // 3D 材质段：无材质时显式复位，否则上一条命令的颜色会泄漏到这条
-            // ——同一帧里 2D 命令不读这段，但相邻的两个 3D 网格会串色。
-            if (material)
-            {
-                std::memcpy(push.matDiffuse, material->color, sizeof(push.matDiffuse));
-                std::memcpy(push.matAmbient, material->ambient, sizeof(push.matAmbient));
-                std::memcpy(push.matSpecular, material->specular, sizeof(push.matSpecular));
-                push.matShininess = material->shininess > 0.0f ? material->shininess : 1.0f;
-            }
-            else
-            {
-                const PushConstants defaults{};
-                std::memcpy(push.matDiffuse, defaults.matDiffuse, sizeof(push.matDiffuse));
-                std::memcpy(push.matAmbient, defaults.matAmbient, sizeof(push.matAmbient));
-                std::memcpy(push.matSpecular, defaults.matSpecular, sizeof(push.matSpecular));
-                push.matShininess = defaults.matShininess;
-            }
-            if (!pushedValid || std::memcmp(&pushed, &push, sizeof(push)) != 0)
-            {
-                cmd->pushConstants(0, kPushConstantBytes, &push);
-                pushed = push;
-                pushedValid = true;
-            }
-
-            // vertexOffset / indexOffset 是**字节**偏移（与 TransientAlloc::offset
-            // 同一坐标系），因此直接作为绑定偏移使用，draw 的 firstVertex 恒为 0。
-            if (command.vertexBuffer != boundVertexBuffer || command.vertexOffset != boundVertexOffset)
-            {
-                cmd->bindVertexBuffer(0, vertexBuffer, command.vertexOffset);
-                boundVertexBuffer = command.vertexBuffer;
-                boundVertexOffset = command.vertexOffset;
-            }
-
-            if (command.texture != TextureHandle::Invalid && command.texture != boundTexture)
-            {
-                const RHI::BindGroupHandle group = runtime->bindGroupForTexture(command.texture);
-                if (group.valid())
-                {
-                    cmd->bindBindGroup(0, group);
-                    boundTexture = command.texture;
-                }
-                else
-                {
-                    runtime->log.warn("[rt] command %u has invalid texture handle", static_cast<unsigned>(index));  // 纹理句柄无效
-                }
             }
 
             const uint32_t instanceCount = command.instanceCount == 0 ? 1u : command.instanceCount;
@@ -549,8 +555,80 @@ runtime->log.warn("[rt] command %u declares indexed draw but index buffer handle
             }
             else
             {
+                // 这条路径没有批次概念：绑定偏移就是顶点起点，因此 firstVertex 恒为 0
                 cmd->draw(command.vertexCount, instanceCount, 0, command.firstInstance);
                 accumulateTopologyStats(command.topology, command.vertexCount, instanceCount, stats);
+            }
+
+            stats.drawCallCount += 1;
+            drawSequence += 1;
+        }
+    }
+
+    void Session::recordBatches(const ResolvedBatch* batches, uint32_t batchCount,
+                                const RHI::DrawRange* ranges, uint32_t rangeCount, PushConstants& push)
+    {
+        DrawStateCache cache{};
+
+        for (uint32_t b = 0; b < batchCount; ++b)
+        {
+            const ResolvedBatch& batch = batches[b];
+            const DrawCommand& command = batch.command;
+            if (!bindCommandState(command, b, cache, push))
+            {
+                continue;
+            }
+
+            const uint32_t instanceCount = command.instanceCount == 0 ? 1u : command.instanceCount;
+
+            // 索引绘制不参与多段：索引值是相对 vertexOffset 的绝对值，拼接会让
+            // 解释错位，因此它永远独占一个批次（rangeCount == 0）。
+            if (batch.rangeCount == 0)
+            {
+                const RHI::BufferHandle indexBuffer = runtime->resolveBuffer(command.indexBuffer);
+                if (!indexBuffer.valid())
+                {
+runtime->log.warn("[rt] batch %u declares indexed draw but index buffer handle invalid, skipped",  // 索引绘制但索引缓冲句柄无效
+                                      static_cast<unsigned>(b));
+                    continue;
+                }
+                cmd->bindIndexBuffer(indexBuffer, command.indexOffset,
+                                     toRhiIndexType(command.indexType));
+                cmd->drawIndexed(command.indexCount, instanceCount, 0, 0, command.firstInstance);
+                accumulateTopologyStats(command.topology, command.indexCount, instanceCount, stats);
+                stats.drawCallCount += 1;
+                drawSequence += 1;
+                continue;
+            }
+
+            if (batch.rangeBegin + batch.rangeCount > rangeCount)
+            {
+                runtime->log.error("[rt] batch %u range window [%u,%u) exceeds range table size %u, skipped",
+                                   static_cast<unsigned>(b),
+                                   static_cast<unsigned>(batch.rangeBegin),
+                                   static_cast<unsigned>(batch.rangeBegin + batch.rangeCount),
+                                   static_cast<unsigned>(rangeCount));  // 段窗口越界
+                continue;
+            }
+            const RHI::DrawRange* batchRanges = ranges + batch.rangeBegin;
+
+            if (batch.rangeCount == 1)
+            {
+                cmd->draw(batchRanges[0].vertexCount, instanceCount, batchRanges[0].firstVertex,
+                          command.firstInstance);
+                accumulateTopologyStats(command.topology, batchRanges[0].vertexCount, instanceCount, stats);
+            }
+            else
+            {
+                // 一次提交 N 段不连续区间。段数上万时，逐段 draw 的驱动入口与
+                // 状态校验开销就是整帧的成本（实测每次约 0.4us）。
+                cmd->drawMulti(batchRanges, batch.rangeCount, instanceCount, command.firstInstance);
+                // 按段累加统计：LineStrip 每段只画 n-1 条线，不能拿总顶点数算
+                for (uint32_t r = 0; r < batch.rangeCount; ++r)
+                {
+                    accumulateTopologyStats(command.topology, batchRanges[r].vertexCount, instanceCount,
+                                            stats);
+                }
             }
 
             stats.drawCallCount += 1;
@@ -650,15 +728,18 @@ runtime->log.warn("[rt] command %u declares indexed draw but index buffer handle
 
         uint32_t culled = 0;
         uint32_t merged = 0;
-        const std::vector<DrawCommand>& resolved =
+        const std::vector<ResolvedBatch>& batches =
             frustum != nullptr ? list->resolveFrustum(frustum, culled, merged)
                                : list->resolve(viewBounds, culled, merged);
         stats.culledCommandCount += culled;
         stats.mergedDrawCount += merged;
 
-        // resolve 已按 sortKey 排好序并完成合批，这里不需要再排一次——
+        // resolve 已按 sortKey 排好序并完成成批，这里不需要再排一次——
         // 「每帧不重排」正是保留式列表相对 DrawPacket 的收益所在。
-        recordCommands(resolved.data(), nullptr, static_cast<uint32_t>(resolved.size()), push);
+        // 成批之后一次提交覆盖多段不连续区间，draw call 数与命令数解耦。
+        const std::vector<RHI::DrawRange>& ranges = list->resolvedRanges();
+        recordBatches(batches.data(), static_cast<uint32_t>(batches.size()), ranges.data(),
+                      static_cast<uint32_t>(ranges.size()), push);
 
         if (restoreViewport)
         {
