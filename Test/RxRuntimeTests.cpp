@@ -12,6 +12,7 @@
 #include <gtest/gtest.h>
 
 #include "render/renderx.h"
+#include "rt/rxIncremental.h"
 #include "shader/shaderLibrary.h"
 
 #include <algorithm>
@@ -1553,6 +1554,74 @@ TEST_F(RxIncrementalFixture, DrawListRejectsForeignAndDestroyedHandles)
     GeometryStoreStats storeStats{};
     EXPECT_EQ(rxGeometryStoreGetStats(runtime, GeometryStoreHandle::Invalid, &storeStats),
               RxResult::ErrorInvalidHandle);
+}
+
+// ======================================================================
+// 2D 空间索引选层护栏
+//
+// selectGridLevel 的口径是「返回层边长 >= maxExtent 的最细层」，这是保证
+// 单个图元至多覆盖 2x2 格（插入/摘除代价可控）的前提。此前它被误读为有
+// off-by-one，这里用边界断言把行为锁死，让「有没有 bug」机器可判。
+// ======================================================================
+
+TEST(RxDrawListGridTest, SelectGridLevelPicksFinestFittingLayer)
+{
+    // 恰好等于层边长 → 该层（相等即装得下）；略超 → 下一层
+    EXPECT_EQ(detail::selectGridLevel(1.0f), 0);
+    EXPECT_EQ(detail::selectGridLevel(256.0f), 0);
+    EXPECT_EQ(detail::selectGridLevel(256.5f), 1);
+    EXPECT_EQ(detail::selectGridLevel(512.0f), 1);
+    EXPECT_EQ(detail::selectGridLevel(512.5f), 2);
+    EXPECT_EQ(detail::selectGridLevel(1024.0f), 2);
+    EXPECT_EQ(detail::selectGridLevel(1024.5f), 3);
+    EXPECT_EQ(detail::selectGridLevel(2048.0f), 3);
+}
+
+TEST(RxDrawListGridTest, SelectGridLevelClampsToLastLayer)
+{
+    // 最大层边长 = kGridBaseCellSize << (kGridLevelCount-1)，超过它只能落在最后一层
+    const float maxCellSize =
+        detail::kGridBaseCellSize * static_cast<float>(1 << (detail::kGridLevelCount - 1));
+    EXPECT_EQ(detail::selectGridLevel(maxCellSize), detail::kGridLevelCount - 1);
+    EXPECT_EQ(detail::selectGridLevel(maxCellSize * 4.0f), detail::kGridLevelCount - 1);
+    EXPECT_EQ(detail::selectGridLevel(1e9f), detail::kGridLevelCount - 1);
+}
+
+TEST(RxDrawListGridTest, SelectGridLevelFitsAndIsFinest)
+{
+    // 不变式：所选层 cellSize >= maxExtent（未被 clamp 时），且再细一层就装不下
+    // —— 这正是「最细的能容纳它的层」。
+    const float maxCellSize =
+        detail::kGridBaseCellSize * static_cast<float>(1 << (detail::kGridLevelCount - 1));
+    for (float extent : { 0.5f, 1.0f, 100.0f, 256.0f, 256.1f, 400.0f, 512.0f, 513.0f,
+                          1000.0f, 1024.0f, 2000.0f, 4096.0f, 100000.0f })
+    {
+        const uint16_t level = detail::selectGridLevel(extent);
+        const float cellSize = detail::kGridBaseCellSize * static_cast<float>(1 << level);
+        if (extent <= maxCellSize)
+        {
+            EXPECT_LE(extent, cellSize) << "extent=" << extent << " level=" << level;
+        }
+        if (level > 0)
+        {
+            const float finerCellSize =
+                detail::kGridBaseCellSize * static_cast<float>(1 << (level - 1));
+            EXPECT_GT(extent, finerCellSize) << "extent=" << extent << " level=" << level;
+        }
+    }
+}
+
+TEST(RxDrawListGridTest, SelectGridLevelMonotonicInExtent)
+{
+    // 单调性：extent 增大时层号不减（选层不回退，索引分层稳定）
+    uint16_t prev = 0;
+    for (float extent : { 1.0f, 100.0f, 256.0f, 300.0f, 512.0f, 600.0f, 1024.0f,
+                          1500.0f, 2048.0f, 5000.0f, 100000.0f })
+    {
+        const uint16_t level = detail::selectGridLevel(extent);
+        EXPECT_GE(level, prev) << "extent=" << extent;
+        prev = level;
+    }
 }
 
 TEST_F(RxIncrementalFixture, DrawListSpatialIndexMatchesBruteForceCulling)

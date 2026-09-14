@@ -57,25 +57,6 @@ namespace Render::RT::detail
                    static_cast<uint32_t>(cy);
         }
 
-        /// 按 AABB 最大边长选层：cellSize >= maxExtent 的最细层
-        uint16_t selectGridLevel(float maxExtent)
-        {
-            if (maxExtent <= kGridBaseCellSize)
-            {
-                return 0;
-            }
-            float threshold = kGridBaseCellSize * 2.0f;
-            for (int level = 1; level < kGridLevelCount; ++level)
-            {
-                if (maxExtent <= threshold)
-                {
-                    return static_cast<uint16_t>(level);
-                }
-                threshold *= 2.0f;
-            }
-            return static_cast<uint16_t>(kGridLevelCount - 1);
-        }
-
         /// 计算 AABB 覆盖的格子坐标范围（含两端）
         void gridCellRange(const float bounds[4], float cellSize,
                            int32_t& cxMin, int32_t& cxMax, int32_t& cyMin, int32_t& cyMax)

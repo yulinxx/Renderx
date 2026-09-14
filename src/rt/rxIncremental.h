@@ -55,6 +55,35 @@ namespace Render::RT::detail
         float cellSize = 0.0f;
     };
 
+    /**
+     * @brief 按 AABB 最大边长选层：返回「层边长 >= maxExtent」的最细层
+     *
+     * 保证单个图元在所选层内至多跨越 2x2 个格（边长容得下，每轴至多压 2 格），
+     * 这是索引插入/摘除代价可控的前提。
+     *
+     * 实现说明：threshold 从 2 倍基准边长起步、每层翻倍，与 m_grid[level].cellSize
+     * （= kGridBaseCellSize << level）同步推进，因此 `maxExtent <= threshold` 等价于
+     * `maxExtent <= cellSize(level)`。曾经它被误读成有 off-by-one，实际口径正确；
+     * 边界行为由 RxRuntimeTests 的 SelectGridLevel* 用例锁定。
+     */
+    inline uint16_t selectGridLevel(float maxExtent)
+    {
+        if (maxExtent <= kGridBaseCellSize)
+        {
+            return 0;
+        }
+        float threshold = kGridBaseCellSize * 2.0f;
+        for (int level = 1; level < kGridLevelCount; ++level)
+        {
+            if (maxExtent <= threshold)
+            {
+                return static_cast<uint16_t>(level);
+            }
+            threshold *= 2.0f;
+        }
+        return static_cast<uint16_t>(kGridLevelCount - 1);
+    }
+
     // ======================================================================
     // 持久几何仓
     // ======================================================================
