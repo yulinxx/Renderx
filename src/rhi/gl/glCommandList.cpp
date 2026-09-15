@@ -394,6 +394,19 @@ namespace Render::RHI::gl
                 f.VertexAttribPointer(attr.location, format.components, format.type, format.normalized,
                                       static_cast<GLsizei>(stride), pointer);
             }
+
+            // [ColorProbe] 临时诊断：核对 GL 实际拿到的属性步长/偏移，定位颜色通道是否被正确解释
+            static uint32_t s_glProbeCount = 0;
+            if (s_glProbeCount < 20)
+            {
+                m_device->log().info("[ColorProbe] gl attrib loc=%u comps=%u stride=%u offset=%lld buffer=%u",
+                    attr.location,
+                    static_cast<unsigned>(format.components),
+                    static_cast<unsigned>(stride),
+                    static_cast<long long>(binding.offset + attr.offset),
+                    static_cast<unsigned>(buffer->name));
+                ++s_glProbeCount;
+            }
             if (f.VertexAttribDivisor)
             {
                 f.VertexAttribDivisor(attr.location, perInstance ? 1 : 0);
