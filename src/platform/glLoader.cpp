@@ -10,15 +10,6 @@
     #include <dlfcn.h>
 #endif
 
-// 进程级全局表：仅供旧 rhiGl 使用（见 glLoader.h 中的缺陷说明），
-// Phase 6 删除旧后端时一并移除。
-static GLFuncs g_funcs;
-
-extern "C" GLFuncs* gl()
-{
-    return &g_funcs;
-}
-
 static void* default_get_proc_address(const char* name)
 {
 #ifdef _WIN32
@@ -218,9 +209,4 @@ extern "C" bool gl_loader_load(GLFuncs* out, void* getProcAddress)
     }
 
     return true;
-}
-
-extern "C" bool gl_loader_init(void* getProcAddress)
-{
-    return gl_loader_load(&g_funcs, getProcAddress);
 }

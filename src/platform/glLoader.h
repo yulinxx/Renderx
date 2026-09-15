@@ -2,7 +2,7 @@
 
 // 注：此前这里 #include <render/render.h> 只为拿到 RENDER_API 宏，
 // 把一个内部平台层头文件反向依赖到了对外公共 ABI 头。
-// gl() / gl_loader_init() 是 DLL 内部符号，不应出现在导出面上，
+// 本文件属于 DLL 内部平台层，符号不应出现在导出面上，
 // 因此 RENDER_API 一并去掉（配合 CXX_VISIBILITY_PRESET hidden）。
 #include <cstddef>
 
@@ -815,18 +815,6 @@ struct GLFuncs
 #ifndef GL_RG
     #define GL_RG 0x8227
 #endif
-
-/**
- * 进程级全局函数表（legacy）。
- *
- * 注意：这是一个已知缺陷——`gl()` 返回的是唯一一份全局表，每次
- * `gl_loader_init` 都会把它清零并重新解析。在 Windows 上 `wglGetProcAddress`
- * 的返回值是「按当前上下文的像素格式」有效的，多上下文场景下后创建的窗口会
- * 覆盖先创建窗口的函数指针。新 RHI 的 GL 后端改为每设备一份函数表
- * （见 `gl_loader_load`），此处仅为旧 rhiGl 保留，Phase 6 一并删除。
- */
-extern "C" GLFuncs* gl();
-extern "C" bool gl_loader_init(void* getProcAddress);
 
 /**
  * @brief 把 GL 函数指针解析进调用方提供的表
