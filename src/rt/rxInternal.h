@@ -179,6 +179,10 @@ namespace Render::RT::detail
         void flush();
 
         uint64_t usedBytesThisFrame() const { return m_cursor - m_segmentBase; }
+        /// 单段容量（环总量 = 本值 × kSegmentCount）
+        uint64_t capacityBytes() const { return m_capacity; }
+        /// 历史峰值用量（跨帧），用于判断容量是否够用
+        uint64_t highWaterBytes() const { return m_highWater; }
         BufferHandle publicHandle() const { return m_publicHandle; }
         RHI::BufferHandle rhiBuffer() const { return m_buffer; }
         void setPublicHandle(BufferHandle handle) { m_publicHandle = handle; }
@@ -195,6 +199,9 @@ namespace Render::RT::detail
         uint64_t m_cursor = 0;         ///< 当前写入位置（绝对偏移）
         uint64_t m_flushed = 0;        ///< 已上传到的位置
         uint32_t m_segment = 0;
+        /// 历史峰值用量（跨帧）。容量该给多大是个需要实测回答的问题，
+        /// 因此这里留一个可读的峰值，而不是只在溢出时才后知后觉。
+        uint64_t m_highWater = 0;
         static constexpr uint32_t kSegmentCount = 2;
 
         /// 容量不足时的溢出缓冲，帧末统一释放
@@ -614,6 +621,8 @@ namespace Render::RT::detail
         RHI::ICommandList* cmd = nullptr;
         uint64_t frameId = 0;
         uint16_t drawSequence = 0;
+        /// 本 Session 是否已就「瞬态环用量逼近容量」告警过（只报一次，不逐帧刷屏）
+        bool transientBudgetWarned = false;
 
         /**
          * @brief 本帧颜色附件的像素格式

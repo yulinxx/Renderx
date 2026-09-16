@@ -388,6 +388,10 @@ namespace Render::RT::detail
             out->offset = static_cast<uint32_t>(m_cursor);
             out->sizeBytes = static_cast<uint32_t>(sizeBytes);
             m_cursor += aligned;
+            if (m_cursor - m_segmentBase > m_highWater)
+            {
+                m_highWater = m_cursor - m_segmentBase;
+            }
             return true;
         }
 

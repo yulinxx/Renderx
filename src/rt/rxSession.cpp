@@ -804,6 +804,22 @@ runtime->log.warn("[rt] batch %u declares indexed draw but index buffer handle i
         stats.transientBytesUsed = runtime->transient.usedBytesThisFrame();
         stats.gpuMemoryBytes = runtime->device->gpuMemoryUsageBytes();
 
+        // 瞬态环的容量该给多大，是个需要实测回答的问题：Metal 下 Runtime 在
+        // 2D/3D 之间共享，transientBufferBytes 因此必须两边同源，不能靠猜
+        // （收口前就是 2D 64MB / 3D 128MB 的无依据分叉）。这里在用量真的逼近
+        // 容量时报一条——只在跨过 75% 的那一帧报一次，不是逐帧刷屏；溢出路径
+        // 另有更重的告警（TransientRing::allocate）。
+        if (!transientBudgetWarned && runtime->transient.capacityBytes() > 0 &&
+            stats.transientBytesUsed * 4ull >= runtime->transient.capacityBytes() * 3ull)
+        {
+            transientBudgetWarned = true;
+            runtime->log.warn("[rt] 瞬态环用量已达单段容量的 75%%：本帧 %llu / %llu bytes"
+                              "（历史峰值 %llu）。持续逼近时应提高 RuntimeDesc::transientBufferBytes",
+                static_cast<unsigned long long>(stats.transientBytesUsed),
+                static_cast<unsigned long long>(runtime->transient.capacityBytes()),
+                static_cast<unsigned long long>(runtime->transient.highWaterBytes()));
+        }
+
         // 呈现与提交分离：多窗口时可以先各自 submitFrame，再统一 present。
         // 离屏渲染模式不需要 present（无交换链）。
         RHI::RhiResult presented = RHI::RhiResult::Ok;
