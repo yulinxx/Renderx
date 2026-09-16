@@ -742,6 +742,17 @@ namespace Render
             session->setViewMatrix(viewMatrix);
         }
 
+        void rxSessionSetModelMatrix(SessionHandle handle, const float modelMatrix[16])
+        {
+            Session* session = checkedSession(handle);
+            if (!session)
+            {
+                return;
+            }
+            // nullptr 是合法的：表示复位为「不施加模型变换」
+            session->setModelMatrix(modelMatrix);
+        }
+
         void rxSessionSetLighting3D(SessionHandle handle, const Lighting3DDesc* desc)
         {
             Session* session = checkedSession(handle);

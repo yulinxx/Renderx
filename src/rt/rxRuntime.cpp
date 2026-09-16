@@ -239,6 +239,7 @@ namespace Render::RT::detail
     bool PipelineKey::operator==(const PipelineKey& other) const
     {
         return vertexFormat == other.vertexFormat && space == other.space && topology == other.topology &&
+               colorFormat == other.colorFormat && depthFormat == other.depthFormat &&
                depthTest == other.depthTest && depthWrite == other.depthWrite &&
                blendEnable == other.blendEnable && srcBlend == other.srcBlend &&
                dstBlend == other.dstBlend && depthFunc == other.depthFunc &&
@@ -261,6 +262,10 @@ namespace Render::RT::detail
         bits |= static_cast<uint64_t>(key.blendEnable) << 40;
         bits |= static_cast<uint64_t>(key.srcBlend) << 48;
         bits |= static_cast<uint64_t>(key.dstBlend) << 56;
+        // 颜色附件格式（2D 只有 BGRA8Unorm / RGBA8Unorm 两种取值）用异或叠加
+        bits ^= static_cast<uint64_t>(key.colorFormat) * 0x9E3779B97F4A7C15ull;
+        // 深度附件格式（Unknown / D32Float）换一个魔数，避免与颜色格式撞散列
+        bits ^= static_cast<uint64_t>(key.depthFormat) * 0xBF58476D1CE4E5B9ull;
         // depthFunc 与线宽用异或叠加，避免超出 64 位。线宽已量化，
         // 因此按整数倍数散列即可，不必对浮点位模式做散列。
         bits ^= static_cast<uint64_t>(key.depthFunc) * 0x9E3779B97F4A7C15ull;
@@ -525,6 +530,7 @@ m_log.warn("[rt] transient buffer single-frame capacity insufficient (used %llu 
         // pipelines[0] 保留：pipelineIndex == 0 表示「让 Runtime 自己解析」
         pipelines.resize(1);
         pipelineNeedsLighting.resize(1);
+        pipelineKeys.resize(1);
 
         if (!ensureDefaultPipelines())
         {
@@ -1188,12 +1194,20 @@ m_log.warn("[rt] transient buffer single-frame capacity insufficient (used %llu 
         desc.depthStencil.depthTestEnable = key.depthTest != 0;
         desc.depthStencil.depthWriteEnable = key.depthWrite != 0;
         desc.depthStencil.depthCompare = toRhiCompareOp(key.depthFunc);
+        // 深度附件格式同样烘在管线对象里（Metal 的 depthAttachmentPixelFormat）：
+        // Unknown 表示无深度附件，Metal 侧据此不设置像素格式。
+        desc.depthStencil.format = key.depthFormat;
         desc.blend[0].enable = key.blendEnable != 0;
         desc.blend[0].srcColor = toRhiBlendFactor(key.srcBlend);
         desc.blend[0].dstColor = toRhiBlendFactor(key.dstBlend);
         desc.blend[0].srcAlpha = toRhiBlendFactor(key.srcBlend);
         desc.blend[0].dstAlpha = toRhiBlendFactor(key.dstBlend);
         desc.colorAttachmentCount = 1;
+        // 必须显式声明：Metal/Vulkan 在创建管线时就把附件格式烘进对象
+        // （见 rhiCore.h 的 GraphicsPipelineDesc 说明）。留 Unknown 会让
+        // Metal 建出一条 MTLPixelFormatInvalid 的管线——setRenderPipelineState
+        // 被拒，而录制期不报错，表现为「管线建出来了、绘制也提交了，画面全空」。
+        desc.colorFormats[0] = key.colorFormat;
         desc.debugName = pair.vertex;
 
         const RHI::PipelineHandle handle = device->createGraphicsPipeline(desc);
@@ -1210,8 +1224,17 @@ m_log.warn("[rt] transient buffer single-frame capacity insufficient (used %llu 
 
         pipelines.push_back(handle);
         pipelineNeedsLighting.push_back(needsLighting ? 1u : 0u);
+        pipelineKeys.push_back(key);
         const auto index = static_cast<uint16_t>(pipelines.size() - 1);
         pipelineCache.emplace(key, index);
+        // 附件格式必须与渲染目标一致，因此同一个 Runtime 里同一条逻辑管线
+        // 可能有多条变体（交换链 BGRA8 / 离屏 RGBA8 / 带深度 D32Float）。
+        // 「为什么又在建一条 Mesh3D」只看现象无法定位，这里把刚建出的键落日志
+        // ——只在缓存未命中时触发，正常帧不受影响。
+        log.debug("[rt] pipeline #%u created: vfmt=%d space=%d topo=%d colorFmt=%d depthFmt=%d",
+                  static_cast<unsigned>(index), static_cast<int>(key.vertexFormat),
+                  static_cast<int>(key.space), static_cast<int>(key.topology),
+                  static_cast<int>(key.colorFormat), static_cast<int>(key.depthFormat));
         return index;
     }
 
@@ -1237,11 +1260,30 @@ m_log.warn("[rt] transient buffer single-frame capacity insufficient (used %llu 
         key.depthBiasSlope = desc.depthBiasSlope;
         key.lineWidth = 1.0f;
         key.shaderName = desc.shaderName ? desc.shaderName : "";
+        // 公共 PipelineDesc 没有附件格式字段，取「窗口交换链」这个默认目标；
+        // 离屏渲染的调用方由 Runtime 按 DrawCommand 解析管线时补建对应变体。
+        key.colorFormat = defaultColorFormat();
         return createPipelineFromKey(key);
     }
 
+    RHI::Format Runtime::defaultColorFormat() const
+    {
+        for (const Surface* candidate : surfaces)
+        {
+            if (candidate != nullptr && candidate->rhi != nullptr)
+            {
+                return candidate->rhi->colorFormat();
+            }
+        }
+        // 还没有 Surface（内建管线在 Runtime::create 里就建出来了）：
+        // 用 RHI 各后端的默认交换链格式。GL 后端不使用该字段。
+        return RHI::Format::BGRA8Unorm;
+    }
+
     uint16_t Runtime::resolvePipeline(VertexFormat format, RenderSpace space,
-                                      PrimitiveTopology topology, float lineWidth,
+                                      PrimitiveTopology topology, RHI::Format colorFormat,
+                                      RHI::Format depthFormat,
+                                      float lineWidth,
                                       const char* fragmentShaderOverride,
                                       const PipelineStateHint* stateOverride)
     {
@@ -1254,6 +1296,11 @@ m_log.warn("[rt] transient buffer single-frame capacity insufficient (used %llu 
         key.vertexFormat = format;
         key.space = space;
         key.topology = topology;
+        key.colorFormat = colorFormat;
+        // 附件格式由调用方按当前渲染目标传入（Session::currentDepthFormat），
+        // 与本格式是否开深度测试无关：格式描述「有没有深度附件」，
+        // state.depthTest 描述「开不开深度测试」。
+        key.depthFormat = depthFormat;
         key.depthTest = state.depthTest;
         key.depthWrite = state.depthWrite;
         key.blendEnable = 1;
@@ -1288,6 +1335,25 @@ m_log.warn("[rt] transient buffer single-frame capacity insufficient (used %llu 
             return {};
         }
         return pipelines[index];
+    }
+
+    uint16_t Runtime::pipelineWithFormats(uint16_t index, RHI::Format colorFormat,
+                                          RHI::Format depthFormat)
+    {
+        if (index == 0 || index >= pipelineKeys.size())
+        {
+            return index;
+        }
+        const PipelineKey& key = pipelineKeys[index];
+        if (key.colorFormat == colorFormat && key.depthFormat == depthFormat)
+        {
+            return index;
+        }
+        // 只改附件格式，其余状态逐个沿用：这正是「同一条管线换目标」的语义。
+        PipelineKey variant = key;
+        variant.colorFormat = colorFormat;
+        variant.depthFormat = depthFormat;
+        return createPipelineFromKey(variant);
     }
 
     bool Runtime::pipelineNeedsLighting3D(uint16_t index) const
@@ -1470,8 +1536,12 @@ m_log.warn("[rt] transient buffer single-frame capacity insufficient (used %llu 
         uint32_t ready = 0;
         for (const Entry& entry : kEntries)
         {
-            const uint16_t index = resolvePipeline(entry.format, entry.space, entry.topology, 1.0f,
-                                                  entry.fragmentShader, entry.state);
+            // 预热此刻还没有 Surface，深度格式按 Unknown 建：3D 管线首次画到
+            // enableDepth 的表面时，Session 会经 pipelineWithFormats 补建
+            // D32Float 深度变体（与离屏颜色格式变体同一条按需路径）。
+            const uint16_t index = resolvePipeline(entry.format, entry.space, entry.topology,
+                                                  defaultColorFormat(), RHI::Format::Unknown,
+                                                  1.0f, entry.fragmentShader, entry.state);
             defaults[static_cast<size_t>(entry.kind)] = index;
             if (index != 0)
             {

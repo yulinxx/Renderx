@@ -19,6 +19,7 @@ include(GoogleTest)
 set(RENDERX_NULL_TEST_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/ArenaTests.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/SlotMapTests.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Mat4Tests.cpp"
 )
 
 # 已删除：NullBackendTests.cpp / RuntimeSessionTests.cpp —— 它们测的是旧
@@ -158,4 +159,67 @@ set_target_properties(RenderxGLTests PROPERTIES UNITY_BUILD OFF)
 if(MSVC)
     target_compile_options(RenderxTests PRIVATE /utf-8)
     target_compile_options(RenderxGLTests PRIVATE /utf-8)
+endif()
+
+# ============================================================
+# Target 3: RenderxMetalTests (仅 Apple：Metal 后端的离屏渲染正确性)
+# ============================================================
+#
+# 与 RenderxGLTests 的区别：那边跑 Null 后端验证 RHI/RT 契约，这边跑真实
+# Metal 设备并断言**像素结果**（清屏色、三角形覆盖、纹理采样、3D 深度遮挡、
+# 光照方向跟随、双面光照）。这是 Metal 后端唯一能证明「画得对」的地方——
+# 契约测试即使一条命令都没提交也全绿。
+#
+# 只在 Apple 平台存在：Metal 后端源文件本身就不参与其他平台的编译。
+#
+# 注：本段曾在一轮外部改写中丢失（文件与 RenderxMetalTests.mm 都是未跟踪
+# 状态，注册段不在基线里），导致该测试目标凭空消失、M3 的 Metal 回归证据
+# 无法复现。此处按 RenderxGLTests 的同构配置恢复。
+if(APPLE)
+    add_executable(RenderxMetalTests
+        "${CMAKE_CURRENT_SOURCE_DIR}/RenderxMetalTests.mm"
+    )
+
+    target_compile_features(RenderxMetalTests PRIVATE cxx_std_17)
+    target_compile_definitions(RenderxMetalTests PRIVATE RENDER_EXPORTS)
+    # 字体用例需要一份真实 TTF：DLL 自己不做文件 IO，但测试可以——
+    # 与 RenderxGLTests 用同一个宏注入路径。
+    target_compile_definitions(RenderxMetalTests PRIVATE
+        RENDERX_TEST_FONT_PATH="${CMAKE_CURRENT_SOURCE_DIR}/../src/res/default_screen_font.ttf"
+    )
+
+    target_include_directories(RenderxMetalTests PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/.."
+        "${CMAKE_CURRENT_SOURCE_DIR}/../include"
+    )
+
+    if(STB_TRUETYPE_INCLUDE_DIR)
+        target_include_directories(RenderxMetalTests PRIVATE ${STB_TRUETYPE_INCLUDE_DIR})
+    elseif(DEFINED VCPKG_DIR)
+        file(GLOB _vcpkg_stb_incs_metal "${VCPKG_DIR}/installed/*/include")
+        list(REMOVE_DUPLICATES _vcpkg_stb_incs_metal)
+        target_include_directories(RenderxMetalTests PRIVATE ${_vcpkg_stb_incs_metal})
+    endif()
+
+    # 走公共 C API（rx*），因此链接 RenderX 动态库而不是重编内部源；
+    # 离屏渲染仍需 AppKit 的 NSView 与 Metal/QuartzCore。
+    find_library(RENDERX_METAL_FRAMEWORK Metal REQUIRED)
+    find_library(RENDERX_QUARTZCORE_FRAMEWORK QuartzCore REQUIRED)
+    find_library(RENDERX_FOUNDATION_FRAMEWORK Foundation REQUIRED)
+    find_library(RENDERX_APPKIT_FRAMEWORK AppKit REQUIRED)
+
+    target_link_libraries(RenderxMetalTests PRIVATE
+        RenderX
+        GTest::gtest
+        GTest::gtest_main
+        ${RENDERX_METAL_FRAMEWORK}
+        ${RENDERX_QUARTZCORE_FRAMEWORK}
+        ${RENDERX_FOUNDATION_FRAMEWORK}
+        ${RENDERX_APPKIT_FRAMEWORK}
+    )
+
+    set_target_properties(RenderxMetalTests PROPERTIES UNITY_BUILD OFF)
+    set_property(TARGET RenderxMetalTests PROPERTY FOLDER "Tests")
+    gtest_discover_tests(RenderxMetalTests)
 endif()

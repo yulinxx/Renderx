@@ -243,6 +243,38 @@ namespace Render::RT::detail
         VertexFormat vertexFormat = VertexFormat::P3C3;
         RenderSpace space = RenderSpace::World;
         PrimitiveTopology topology = PrimitiveTopology::Triangles;
+        /**
+         * 颜色附件的像素格式。
+         *
+         * **必须进缓存键**：MTLRenderPipelineState / VkPipeline 在创建时就把
+         * 附件格式烘进对象，绑到格式不同的 RenderPass 上会被后端直接拒绝——
+         * Metal 在 setRenderPipelineState 时报 validation 错误，录制期却
+         * 静默失效，表现为「管线建出来了、绘制也提交了，画面全空」。
+         *
+         * 同一个 Runtime 里确实会同时存在两种格式：交换链（CAMetalLayer 只
+         * 接受 BGRA8Unorm）与离屏渲染目标（Runtime::createRenderTargetTexture
+         * 固定 RGBA8Unorm）。不区分就会出现「先建的那条赢，另一种格式静默
+         * 画不出来」。
+         *
+         * GL 后端不使用该字段（GL 的附件格式由 FBO 决定，与管线对象无关），
+         * 因此对 GL 只是可能多出几条等价管线，行为不变。
+         */
+        RHI::Format colorFormat = RHI::Format::BGRA8Unorm;
+        /**
+         * 深度附件的像素格式，Unknown 表示本管线不接深度附件。
+         *
+         * 与 colorFormat 同理必须进缓存键：Metal 把 depthAttachmentPixelFormat
+         * 烘进 MTLRenderPipelineState，管线的深度格式与 RenderPass 实际挂的
+         * 深度纹理不一致会被校验层直接拒绝。同一个 Runtime 里：
+         *   - 2D 交换链 / 无深度表面 → Unknown
+         *   - enableDepth 的 3D 表面 → D32Float（SurfaceDesc 固定）
+         *   - 带深度纹理的离屏 RT   → D32Float（createRenderTargetTexture 固定）
+         * 不区分就会出现「无深度的那条 3D 管线赢，绑到带深度的 pass 上报错」。
+         *
+         * GL 后端不使用该字段（GL 的深度附件由 FBO 决定，与程序对象无关），
+         * 对 GL 只是可能多出等价管线，行为不变。
+         */
+        RHI::Format depthFormat = RHI::Format::Unknown;
         uint8_t depthTest = 0;
         uint8_t depthWrite = 0;
         uint8_t blendEnable = 0;
@@ -318,6 +350,15 @@ namespace Render::RT::detail
          * 「当前管线未声明 set=0 binding=1」——一帧上百条，日志直接失去价值。
          */
         std::vector<uint8_t> pipelineNeedsLighting;
+
+        /**
+         * 与 pipelines 平行：每条管线的缓存键。
+         *
+         * 只为一件事存在：调用方显式指定 pipelineIndex 时，若当前渲染目标的
+         * 颜色/深度附件格式与该管线创建时的格式不一致，需要按同一组状态补建
+         * 一条变体（见 pipelineWithFormats）。
+         */
+        std::vector<PipelineKey> pipelineKeys;
 
         /**
          * 3D 光照参数的 UBO 与绑定组。
@@ -433,10 +474,30 @@ namespace Render::RT::detail
         /// 用于「同格式同空间、只有片元不同」的管线（ScreenTextured vs ScreenGlyph）。
         /// stateOverride 非空时覆盖按顶点格式取的深度/填充默认值（见 defaultStateFor）。
         uint16_t resolvePipeline(VertexFormat format, RenderSpace space, PrimitiveTopology topology,
+                                 RHI::Format colorFormat, RHI::Format depthFormat,
                                  float lineWidth = 1.0f,
                                  const char* fragmentShaderOverride = nullptr,
                                  const PipelineStateHint* stateOverride = nullptr);
         RHI::PipelineHandle rhiPipeline(uint16_t index);
+        /**
+         * @brief 取指定管线的「同状态、指定附件格式」变体
+         *
+         * 调用方显式给了 pipelineIndex 时用它。同一个 Runtime 里会同时存在
+         * 交换链（Metal 的 CAMetalLayer 只接受 BGRA8Unorm）与离屏目标
+         * （RGBA8Unorm）两种颜色附件格式，而内建管线是按交换链格式预热的。
+         *
+         * 「管线格式必须与附件格式一致」是 Metal/Vulkan 的 API 契约，不是
+         * 性能建议：把 BGRA8 的管线绑到 RGBA8 的附件上，Metal 校验层会直接
+         * 报 validation error。实测（Apple Silicon）像素结果仍然正确、没有
+         * 通道互换，但按契约这属于未定义行为，不同 GPU/驱动不保证一致。
+         *
+         * 深度格式同理：内建 3D 管线预热时还没有 Surface（depthFormat=Unknown），
+         * 首次画到 enableDepth 的表面（D32Float）时在这里补建深度变体。
+         *
+         * 格式一致时原样返回入参，因此常规（窗口）路径没有任何额外开销。
+         */
+        uint16_t pipelineWithFormats(uint16_t index, RHI::Format colorFormat,
+                                     RHI::Format depthFormat);
         /// 该管线是否声明了 FrameUniforms 块（即需要绑定光照绑定组）
         bool pipelineNeedsLighting3D(uint16_t index) const;
 
@@ -456,6 +517,15 @@ namespace Render::RT::detail
         RHI::ShaderHandle shaderByName(const char* name);
         bool ensureDefaultPipelines();
         uint16_t createPipelineFromKey(const PipelineKey& key);
+
+        /**
+         * @brief 管线要预热/默认使用的颜色附件格式
+         *
+         * 内建管线在 Runtime::create 里就要建出来，那一刻还没有任何 Surface，
+         * 因此只能取「窗口交换链」这个绝大多数情况下的目标格式；纯离屏的
+         * 调用方会在首次绘制时按实际格式补建一条（缓存键含格式，两者并存）。
+         */
+        RHI::Format defaultColorFormat() const;
     };
 
     // ==================== 字体：句柄级入口 ====================
@@ -512,6 +582,15 @@ namespace Render::RT::detail
         Surface* surface = nullptr;
         float clearColor[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
         float viewMatrix[16]{};
+        /**
+         * 可选模型矩阵（列主序），与 viewMatrix 相乘后写入 push constant 的 uView。
+         *
+         * 存在的理由是拖拽预览：图元的顶点常驻显存，预览期间只变一个矩阵，
+         * 不该为此每帧在 CPU 上重算并重传全部顶点。modelMatrixSet 为 false 时
+         * 完全不参与计算（避免按单位矩阵白乘一遍）。
+         */
+        float modelMatrix[16]{};
+        bool modelMatrixSet = false;
         FrameStats stats{};
 
         /**
@@ -536,6 +615,43 @@ namespace Render::RT::detail
         uint64_t frameId = 0;
         uint16_t drawSequence = 0;
 
+        /**
+         * @brief 本帧颜色附件的像素格式
+         *
+         * 管线对象把附件格式烘在创建期，因此解析管线时必须与当前渲染目标
+         * 一致。离屏目标是 RGBA8Unorm（见 Runtime::createRenderTargetTexture），
+         * 交换链用后端的实际格式（Metal 的 CAMetalLayer 是 BGRA8Unorm）。
+         */
+        RHI::Format currentColorFormat() const
+        {
+            if (offscreenColorTexture.valid())
+            {
+                return RHI::Format::RGBA8Unorm;
+            }
+            return (surface != nullptr && surface->rhi != nullptr) ? surface->rhi->colorFormat()
+                                                                   : RHI::Format::BGRA8Unorm;
+        }
+
+        /**
+         * @brief 本帧深度附件的像素格式
+         *
+         * 与 currentColorFormat 同理用于管线解析：管线把深度格式烘在创建期，
+         * 必须与当前 RenderPass 的深度纹理一致。无深度附件（纯 2D 表面、
+         * 未挂深度纹理的离屏 RT）时返回 Unknown——对应管线不声明
+         * depthAttachmentPixelFormat。
+         * 离屏深度纹理由 Runtime::createRenderTargetTexture 固定建为
+         * D32Float（那里是该格式的唯一出处，改两处必须同步）。
+         */
+        RHI::Format currentDepthFormat() const
+        {
+            if (offscreenDepthTexture.valid())
+            {
+                return RHI::Format::D32Float;
+            }
+            return (surface != nullptr && surface->rhi != nullptr) ? surface->rhi->depthFormat()
+                                                                   : RHI::Format::Unknown;
+        }
+
         /// 排序用的下标数组，复用以避免每帧分配
         std::vector<uint32_t> sortScratch;
 
@@ -544,6 +660,8 @@ namespace Render::RT::detail
 
         void setClearColor(float r, float g, float b, float a);
         void setViewMatrix(const float matrix[16]);
+        /// matrix 为 nullptr 表示复位为「不施加模型变换」，见 rxSessionSetModelMatrix
+        void setModelMatrix(const float matrix[16]);
         /// desc 为 nullptr 表示关闭 3D 光照，见 rxSessionSetLighting3D
         void setLighting3D(const Lighting3DDesc* desc);
 

@@ -104,11 +104,15 @@
 //      它只用到 x/y，等于把相机当成正交俯视，用在 3D 斜视角下会误裁。
 //      新增接口为纯追加，结构体尺寸未变，故只抬 minor。
 //
+// 5.3：拖拽预览的模型矩阵。新增 rxSessionSetModelMatrix：把模型变换与视图矩阵
+//      相乘后写进同一个 push constant 的 uView，顶点、着色器与三个后端都不必变。
+//      与 5.2 同样为纯追加（未动任何结构体尺寸），故只抬 minor。
+//
 // 4.0：字体接口从「递字符串、DLL 内部排版」改为「DLL 只出字形度量与图集，
 //      宿主自己拼四边形」。rxFontLoad 被 rxFontCreate 系列取代，签名不兼容，
 //      故抬 major。旧接口恒返回 ErrorUnsupportedBackend，无可用调用方。
 #define RENDERX_ABI_VERSION_MAJOR 5
-#define RENDERX_ABI_VERSION_MINOR 2
+#define RENDERX_ABI_VERSION_MINOR 3
 #define RENDERX_ABI_VERSION \
     ((RENDERX_ABI_VERSION_MAJOR << 16) | RENDERX_ABI_VERSION_MINOR)
 
@@ -1260,6 +1264,30 @@ namespace Render
         RENDER_API void rxSessionDestroy(SessionHandle session);
         RENDER_API void rxSessionSetClearColor(SessionHandle session, float r, float g, float b, float a);
         RENDER_API void rxSessionSetViewMatrix(SessionHandle session, const float viewMatrix[16]);
+
+        /**
+         * @brief 设置本 Session 的可选模型矩阵（列主序 4x4）
+         *
+         * 与 rxSessionSetViewMatrix 是同一类状态：先按模型矩阵变换、再按视图矩阵
+         * 变换，DLL 把两者相乘后写进 push constant 的 uView。**因此着色器、管线与
+         * 三个后端都不需要知道模型矩阵的存在**，顶点也不必在 CPU 上按它重算一遍。
+         *
+         * 存在的理由：拖拽预览。图元顶点常驻显存，预览期间变的只是这个矩阵，
+         * 若在 CPU 上烘焙就得每帧重算并重传选中图元的全部顶点（五十万三角的模型
+         * 约 78MB/帧）。传模型矩阵后预览走同一份常驻几何，顶点一个都不传。
+         *
+         * 语义与使用约束：
+         * - 传 nullptr 复位为「不施加模型变换」。**调用方必须在预览提交结束后复位**，
+         *   否则同一帧的后续提交会继续带着它（2D 覆盖层与屏幕空间管线虽然不读 uView，
+         *   但世界空间的图元会整体偏移）。
+         * - 只适合「本次提交内所有命令共用同一个变换」的场景。逐命令不同的变换
+         *   不在本接口表达范围内（那属于几何本身）。
+         * - 相机与光照不受影响：Lighting3DDesc::viewPos 仍是真实眼点，
+         *   镜面高光位置正确。
+         * - 顶点法线会随该矩阵一起变换，因此旋转/等比缩放的预览光照正确；
+         *   非等比缩放与「把变换烘焙进顶点」有同样的法线近似。
+         */
+        RENDER_API void rxSessionSetModelMatrix(SessionHandle session, const float modelMatrix[16]);
 
         /**
          * @brief 设置 3D 光照参数

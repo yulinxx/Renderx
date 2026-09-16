@@ -16,6 +16,88 @@
 #include <cstdio>
 #include <cstring>
 
+// ======================================================================
+// RxxMetalHostView：CAMetalLayer 的专属 layer-hosting 宿主视图
+// ======================================================================
+//
+// 为什么需要它（M3 崩溃实证，见 .trae/specs/m3-metal-host-integration）：
+//   旧实现把 CAMetalLayer 直接赋给 Qt QNSView 的根 layer（wantsLayer=YES 后
+//   setLayer:）。QNSView 是 layer-backed view，根 layer 由 AppKit/Qt 持续
+//   管理——运行期会收到对 CAMetalLayer 的 setContents:（undefined behavior
+//   警告），应用终止流程 tryCloseAllWidgetWindows 还会先销毁 QNSView，而
+//   surface 仍持有它的裸指针，析构一碰即 objc_retain 野指针 SIGSEGV。
+//
+// 正确形态（Apple 对 layer-hosting view 的规定用法）：
+//   * 后端自建独立 NSView，init 时 wantsLayer=YES 后立即 setLayer: 自建的
+//     CAMetalLayer——这个 layer 的所有权完全归后端，AppKit 不会替换它；
+//   * 作为子视图挂到宿主 NSView 最底层（addSubview:positioned:NSWindowBelow
+//     relativeTo:nil），Qt 内容/兄弟控件在其之上正常合成；
+//   * hitTest 返回 nil：只承担显示，鼠标/键盘事件穿透回 Qt 父视图；
+//   * 父视图先销毁时 AppKit 自动断开 subview 链接，本视图仍由 surface 强
+//     引用存活，析构 removeFromSuperview 只向 self.superview（此时 nil）
+//     发消息，全程不回访可能已死的父视图。
+@interface RxxMetalHostView : NSView
+- (instancetype)initWithFrame:(NSRect)frame metalLayer:(CAMetalLayer*)metalLayer;
+@end
+
+@implementation RxxMetalHostView
+{
+@private
+    CAMetalLayer* _metalLayer;
+}
+
+- (instancetype)initWithFrame:(NSRect)frame metalLayer:(CAMetalLayer*)metalLayer
+{
+    if ((self = [super initWithFrame:frame]))
+    {
+        _metalLayer = metalLayer;
+        // layer-hosting view 的正规声明顺序：先 wantsLayer，再 setLayer 自建层。
+        // 此后 AppKit 把该 view 视作 layer 宿主，不再自动创建/替换其 layer。
+        self.wantsLayer = YES;
+        self.layer = metalLayer;
+        metalLayer.frame = self.bounds;
+        // 父视图（Qt QNSView）resize 时自动跟随；layer 与 bounds 的像素级
+        // 同步在 layout 中显式做（layer-hosting view 的 layer 位置自管）。
+        self.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+    }
+    return self;
+}
+
+- (void)layout
+{
+    [super layout];
+    // drawableSize（物理像素）由 MetalSurface::resize 另行下发，这里只负责
+    // layer 的点坐标布局，配合 contentsScale 得到正确的物理像素映射。
+    _metalLayer.frame = self.bounds;
+}
+
+- (void)viewDidChangeBackingProperties
+{
+    [super viewDidChangeBackingProperties];
+    // 窗口在不同 DPI 显示器间迁移时同步比例因子
+    const CGFloat scale = self.window != nil ? self.window.backingScaleFactor : 1.0;
+    _metalLayer.contentsScale = scale > 0.0 ? scale : 1.0;
+}
+
+- (BOOL)isOpaque
+{
+    return YES;
+}
+
+- (BOOL)acceptsFirstResponder
+{
+    return NO;  // 键盘焦点永远留在 Qt 视图
+}
+
+- (NSView*)hitTest:(NSPoint)point
+{
+    (void)point;
+    // 显示层不参与命中测试：事件穿透给 Qt 父视图（产品视口的鼠标/IME 全靠它）
+    return nil;
+}
+
+@end
+
 namespace Render::RHI::metal
 {
 
@@ -87,8 +169,11 @@ namespace Render::RHI::metal
     {
         m_inFlight = dispatch_semaphore_create(3);
 
-        NSView* view = (__bridge NSView*)desc.window.handleA;
-        if (view == nil)
+        // 父 NSView 只在构造期间使用一次：它由 Qt/AppKit 掌管，生命周期不与
+        // surface 绑定（应用终止时父视图会先销毁）。因此用 __unsafe_unretained
+        // 接收、不做 ARC 保留，构造结束后本对象再无任何代码回访它。
+        __unsafe_unretained NSView* parent = (__bridge NSView*)desc.window.handleA;
+        if (parent == nil)
         {
             m_log.error("[metal] createSurface: CocoaNsView handleA is null");
             return;
@@ -102,12 +187,16 @@ namespace Render::RHI::metal
 
         // 像素尺寸由调用方给出（与 GL 侧的 framebuffer 尺寸同一约定），
         // contentsScale 只影响 layer 把像素映射到点的方式。
-        const CGFloat scale = view.window != nil ? view.window.backingScaleFactor : 1.0;
+        const CGFloat scale = parent.window != nil ? parent.window.backingScaleFactor : 1.0;
         m_layer.contentsScale = scale > 0.0 ? scale : 1.0;
         m_layer.drawableSize = CGSizeMake(m_extent.width, m_extent.height);
 
-        view.wantsLayer = YES;
-        view.layer = m_layer;
+        // 自建 layer-hosting 宿主视图，挂到父视图最底层：
+        // 不替换父视图根 layer（那是 layer-backed QNSView 的禁脔），
+        // Qt 内容与兄弟控件在其之上正常合成。
+        m_hostView = [[RxxMetalHostView alloc] initWithFrame:parent.bounds
+                                                  metalLayer:m_layer];
+        [parent addSubview:m_hostView positioned:NSWindowBelow relativeTo:nil];
 
         ensureDepthTexture();
     }
@@ -115,18 +204,31 @@ namespace Render::RHI::metal
     MetalSurface::~MetalSurface()
     {
         releaseDrawable();
-        m_depthNative = nil;
-        if (m_layer != nil)
+
+        // ① 等 GPU 排空：向保序命令队列提交一个 fence 并同步等待。它完成时，
+        //    此前所有访问 CAMetalLayer/drawable 的帧必然已结束，随后销毁
+        //    layer 才不会与仍在读取 drawable 的 GPU 工作竞争。
+        //    （surface 按契约先于 device 销毁，这里的 queue 必然有效。）
+        if (m_device != nullptr)
         {
-            // 摘掉宿主视图上的 layer，避免留下一个指向已销毁后端的悬垂层
-            NSView* view = (__bridge NSView*)m_window.handleA;
-            if (view != nil && view.layer == m_layer)
+            id<MTLCommandBuffer> fence = [m_device->nativeQueue() commandBuffer];
+            if (fence != nil)
             {
-                view.layer = nil;
+                [fence commit];
+                [fence waitUntilCompleted];
             }
-            m_layer = nil;
         }
-        // 表面托管的纹理记录要随表面一起摘除，否则纹理会一直挂在设备池里
+
+        // ② 摘除后端自有的宿主视图。removeFromSuperview 只与 self.superview
+        //    通信：若父 NSView 已先于 surface 销毁（应用终止流程里的常态），
+        //    AppKit 已断开 subview 链接、superview 为 nil，向 nil 发消息即
+        //    安全空操作。这里全程不读取/写入父视图的根 layer。
+        [m_hostView removeFromSuperview];
+        m_hostView = nil;
+        m_depthNative = nil;
+        m_layer = nil;
+
+        // ③ 表面托管的纹理记录要随表面一起摘除，否则纹理会一直挂在设备池里
         if (m_device != nullptr)
         {
             if (m_colorTexture.valid())
@@ -245,6 +347,8 @@ namespace Render::RHI::metal
             m_log.warn("[metal] present: an unfinished RenderPass is still open; ending it now");
             m_device->commands().endRenderPass();
         }
+        // 计算 encoder 也必须在 commit 前结束
+        m_device->commands().endComputePass();
 
         // presentDrawable 必须在 commit 之前设置，因此 Metal 上「提交」与
         // 「呈现」无法像 GL 那样拆成两步：commit 与 present 在这里一起完成。
@@ -335,17 +439,21 @@ namespace Render::RHI::metal
         // Metal 与 macOS 上的 GL CoreProfile 一样不支持宽线，粗线必须三角化
         m_caps.maxLineWidth = 1.0f;
 
-        // M1 只做设备/表面/资源，管线与计算尚未实现，能力位据实报 false。
-        // M2 完成后开 indirectDraw，M3 完成后开 computeShaders —— 能力位与
-        // 实际可用的调用路径必须一致，否则上层会走进一条只报错的路。
-        m_caps.computeShaders = false;
-        m_caps.indirectDraw = false;
-        m_caps.multiDrawIndirect = false;
+        // M3 已实现：compute shaders 和 indirect draw
+        m_caps.computeShaders = true;
+        m_caps.indirectDraw = true;
+        m_caps.multiDrawIndirect = true;
 
         m_caps.storageBuffers = true;
-        // Metal 没有多边形线框模式（VK_POLYGON_MODE_LINE 无对应物），
-        // 线框必须由上层三角化后以 LineList 提交
-        m_caps.wireframeFill = false;
+        // macOS 的 Metal 支持多边形线框：MTLTriangleFillModeLines。
+        //
+        // 它与 Vulkan 的 VK_POLYGON_MODE_LINE 有一点关键差别——不是管线描述符的
+        // 属性，而是**编码器状态**（MTLRenderCommandEncoder.triangleFillMode）。
+        // 因此这里能声明支持，但真正的下发行不在 createGraphicsPipeline，
+        // 而在 MetalCommandList::bindPipeline（按管线记录里的 fillMode 设置）。
+        //
+        // 该枚举只在 macOS 可用，而本后端本就只在 macOS 编译，故无需条件编译。
+        m_caps.wireframeFill = true;
         m_caps.baseVertexOffset = true;
         m_caps.persistentMapping = true;
         m_caps.timestampQueries = false;
@@ -486,14 +594,9 @@ namespace Render::RHI::metal
                         desc.pushConstantBytes, kMaxPushConstantBytes);
             return PipelineHandle{};
         }
-        if (desc.raster.fillMode == FillMode::Wireframe)
-        {
-            // Metal 没有多边形线框模式。这里明确降级为实心并留下记录——
-            // 上层应先查 Capabilities::wireframeFill 再决定是否改走三角化线框。
-            m_log.warn("[metal] createGraphicsPipeline: Wireframe fill is unsupported by Metal; "
-                       "the pipeline renders solid (%s)",
-                       desc.debugName != nullptr ? desc.debugName : "?");
-        }
+        // fillMode 不进 MTLRenderPipelineDescriptor（Metal 没有这个属性），
+        // 而是随管线记录保存、在 bindPipeline 时作为编码器状态下发。
+        // 见 MetalPipelineRecord::raster 与 MetalCommandList::bindPipeline。
 
         NSError* error = nil;
         id<MTLLibrary> vsLibrary = createLibrary(m_device, *vs, &error);
@@ -650,18 +753,74 @@ namespace Render::RHI::metal
 
     PipelineHandle MetalDevice::createComputePipeline(const ComputePipelineDesc& desc)
     {
-        // M3 落地：newComputePipelineStateWithFunction
-        (void)desc;
-        m_log.error("[metal] createComputePipeline is not implemented yet (M3)");
-        return PipelineHandle{};
+        if (!m_caps.computeShaders)
+        {
+            m_log.error("[metal] createComputePipeline: compute shaders not supported");
+            return PipelineHandle{};
+        }
+
+        const MetalShaderRecord* cs = m_shaders.get(desc.computeShader);
+        if (cs == nullptr)
+        {
+            m_log.error("[metal] createComputePipeline: invalid compute shader handle");
+            return PipelineHandle{};
+        }
+
+        NSError* error = nil;
+        id<MTLLibrary> csLibrary = createLibrary(m_device, *cs, &error);
+        if (csLibrary == nil)
+        {
+            m_log.error("[metal] createComputePipeline: compute library failed: %s",
+                        error != nil ? [[error localizedDescription] UTF8String] : "unknown");
+            return PipelineHandle{};
+        }
+
+        id<MTLFunction> csFunction = [csLibrary newFunctionWithName:[NSString stringWithUTF8String:cs->entryPoint.c_str()]];
+        if (csFunction == nil)
+        {
+            m_log.error("[metal] createComputePipeline: compute entry point \"%s\" not found",
+                        cs->entryPoint.c_str());
+            return PipelineHandle{};
+        }
+
+        // 计算管线不支持光栅化/深度/混合状态，直接创建
+        id<MTLComputePipelineState> state = [m_device newComputePipelineStateWithFunction:csFunction
+                                                                                   error:&error];
+        if (state == nil)
+        {
+            m_log.error("[metal] createComputePipeline failed (%s): %s",
+                        desc.debugName != nullptr ? desc.debugName : "?",
+                        error != nil ? [[error localizedDescription] UTF8String] : "unknown");
+            return PipelineHandle{};
+        }
+
+        MetalComputePipelineRecord record;
+        record.state = state;
+
+        const PipelineHandle handle = m_computePipelines.add(std::move(record));
+        if (!handle.valid())
+        {
+            m_log.error("[metal] createComputePipeline: compute pipeline pool exhausted");
+            return PipelineHandle{};
+        }
+
+        m_log.info("[metal] createComputePipeline: created \"%s\"",
+                   desc.debugName != nullptr ? desc.debugName : "?");
+        return handle;
     }
 
     void MetalDevice::destroyPipeline(PipelineHandle pipeline)
     {
-        if (!m_pipelines.remove(pipeline))
+        // 先尝试渲染管线池，再尝试计算管线池
+        if (m_pipelines.remove(pipeline))
         {
-            m_log.warn("[metal] destroyPipeline: invalid or already-destroyed handle");
+            return;
         }
+        if (m_computePipelines.remove(pipeline))
+        {
+            return;
+        }
+        m_log.warn("[metal] destroyPipeline: invalid or already-destroyed handle");
     }
 
     BufferHandle MetalDevice::createBuffer(const BufferDesc& desc)
@@ -999,6 +1158,32 @@ namespace Render::RHI::metal
             m_log.error("[metal] submitFrame: beginFrame was not called for this frame");
             return RhiResult::ErrorUnknown;
         }
+
+        // 交换链路径：presentDrawable 必须在 commit 之前设置，因此 commit 只能
+        // 留在 MetalSurface::present 里与呈现一起完成（见下方说明）。
+        //
+        // 但**无 drawable** 的帧没有这个归宿：离屏渲染（rxSessionSetRenderTarget）
+        // 与窗口最小化都不会 acquire drawable，而 RT 层对离屏渲染刻意不调用
+        // present（rxSessionEndFrame 的 isOffscreen 分支）。如果不在这里提交，
+        // 本帧录制的命令永远没有提交点，GPU 一次都不会执行——症状是离屏读回
+        // 全零、画面全黑，**且没有任何错误日志**，与「后端没实现」无法区分。
+        MetalSurface* frameSurface = m_frameSurface;
+        if (frameSurface != nullptr && !frameSurface->hasDrawable())
+        {
+            if (id<MTLCommandBuffer> commandBuffer = m_commands.commandBuffer())
+            {
+                if (m_commands.inRenderPass())
+                {
+                    m_log.warn("[metal] submitFrame: an unfinished RenderPass is still open; "
+                               "ending it now");
+                    m_commands.endRenderPass();
+                }
+                // 计算 encoder 也必须在 commit 前结束
+                m_commands.endComputePass();
+                [commandBuffer commit];
+            }
+        }
+
         // Metal 的提交与呈现无法分离（presentDrawable 必须在 commit 之前设置），
         // 真正的 commit 在 MetalSurface::present 里完成。这里只负责收拢帧状态。
         m_inFrame = false;

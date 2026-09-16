@@ -5,6 +5,9 @@
 //
 // 输入结构体名可以与顶点侧不同，MSL 按**字段名**匹配 varying；
 // position 在内插阶段由 [[position]] 提供，片段不需要它。
+#include <metal_stdlib>
+using namespace metal;
+
 struct RxFragmentIn
 {
     float3 vColor;

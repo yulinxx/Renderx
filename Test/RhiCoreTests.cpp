@@ -86,7 +86,17 @@ TEST(RhiFactory, UnimplementedBackendsReturnNullptrInsteadOfFallingBack)
 {
     // 旧实现在 Vulkan/Metal 不可用时静默换 Null，调用方拿到「创建成功」
     // 却画面全黑。这里断言现在会明确失败并给出原因。
-    for (BackendKind backend : { BackendKind::Metal, BackendKind::Vulkan })
+    //
+    // 「未实现」是会随时间收缩的集合：Apple 平台上的 Metal 已落地（其
+    // 离屏渲染正确性由 RenderxMetalTests 覆盖），再把 Metal 列进来就会把
+    // 「后端已可用」判成失败。因此按平台取集合，而不是写死 Metal + Vulkan。
+    // 这条用例真正守的是「不可用时必须明确失败」，不是「某后端永远不可用」。
+    std::vector<BackendKind> unimplemented{ BackendKind::Vulkan };
+#if !defined(__APPLE__)
+    unimplemented.push_back(BackendKind::Metal);
+#endif
+
+    for (BackendKind backend : unimplemented)
     {
         LogSink sink;
         DeviceDesc desc{};

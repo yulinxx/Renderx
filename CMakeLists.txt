@@ -197,10 +197,17 @@ if(APPLE)
         add_custom_command(
             OUTPUT "${_lib}"
             COMMAND ${CMAKE_COMMAND} -E make_directory "${RENDERX_METALLIB_DIR}"
-            # -I 让 MSL 的包含指令找到同目录的共享块声明（rx_push_constants.metal）
+            # -I 让 MSL 的包含指令找到同目录的共享块声明（rx_push_constants.metal）。
+            #
+            # 不能加 -c：-c 只编译不链接，产物是 LLVM bitcode(.air)，即使改名
+            # .metallib，运行时 newLibraryWithData 也会报 "Invalid library file"。
+            # 症状是**所有内建管线创建失败**（日志刷屏 + 画面全黑），而文件本身
+            # 看着"生成成功"。这里必须单步编译+链接直出真正的 MetalLib
+            # （每个 .metal 自包含单入口）。用 `file <x>.metallib` 复核：
+            # 正确产物报告 "data"（魔数 MTLB），带 -c 的产物报告 "LLVM bitcode"。
             COMMAND xcrun -sdk macosx metal -std=macos-metal2.0
                     "-I${RENDERX_METAL_INCLUDE_DIR}"
-                    -c "${_metal}" -o "${_lib}"
+                    "${_metal}" -o "${_lib}"
             DEPENDS "${_metal}" "${RENDERX_METAL_INCLUDE_DIR}/rx_push_constants.metal"
             COMMENT "[Renderx] Compiling Metal shader ${_stem}.metal"
             VERBATIM

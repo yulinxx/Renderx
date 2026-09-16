@@ -79,10 +79,13 @@ namespace Render::RHI
     BackendKind preferredBackend()
     {
         // 自动选择只考虑**已经能承担完整渲染**的后端。
-        // Metal 当前只覆盖到设备/表面/资源（M1），管线与绘制尚未实现，
-        // 因此在 macOS 上选中它会得到最坏的结果：能创建设备、画不出东西。
-        // M2 完成后把 Metal 提到最前（不再经过 isBackendAvailable 判断，
-        // 因为「已编译」与「能渲染」是两件事）。
+        //
+        // Metal 后端（设备/表面/资源 + 管线与绘制）在 Apple 平台上已经可用，
+        // 但产品路径不会落到这里的自动分支：宿主视口通过编译期开关
+        // SY_ENABLE_METAL_VIEWPORT 把具体后端显式传给 Runtime（见根 CMakeLists），
+        // Runtime 解析 Auto 之前就已确定后端。
+        // 这里保持 OpenGL 作为 Auto 的结果，是为了让「没显式指定后端」的调用方
+        // （测试、工具、无头路径）行为完全不变。
         if (isBackendAvailable(BackendKind::Vulkan))
         {
             return BackendKind::Vulkan;

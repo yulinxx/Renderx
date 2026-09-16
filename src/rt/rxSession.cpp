@@ -16,6 +16,7 @@
  */
 
 #include "rt/rxInternal.h"
+#include "core/mat4.h"
 
 #include <algorithm>
 #include <cstring>
@@ -45,14 +46,6 @@ namespace Render::RT::detail
             }
             return RxResult::ErrorUnknown;
         }
-
-        /// 单位矩阵，viewMatrix 未设置时使用（全零矩阵会把所有顶点压到原点）
-        const float kIdentity4x4[16] = {
-            1.0f, 0.0f, 0.0f, 0.0f,
-            0.0f, 1.0f, 0.0f, 0.0f,
-            0.0f, 0.0f, 1.0f, 0.0f,
-            0.0f, 0.0f, 0.0f, 1.0f,
-        };
 
         bool isAllZero(const float m[16])
         {
@@ -125,6 +118,8 @@ runtime->log.error("[rt] rxSessionCreate: surface is already bound to another Se
 
         std::memcpy(clearColor, desc.clearColor, sizeof(clearColor));
         std::memcpy(viewMatrix, kIdentity4x4, sizeof(viewMatrix));
+        std::memcpy(modelMatrix, kIdentity4x4, sizeof(modelMatrix));
+        modelMatrixSet = false;
         stats = FrameStats{};
         inFrame = false;
         cmd = nullptr;
@@ -176,6 +171,21 @@ runtime->log.error("[rt] rxSessionCreate: surface is already bound to another Se
             return;
         }
         std::memcpy(viewMatrix, matrix, sizeof(viewMatrix));
+    }
+
+    void Session::setModelMatrix(const float matrix[16])
+    {
+        // nullptr = 复位为「不施加模型变换」，与 rxSessionSetViewMatrix 的
+        // 「零矩阵沿用旧值」不同：模型矩阵是可选叠加项，必须能显式关掉，
+        // 否则预览提交之后同一帧的后续提交会继续带着它。
+        if (!matrix)
+        {
+            std::memcpy(modelMatrix, kIdentity4x4, sizeof(modelMatrix));
+            modelMatrixSet = false;
+            return;
+        }
+        std::memcpy(modelMatrix, matrix, sizeof(modelMatrix));
+        modelMatrixSet = true;
     }
 
     void Session::setLighting3D(const Lighting3DDesc* desc)
@@ -384,6 +394,16 @@ runtime->log.error("[rt] rxSessionBeginFrame: beginRenderPass failed (%s)",  // 
             std::memcpy(out->view, packetViewMatrix, sizeof(out->view));
             std::memcpy(viewMatrix, packetViewMatrix, sizeof(viewMatrix));
         }
+
+        // 模型矩阵（可选）：与视图矩阵合并后仍写进同一个 push constant 的 uView，
+        // 因此着色器与各后端都不需要知道「模型变换」这件事，顶点也不必在 CPU 上
+        // 按模型矩阵重算一遍。见 rxSessionSetModelMatrix。
+        if (modelMatrixSet)
+        {
+            float combined[16];
+            multiply4x4(out->view, modelMatrix, combined);
+            std::memcpy(out->view, combined, sizeof(out->view));
+        }
         out->viewport[0] = viewportW;
         out->viewport[1] = viewportH;
         return hasPacketViewport;
@@ -421,7 +441,18 @@ runtime->log.error("[rt] rxSessionBeginFrame: beginRenderPass failed (%s)",  // 
         if (pipelineIndex == 0)
         {
             pipelineIndex = runtime->resolvePipeline(command.vertexFormat, command.space,
-                                                     command.topology, lineWidth);
+                                                     command.topology, currentColorFormat(),
+                                                     currentDepthFormat(), lineWidth);
+        }
+        else
+        {
+            // 显式指定了管线：内建管线是按交换链格式预热的，而离屏目标是另一种
+            // 格式，3D 表面还多出深度附件格式。管线格式必须与附件格式一致是
+            // API 契约，直接把预热那条绑上来会被 Metal 校验层判为 validation
+            // error（实测像素仍正确，但属未定义行为）。同格式变体在这里按需
+            // 补建；格式一致时是纯查询。
+            pipelineIndex = runtime->pipelineWithFormats(pipelineIndex, currentColorFormat(),
+                                                         currentDepthFormat());
         }
         const RHI::PipelineHandle pipeline = runtime->rhiPipeline(pipelineIndex);
         if (!pipeline.valid())

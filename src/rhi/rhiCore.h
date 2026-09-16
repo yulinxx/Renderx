@@ -241,7 +241,7 @@ namespace Render::RHI
     enum class FillMode : uint8_t
     {
         Solid = 0,
-        Wireframe,  ///< Metal 无原生等价，由后端在 Capabilities 中声明支持性
+        Wireframe,  ///< 多边形线框。GL 用 glPolygonMode，Metal 用 MTLTriangleFillModeLines
     };
 
     enum class FilterMode : uint8_t
@@ -716,7 +716,7 @@ namespace Render::RHI
         bool indirectDraw = false;
         bool multiDrawIndirect = false;
         bool storageBuffers = false;
-        bool wireframeFill = false;      ///< Metal 为 false
+        bool wireframeFill = false;      ///< 声明支持 Wireframe 填充；Metal 由编码器状态下发
         bool baseVertexOffset = false;
         bool persistentMapping = false;  ///< 支持长期映射的 CPU 可写缓冲
         bool timestampQueries = false;

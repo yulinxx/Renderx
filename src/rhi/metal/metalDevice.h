@@ -32,6 +32,10 @@
 
 #include <vector>
 
+/// CAMetalLayer 的专属 layer-hosting 宿主视图，定义在 metalDevice.mm；
+/// MetalSurface 强持有它，析构时自行摘除，不触碰宿主 NSView 的根 layer。
+@class RxxMetalHostView;
+
 namespace Render::RHI::metal
 {
 
@@ -40,9 +44,12 @@ namespace Render::RHI::metal
     /**
      * @brief Metal 表面
      *
-     * 只支持 NativeWindow::Kind::CocoaNsView：在宿主给定的 NSView 上挂一个
-     * CAMetalLayer 并独占它。与 GL 侧只支持 ForeignGlContext 是同一种取舍——
-     * 每多支持一种窗口形态就多一条没人完整测过的路径。
+     * 只支持 NativeWindow::Kind::CocoaNsView：在宿主给定的 NSView 内挂一个
+     * **后端自有的 layer-hosting 子视图**（RxxMetalHostView）承载 CAMetalLayer。
+     * 绝不替换/清空宿主 NSView 自己的根 layer——那是 Qt（QNSView，layer-backed
+     * view）与 AppKit 共同掌管的对象，应用终止时它会先于 surface 被销毁。
+     * 与 GL 侧只支持 ForeignGlContext 是同一种取舍——每多支持一种窗口形态就
+     * 多一条没人完整测过的路径。
      *
      * 交换链以「3 帧 in flight」表达：in-flight 信号量限制 CPU 至多领先 GPU
      * 三帧，避免 CPU 无界地往队列里塞命令（旧实现没有这层，表现为高帧率下
@@ -73,6 +80,15 @@ namespace Render::RHI::metal
         CAMetalLayer* layer() const { return m_layer; }
         uint64_t presentCount() const { return m_presentCount; }
 
+        /**
+         * @brief 本帧是否有可呈现的 drawable
+         *
+         * 离屏渲染（rxSessionSetRenderTarget）与窗口最小化都不会 acquire
+         * drawable。此时 present 无处可呈现，commit 必须由 submitFrame 承担
+         * ——见 MetalDevice::submitFrame 的说明。
+         */
+        bool hasDrawable() const { return m_acquired && m_drawable != nil; }
+
     private:
         void ensureDepthTexture();
         void releaseDrawable();
@@ -84,6 +100,10 @@ namespace Render::RHI::metal
         Format m_depthFormat = Format::Unknown;
 
         CAMetalLayer* m_layer = nil;
+        /// 后端自有的宿主视图（layer-hosting），承载 m_layer 并作为子视图挂在
+        /// 宿主 NSView 最底层。surface 强持有；父视图先销毁时它仍存活，
+        /// superview 自动置 nil，析构可安全 removeFromSuperview。
+        RxxMetalHostView* m_hostView = nil;
         dispatch_semaphore_t m_inFlight = nil;
         /// 本帧的 drawable。必须持有到 present：nextDrawable 返回的对象若被
         /// 提前释放，presentDrawable 会作用在一个已回收的 drawable 上。
@@ -120,6 +140,17 @@ namespace Render::RHI::metal
     };
 
     /**
+     * @brief 计算管线记录
+     *
+     * Metal 的计算管线存储在 MTLComputePipelineState 中。
+     * 与渲染管线不同，计算管线不需要深度/模板状态或光栅化状态。
+     */
+    struct MetalComputePipelineRecord
+    {
+        id<MTLComputePipelineState> state = nil;
+    };
+
+    /**
      * @brief Metal 命令记录器
      *
      * 与 GlCommandList 的差异：状态不是「下发给全局状态机」，而是写进
@@ -152,6 +183,7 @@ namespace Render::RHI::metal
         void drawIndexedIndirect(BufferHandle argsBuffer, uint64_t offsetBytes, uint32_t drawCount,
                                  uint32_t strideBytes) override;
         void dispatchCompute(uint32_t groupsX, uint32_t groupsY, uint32_t groupsZ) override;
+        void endComputePass();
         void barrier(BarrierScope before, BarrierScope after) override;
         void copyBuffer(BufferHandle src, uint64_t srcOffset, BufferHandle dst, uint64_t dstOffset,
                         uint64_t sizeBytes) override;
@@ -182,11 +214,14 @@ namespace Render::RHI::metal
         MetalSurface* m_surface = nullptr;
         id<MTLCommandBuffer> m_commandBuffer = nil;
         id<MTLRenderCommandEncoder> m_renderEncoder = nil;
+        id<MTLComputeCommandEncoder> m_computeEncoder = nil;
         FrameStats m_stats{};
         Extent2D m_passExtent{};
 
         PipelineHandle m_pipelineHandle{};
         const MetalPipelineRecord* m_pipeline = nullptr;
+        PipelineHandle m_computePipelineHandle{};
+        const MetalComputePipelineRecord* m_computePipeline = nullptr;
 
         VertexBinding m_vertexBindings[kMaxVertexBufferSlots]{};
         bool m_vertexBindingsDirty = false;
@@ -200,6 +235,9 @@ namespace Render::RHI::metal
         uint8_t m_pushConstants[kMaxPushConstantBytes]{};
         uint32_t m_pushConstantHighWater = 0;
         bool m_pushConstantsDirty = false;
+
+        /// 计算着色器的资源绑定（bindGroup 缓存）
+        std::vector<BindGroupHandle> m_computeBindGroups;
     };
 
     /**
@@ -266,6 +304,7 @@ namespace Render::RHI::metal
         MetalShaderRecord* shaderRecord(ShaderHandle h) { return m_shaders.get(h); }
         MetalBindGroupRecord* bindGroupRecord(BindGroupHandle h) { return m_bindGroups.get(h); }
         MetalPipelineRecord* pipelineRecord(PipelineHandle h) { return m_pipelines.get(h); }
+        MetalComputePipelineRecord* computePipelineRecord(PipelineHandle h) { return m_computePipelines.get(h); }
 
         /**
          * @brief 更新（必要时创建）由表面托管的纹理记录，返回该句柄
@@ -298,6 +337,7 @@ namespace Render::RHI::metal
         ResourcePool<ShaderHandle, MetalShaderRecord> m_shaders;
         ResourcePool<BindGroupHandle, MetalBindGroupRecord> m_bindGroups;
         ResourcePool<PipelineHandle, MetalPipelineRecord> m_pipelines;
+        ResourcePool<PipelineHandle, MetalComputePipelineRecord> m_computePipelines;
 
         bool m_inFrame = false;
         MetalSurface* m_frameSurface = nullptr;
