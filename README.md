@@ -1048,8 +1048,9 @@ pushConstant 块（`uView` / `uViewport` / `uPointSize` / `uSdfScale`）。
 **2. 光照在 DLL 内算**
 
 `rxSessionSetLighting3D(session, &desc)` 设置 `Lighting3DDesc`（160 字节：
-环境项 + 主光/补光/轮廓光三个方向光 + 相机位置 + 亮度下限 + 曝光）。
-片元着色器做 Blinn-Phong。
+环境项 + 主光/补光/轮廓光三个方向光 + 相机位置 + 亮度下限 + 曝光 + 光泽度）。
+片元着色器做 Blinn-Phong。光泽度是**材质 shininess 的全局倍率基准**（默认 32，
+即 1 倍、画面不变），这样既能被设置页调，又保留了不同材质之间的高光差异。
 
 为什么不像 2D 那样把颜色算好写进顶点色：高光是**视角相关**的，烘进顶点意味着
 相机每动一次就要重传全部顶点（十万面网格每帧数 MB），或者干脆放弃高光。

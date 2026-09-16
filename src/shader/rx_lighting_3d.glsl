@@ -27,7 +27,8 @@
 //   uViewPos           128..139
 //   uMinBrightness     140..143
 //   uExposure          144..147
-//   uLightingPad0      148..159
+//   uLightingShininess 148..151
+//   uLightingPad0      152..159
 // 合计 160 字节。
 //
 // 成员命名注意：无实例名的 uniform block，成员名进全局命名空间，因此本块的
@@ -69,6 +70,9 @@ layout(std140) uniform FrameUniforms
     float uMinBrightness;
     /// 线性曝光系数，作用在最终颜色上
     float uExposure;
+    /// 高光指数基准（设置页"光泽度"），默认 32 与网格材质默认值一致，
+    /// 因此默认值下高光表现与只按材质算完全相同。见 mesh_3d_p3n3.frag。
+    float uLightingShininess;
     /// 占位，让块尺寸与 C++ 侧的 160 字节一致。
     ///
     /// 名字必须带 Lighting 前缀：无实例名的 uniform block，其成员名进的是
@@ -77,5 +81,5 @@ layout(std140) uniform FrameUniforms
     /// "would shadow a previous declaration" 而整条管线建不出来 ——
     /// 表现为 3D 模型完全不显示。见 RxRuntimeTests 的
     /// SharedUniformBlockMembersDoNotCollide。
-    uvec3 uLightingPad0;
+    uvec2 uLightingPad0;
 };

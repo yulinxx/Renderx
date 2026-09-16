@@ -20,6 +20,10 @@ in vec3 vNormal;
 
 out vec4 FragColor;
 
+/// 网格材质的默认光泽度，与 Engine3D 的 SyMeshEntity::shininess 默认值保持一致。
+/// 设置页的光泽度是这个基准的倍率：取默认值时倍率为 1，高光与只按材质算相同。
+const float rxDefaultShininess = 32.0;
+
 /// 单个方向光的漫反射 + 高光贡献。enabled 为 0 时整条支路跳过。
 vec3 rxShadeDirectional(RxDirectionalLight light, vec3 normal, vec3 viewDir)
 {
@@ -42,7 +46,10 @@ vec3 rxShadeDirectional(RxDirectionalLight light, vec3 normal, vec3 viewDir)
     if (uSpecularEnabled != 0u)
     {
         vec3 halfway = normalize(lightDir + viewDir);
-        float spec = pow(max(dot(normal, halfway), 0.0), max(uMatShininess, 1.0));
+        // 传 0（零初始化的 Lighting3DDesc）按基准处理，否则高光会被拉成一片糊
+        float shininessBase = uLightingShininess > 0.0 ? uLightingShininess : rxDefaultShininess;
+        float shininess = max(uMatShininess * (shininessBase / rxDefaultShininess), 1.0);
+        float spec = pow(max(dot(normal, halfway), 0.0), shininess);
         result += uMatSpecular * light.color * (spec * light.intensity * uSpecularIntensity);
     }
     return result;

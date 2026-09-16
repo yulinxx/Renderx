@@ -738,8 +738,12 @@ namespace Render
             float minBrightness;
             /// 曝光系数，整体乘在最终颜色上
             float exposure;
+            /// 高光指数基准。网格材质自带 shininess，本值是全局倍率基准：
+            /// 着色器按 matShininess * (shininess / 32) 取指数，默认 32 即 1 倍、
+            /// 画面与只按材质算时完全一致。
+            float shininess;
             /// 占位，把结构体尺寸补到 16 的倍数，与 std140 块尺寸一致
-            uint32_t _pad0[3];
+            uint32_t _pad0[2];
         };
         static_assert(sizeof(Lighting3DDesc) == 160, "Lighting3DDesc ABI size changed");
 
