@@ -318,7 +318,7 @@ Phase 3 引入的统一命令收集与排序组件：
   与其他图元一起参与 `sortKey` 排序与批次合并
 
 UTF-8 解码、字距推进、水平/垂直对齐、世界坐标→像素换算**全在调用方**
-（宿主侧参考实现：屏幕文字 `UI/2D/Src/UI/ViewWidget/TextQuadBuilder.cpp`，
+（宿主侧参考实现：屏幕文字 `RenderBridge/Src/TextQuadBuilder.cpp`，
 世界文字 `UI/2D/Src/UI/ViewWidget/WorldTextQuadBuilder.cpp`）。
 被替换掉的 `src/core/textAtlas` + `src/core/screenTextRenderer` 是反过来的：
 宿主递字符串、DLL 内部排版并自己 `bindPipeline` + `draw`，于是文本永远是
