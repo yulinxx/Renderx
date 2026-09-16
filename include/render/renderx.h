@@ -867,15 +867,20 @@ namespace Render
          *
          * `buffer` + `offset` 可直接填进 DrawCommand 的 vertexBuffer/vertexOffset。
          *
-         * ⚠️ 仓扩容时底层缓冲会被替换，此时**所有已发出的 GeometryBlock 中的
-         * `buffer` 字段都会失效**。调用方必须在 rxGeometryAlloc 返回
-         * `ErrorGeometryStoreGrown` 后用 rxGeometryStoreGetBuffer 重新取一次句柄。
-         * 这个约定是显式的——静默替换句柄会让调用方拿着旧句柄画出空白。
+         * **`buffer` 可以长期持有**：仓扩容时底层 RHI 缓冲会被替换，但公共句柄是
+         * 原地改写槽位做的（见 rxIncremental.cpp 的 createBuffer），数值不变，
+         * 因此已发出的块不必逐个刷新。这条不变式由
+         * `RxRuntimeTests.GeometryAllocReportsGrowthAndKeepsBufferHandleStable` 锁定。
+         * （早期文档说"扩容后 buffer 字段会失效"，与实现不符，已更正。）
+         *
+         * 注意：同一个 BufferHandle 只属于**一个**仓。宿主要突破单仓 4GB 上限时应
+         * 分片到多个仓，并且必须自己记住"某个块属于哪个仓"——`id` 只在所属仓内有意义。
          */
         struct GeometryBlock
         {
             BufferHandle buffer;
             /// 块标识。释放与写入都用它，不要用 offset 当身份（扩容/整理后会变）。
+            /// ⚠️ 它只在**所属仓**内有效：跨仓分片后，用它做读写必须同时带上仓句柄。
             uint64_t id;
             uint32_t offset;
             uint32_t sizeBytes;
@@ -1163,7 +1168,12 @@ namespace Render
                                                             const GeometryStoreDesc* desc);
         RENDER_API void rxGeometryStoreDestroy(RuntimeHandle runtime, GeometryStoreHandle store);
 
-        /// 取仓当前的底层缓冲句柄。扩容后必须重新调用（见 ErrorGeometryStoreGrown）。
+        /**
+         * 取仓当前的底层缓冲句柄。
+         *
+         * 不要求在扩容后重新调用：公共句柄数值在扩容时保持不变（原地改写槽位），
+         * 因此这个访问器与 `GeometryBlock::buffer` 拿到的是同一个稳定句柄。
+         */
         RENDER_API BufferHandle rxGeometryStoreGetBuffer(RuntimeHandle runtime,
                                                         GeometryStoreHandle store);
 
