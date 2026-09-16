@@ -153,3 +153,12 @@ $RECYCLE.BIN/
 # ---- 测试输出 / 缓存 ----
 Testing/
 .cache/
+
+# ---- 编译器 profile / 覆盖率产物 ----
+# -fprofile-instr-generate / -fprofile-generate 的默认输出是当前工作目录下的
+# default.profraw（实测 12MB，曾以未跟踪状态挂在 src/shader/metal/ 下）。
+*.profraw
+*.profdata
+*.gcda
+*.gcno
+*.gcov
