@@ -363,7 +363,7 @@ elseif(Stb_FOUND)
     target_include_directories(${PROJECT_NAME} PRIVATE ${Stb_INCLUDE_DIR})
 elseif(DEFINED VCPKG_DIR)
     # vcpkg: 头文件位于 <triplet>/include 下（兼容不同平台 triplet）
-    file(GLOB _vcpkg_stb_incs "${VCPKG_DIR}/installed/*/include")
+    file(GLOB _vcpkg_stb_incs CONFIGURE_DEPENDS "${VCPKG_DIR}/installed/*/include")
     list(REMOVE_DUPLICATES _vcpkg_stb_incs)
     if(_vcpkg_stb_incs)
         target_include_directories(${PROJECT_NAME} PRIVATE ${_vcpkg_stb_incs})

@@ -9,7 +9,7 @@
 # GL 后端与 glLoader（以及 opengl32 / 系统 GL 库）。拆成两个工厂只为测试
 # 服务会让产品代码多出一条分支，不值得。
 
-find_package(GTest REQUIRED)
+find_package(GTest CONFIG REQUIRED)
 include(GoogleTest)
 
 # ============================================================
@@ -113,7 +113,7 @@ target_include_directories(RenderxGLTests PRIVATE
 if(STB_TRUETYPE_INCLUDE_DIR)
     target_include_directories(RenderxGLTests PRIVATE ${STB_TRUETYPE_INCLUDE_DIR})
 elseif(DEFINED VCPKG_DIR)
-    file(GLOB _vcpkg_stb_incs "${VCPKG_DIR}/installed/*/include")
+        file(GLOB _vcpkg_stb_incs CONFIGURE_DEPENDS "${VCPKG_DIR}/installed/*/include")
     list(REMOVE_DUPLICATES _vcpkg_stb_incs)
     target_include_directories(RenderxGLTests PRIVATE ${_vcpkg_stb_incs})
 endif()
@@ -197,7 +197,7 @@ if(APPLE)
     if(STB_TRUETYPE_INCLUDE_DIR)
         target_include_directories(RenderxMetalTests PRIVATE ${STB_TRUETYPE_INCLUDE_DIR})
     elseif(DEFINED VCPKG_DIR)
-        file(GLOB _vcpkg_stb_incs_metal "${VCPKG_DIR}/installed/*/include")
+        file(GLOB _vcpkg_stb_incs_metal CONFIGURE_DEPENDS "${VCPKG_DIR}/installed/*/include")
         list(REMOVE_DUPLICATES _vcpkg_stb_incs_metal)
         target_include_directories(RenderxMetalTests PRIVATE ${_vcpkg_stb_incs_metal})
     endif()
