@@ -152,7 +152,7 @@ namespace Render::RT::detail
         m_capacity = initial;
         m_used = 0;
         m_free.clear();
-        m_free.push_back(Range{ 0, static_cast<uint32_t>(initial) });
+        m_free.emplace(0u, static_cast<uint32_t>(initial));
 
         m_owner->log.debug("[rt] Geometry store ready: capacity %llu bytes, granularity %u, %s",  // 几何仓就绪
                           static_cast<unsigned long long>(initial), m_granularity,
@@ -285,26 +285,30 @@ m_owner->log.error("[rt] geometry store grew to limit %llu but still insufficien
         {
             return;
         }
-        // 按 offset 找插入位；随后与前后合并，保证空闲表里不存在相邻空洞。
+        // 按 offset 定位插入点并与前后相邻空洞合并，保证空闲表无相邻区间。
         // 不合并的话，反复 alloc/free 会把空闲表打成碎屑，first-fit 退化。
-        auto pos = std::lower_bound(m_free.begin(), m_free.end(), range,
-                                    [](const Range& a, const Range& b) { return a.offset < b.offset; });
-        auto inserted = m_free.insert(pos, range);
+        // map 路径插入/摘除都是 O(log N)；旧实现用有序 vector，中间插入 O(N)
+        // memmove，十万级批量释放整体 O(N^2)（实测 Debug 27.6s）。
+        auto next = m_free.lower_bound(range.offset);
 
-        if (inserted + 1 != m_free.end() && inserted->end() == (inserted + 1)->offset)
+        // 与后邻合并
+        if (next != m_free.end() && range.end() == next->first)
         {
-            inserted->size += (inserted + 1)->size;
-            m_free.erase(inserted + 1);
+            range.size += next->second;
+            next = m_free.erase(next);
         }
-        if (inserted != m_free.begin())
+        // 与前邻合并
+        if (next != m_free.begin())
         {
-            auto prev = inserted - 1;
-            if (prev->end() == inserted->offset)
+            auto prev = next;
+            --prev;
+            if (prev->first + prev->second == range.offset)
             {
-                prev->size += inserted->size;
-                m_free.erase(inserted);
+                prev->second += range.size;
+                return;
             }
         }
+        m_free.emplace(range.offset, range.size);
     }
 
     RxResult GeometryStore::allocate(uint64_t sizeBytes, GeometryBlock* out)
@@ -330,21 +334,24 @@ m_owner->log.error("[rt] geometry store grew to limit %llu but still insufficien
             // first-fit：空闲表已按 offset 有序且无相邻空洞，first-fit 的
             // 定位性比 best-fit 好——同类图元倾向落在相邻位置，
             // 这正是 DrawList 合批能生效的前提。
-            for (size_t i = 0; i < m_free.size(); ++i)
+            for (auto it = m_free.begin(); it != m_free.end(); ++it)
             {
-                if (m_free[i].size < need)
+                if (it->second < need)
                 {
                     continue;
                 }
-                const uint32_t offset = m_free[i].offset;
-                if (m_free[i].size == need)
+                const uint32_t offset = it->first;
+                if (it->second == need)
                 {
-                    m_free.erase(m_free.begin() + static_cast<ptrdiff_t>(i));
+                    m_free.erase(it);
                 }
                 else
                 {
-                    m_free[i].offset += static_cast<uint32_t>(need);
-                    m_free[i].size -= static_cast<uint32_t>(need);
+                    // 从区间头部切走 need：改写 key 需重新插入（map key 不可变）
+                    const uint32_t remainOffset = offset + static_cast<uint32_t>(need);
+                    const uint32_t remainSize = it->second - static_cast<uint32_t>(need);
+                    m_free.erase(it);
+                    m_free.emplace(remainOffset, remainSize);
                 }
 
                 Block block{};
@@ -508,9 +515,9 @@ m_owner->log.error("[rt] geometry store upload failed (offset=%u size=%u, %s)", 
         out->_pad0 = 0;
 
         uint64_t largest = 0;
-        for (const Range& range : m_free)
+        for (const auto& freeRange : m_free)
         {
-            largest = std::max<uint64_t>(largest, range.size);
+            largest = std::max<uint64_t>(largest, freeRange.second);
         }
         out->largestFreeBytes = largest;
 

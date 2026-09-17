@@ -28,6 +28,7 @@
 #include "rhi/rhiLog.h"
 
 #include <cstdint>
+#include <map>
 #include <unordered_map>
 #include <vector>
 
@@ -158,8 +159,11 @@ namespace Render::RT::detail
 
         std::vector<uint8_t> m_shadow;
         SlotMap<uint64_t, Block> m_blocks;
-        /// 按 offset 升序，且保证互不相邻（相邻的已合并）
-        std::vector<Range> m_free;
+        /// 按 offset 升序，且保证互不相邻（相邻的已合并）。
+        /// 用 map 而不是有序 vector：批量删除（导入后删除 95% 图元）时 15 万次
+        /// free 在 vector 中间插入是 O(N) memmove，整体退化成 O(N^2)
+        /// （实测 Debug 下 27.6s）。map 的插入/摘除/相邻合并均 O(log N)。
+        std::map<uint32_t, uint32_t> m_free;  // offset -> size
         std::vector<Range> m_dirty;
 
         uint64_t m_capacity = 0;
