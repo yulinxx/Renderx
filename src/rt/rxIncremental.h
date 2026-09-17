@@ -41,6 +41,8 @@ namespace Render::RT::detail
     constexpr float kGridBaseCellSize = 256.0f;
     constexpr int kGridLevelCount = 12;
     constexpr uint16_t kInvalidGridLevel = 0xFFFF;
+    /// slot 不在「永可见」列表（m_nonIndexed）中时的位置标记
+    constexpr uint32_t kInvalidNonIndexedPos = 0xFFFFFFFFu;
 
     /// 一个格子内的 slot 列表（无序，摘除用 swap-and-pop）
     struct GridCell
@@ -278,6 +280,10 @@ namespace Render::RT::detail
             uint16_t gridLevel = kInvalidGridLevel;
             /// 帧内去重标记，防止跨格图元在查询时被重复收集。
             uint32_t frameStamp = 0;
+            /// 在 m_nonIndexed 中的下标；kInvalidNonIndexedPos 表示不在「永可见」列表。
+            /// 删除非索引条目时靠它 O(1) 定位 swap-and-pop 位置，
+            /// 否则十万级批量删除会退化成 O(N^2) 线性扫描（实测 9 万删除 13s）。
+            uint32_t nonIndexedPos = kInvalidNonIndexedPos;
         };
 
         /// 两条命令能否共用一次提交（状态全同）。**不含**几何区间的判定：
@@ -321,7 +327,7 @@ namespace Render::RT::detail
         /// 把非 2D 条目（无包围盒 / 3D 包围盒）加入「永可见」列表
         void indexAddNonIndexed(uint32_t slot);
 
-        /// 从「永可见」列表摘除一个 slot（swap-and-pop）
+        /// 从「永可见」列表摘除一个 slot（O(1) swap-and-pop，位置取自 Entry::nonIndexedPos）
         void indexRemoveNonIndexed(uint32_t slot);
 
         Runtime* m_owner = nullptr;
@@ -336,7 +342,8 @@ namespace Render::RT::detail
         std::vector<RHI::DrawRange> m_ranges;
         /// 2D 分层网格索引（每层一个 GridLayer）
         std::vector<GridLayer> m_grid;
-        /// 非 2D 条目（无包围盒 / 3D 包围盒）的 slot，2D 视口下照常画、不裁
+        /// 非 2D 条目（无包围盒 / 3D 包围盒）的 slot，2D 视口下照常画、不裁。
+        /// 无序（swap-and-pop 维护），每个 slot 的位置记录在 Entry::nonIndexedPos。
         std::vector<uint32_t> m_nonIndexed;
         /// 帧内可见候选（复用缓冲，避免每帧分配）
         std::vector<uint32_t> m_visible;

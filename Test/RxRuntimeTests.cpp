@@ -1259,6 +1259,128 @@ TEST_F(RxIncrementalFixture, DrawListTracksEntryCountAcrossUpsertRemoveClear)
     rxBufferDestroy(runtime, buffer);
 }
 
+// 无包围盒条目全部走「永可见」列表（m_nonIndexed）。该列表用 swap-and-pop 摘除，
+// 每个 slot 的位置必须由 Entry::nonIndexedPos 维护：批量删除（导入后删除场景）
+// 曾经靠线性扫描定位，退化成 O(N^2)。本测试锁定 swap-pop 后位置索引始终自洽。
+TEST_F(RxIncrementalFixture, DrawListNonIndexedRemoveStaysConsistentAcrossSwapPop)
+{
+    DrawListDesc listDesc{};
+    listDesc.initialCapacity = 8;
+    const DrawListHandle list = rxDrawListCreate(runtime, &listDesc);
+    ASSERT_TRUE(rxValid(list));
+
+    const BufferHandle buffer = makeVertexBuffer(runtime, 4096);
+    ASSERT_TRUE(rxValid(buffer));
+
+    constexpr uint32_t kCount = 257;  // 奇数规模：队头/队尾/中段删除的补位路径都会走到
+    for (uint32_t i = 0; i < kCount; ++i)
+    {
+        const DrawCommand command = makeListCommand(buffer, i * 3, 3, i + 1, PrimitiveTopology::Lines);
+        ASSERT_EQ(rxDrawListUpsert(runtime, list, i, &command, nullptr), RxResult::Ok);
+    }
+
+    auto resolveVisibleCount = [&]() -> uint32_t {
+        EXPECT_EQ(rxSessionBeginFrame(session), RxResult::Ok);
+        EXPECT_EQ(rxSessionSubmitDrawList(session, list, nullptr), RxResult::Ok);
+        DrawListStats stats{};
+        EXPECT_EQ(rxDrawListGetStats(runtime, list, &stats), RxResult::Ok);
+        // 无包围盒条目不参与剔除：entryCount 与 visibleCount 必须恒等，
+        // 位置索引损坏会导致条目在 resolve 中丢失或重复计数。
+        EXPECT_EQ(stats.entryCount, stats.visibleCount);
+        EXPECT_EQ(rxSessionEndFrame(session), RxResult::Ok);
+        return stats.visibleCount;
+    };
+
+    EXPECT_EQ(resolveVisibleCount(), kCount);
+
+    // 三批删除：先队头（每次都触发末位补位），再队尾，再中段交错。
+    struct Batch
+    {
+        uint32_t begin;
+        uint32_t end;
+    };
+    const Batch batches[] = {
+        { 0, 16 },
+        { kCount - 8, kCount },
+        { 100, 132 },
+    };
+    uint32_t removed = 0;
+    for (const Batch& batch : batches)
+    {
+        for (uint32_t slot = batch.begin; slot < batch.end; ++slot)
+        {
+            ASSERT_EQ(rxDrawListRemove(runtime, list, slot), RxResult::Ok);
+            ++removed;
+        }
+        EXPECT_EQ(resolveVisibleCount(), kCount - removed);
+    }
+
+    // 被删槽位重新写入：nonIndexedPos 必须重新建立，不能残留旧下标
+    for (uint32_t i = 0; i < 16; ++i)
+    {
+        const DrawCommand command = makeListCommand(buffer, i * 3, 3, i + 1, PrimitiveTopology::Lines);
+        ASSERT_EQ(rxDrawListUpsert(runtime, list, i, &command, nullptr), RxResult::Ok);
+    }
+    EXPECT_EQ(resolveVisibleCount(), kCount - removed + 16);
+
+    // 再来一轮删除，验证重建后的位置索引同样自洽
+    for (uint32_t slot = 200; slot < 210; ++slot)
+    {
+        ASSERT_EQ(rxDrawListRemove(runtime, list, slot), RxResult::Ok);
+    }
+    EXPECT_EQ(resolveVisibleCount(), kCount - removed + 16 - 10);
+
+    ASSERT_EQ(rxDrawListClear(runtime, list), RxResult::Ok);
+    EXPECT_EQ(resolveVisibleCount(), 0u);
+
+    rxDrawListDestroy(runtime, list);
+    rxBufferDestroy(runtime, buffer);
+}
+
+// 条目在「永可见」列表与 2D 网格之间迁移时，nonIndexedPos 必须随迁移成对维护，
+// 迁回后删除仍应 O(1) 命中且 resolve 不丢条目。
+TEST_F(RxIncrementalFixture, DrawListNonIndexedPosSurvivesGridMigration)
+{
+    DrawListDesc listDesc{};
+    listDesc.initialCapacity = 8;
+    const DrawListHandle list = rxDrawListCreate(runtime, &listDesc);
+    ASSERT_TRUE(rxValid(list));
+
+    const BufferHandle buffer = makeVertexBuffer(runtime, 4096);
+    ASSERT_TRUE(rxValid(buffer));
+
+    const DrawCommand cmd0 = makeListCommand(buffer, 0, 3, 1, PrimitiveTopology::Lines);
+    const DrawCommand cmd1 = makeListCommand(buffer, 512, 3, 2, PrimitiveTopology::Lines);
+    const DrawCommand cmd2 = makeListCommand(buffer, 1024, 3, 3, PrimitiveTopology::Lines);
+    ASSERT_EQ(rxDrawListUpsert(runtime, list, 0, &cmd0, nullptr), RxResult::Ok);
+    ASSERT_EQ(rxDrawListUpsert(runtime, list, 1, &cmd1, nullptr), RxResult::Ok);
+    ASSERT_EQ(rxDrawListUpsert(runtime, list, 2, &cmd2, nullptr), RxResult::Ok);
+
+    const float box[4] = { 0.0f, 0.0f, 10.0f, 10.0f };
+
+    // slot 1：非索引 → 网格 → 再迁回非索引
+    ASSERT_EQ(rxDrawListUpsert(runtime, list, 1, &cmd1, box), RxResult::Ok);
+    ASSERT_EQ(rxDrawListUpsert(runtime, list, 1, &cmd1, nullptr), RxResult::Ok);
+
+    // slot 2：非索引 → 网格后直接删除（走网格摘除，不能污染非索引列表）
+    ASSERT_EQ(rxDrawListUpsert(runtime, list, 2, &cmd2, box), RxResult::Ok);
+    ASSERT_EQ(rxDrawListRemove(runtime, list, 2), RxResult::Ok);
+
+    // 迁回的 slot 1 删除必须命中（旧线性扫描也能删，但位置索引残留会让它漏删/越界）
+    ASSERT_EQ(rxDrawListRemove(runtime, list, 1), RxResult::Ok);
+
+    EXPECT_EQ(rxSessionBeginFrame(session), RxResult::Ok);
+    ASSERT_EQ(rxSessionSubmitDrawList(session, list, nullptr), RxResult::Ok);
+    DrawListStats stats{};
+    ASSERT_EQ(rxDrawListGetStats(runtime, list, &stats), RxResult::Ok);
+    EXPECT_EQ(stats.entryCount, 1u);
+    EXPECT_EQ(stats.visibleCount, 1u);
+    EXPECT_EQ(rxSessionEndFrame(session), RxResult::Ok);
+
+    rxDrawListDestroy(runtime, list);
+    rxBufferDestroy(runtime, buffer);
+}
+
 TEST_F(RxIncrementalFixture, DrawListCullsByAabbAndCountsIt)
 {
     DrawListDesc listDesc{};

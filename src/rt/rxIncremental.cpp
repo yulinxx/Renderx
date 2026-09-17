@@ -1061,20 +1061,31 @@ m_owner->log.error("[rt] rxDrawListUpsert: slot %u too large (limit %u). "
 
     void DrawList::indexAddNonIndexed(uint32_t slot)
     {
+        // 调用链保证不重复入列：upsert 仅在「新建条目」或「从网格索引迁回」时调用本函数。
+        // 位置记在 Entry 上，删除时才能 O(1) swap-and-pop。
+        m_entries[slot].nonIndexedPos = static_cast<uint32_t>(m_nonIndexed.size());
         m_nonIndexed.push_back(slot);
     }
 
     void DrawList::indexRemoveNonIndexed(uint32_t slot)
     {
-        for (size_t i = 0; i < m_nonIndexed.size(); ++i)
+        Entry& entry = m_entries[slot];
+        const uint32_t pos = entry.nonIndexedPos;
+        if (pos == kInvalidNonIndexedPos || pos >= m_nonIndexed.size())
         {
-            if (m_nonIndexed[i] == slot)
-            {
-                m_nonIndexed[i] = m_nonIndexed.back();
-                m_nonIndexed.pop_back();
-                return;
-            }
+            // 不在列表中：与旧实现一样静默返回（重复摘除是合法的防御性调用）。
+            return;
         }
+
+        // swap-and-pop：用末位 slot 补位，并把它的位置索引改到补位点。
+        const uint32_t movedSlot = m_nonIndexed.back();
+        m_nonIndexed[pos] = movedSlot;
+        m_nonIndexed.pop_back();
+        if (movedSlot != slot)
+        {
+            m_entries[movedSlot].nonIndexedPos = pos;
+        }
+        entry.nonIndexedPos = kInvalidNonIndexedPos;
     }
 
     const std::vector<ResolvedBatch>& DrawList::resolve(const float* viewBounds, uint32_t& culledOut,
