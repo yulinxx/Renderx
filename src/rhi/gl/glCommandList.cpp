@@ -31,8 +31,10 @@
 
 namespace Render::RHI::gl
 {
-
-    GlCommandList::GlCommandList(GlDevice* device) : m_device(device) {}
+    GlCommandList::GlCommandList(GlDevice* device)
+        : m_device(device)
+    {
+    }
 
     void GlCommandList::beginFrame(GlSurface* surface)
     {
@@ -57,8 +59,7 @@ namespace Render::RHI::gl
 
     GLuint GlCommandList::resolveFramebuffer(const RenderPassBeginDesc& desc)
     {
-        const bool hasExplicitTarget =
-            (desc.colorAttachmentCount > 0 && desc.colorAttachments[0].texture.valid()) ||
+        const bool hasExplicitTarget = (desc.colorAttachmentCount > 0 && desc.colorAttachments[0].texture.valid()) ||
             desc.depthAttachment.texture.valid();
         if (!hasExplicitTarget)
         {
@@ -79,7 +80,8 @@ namespace Render::RHI::gl
         if (desc.colorAttachmentCount > kMaxColorAttachments)
         {
             m_device->log().error("[gl] beginRenderPass: colorAttachmentCount=%u exceeds limit %u",
-                                  desc.colorAttachmentCount, kMaxColorAttachments);  // colorAttachmentCount 超过上限
+                desc.colorAttachmentCount,
+                kMaxColorAttachments);  // colorAttachmentCount 超过上限
             return RhiResult::ErrorInvalidArgument;
         }
 
@@ -97,8 +99,7 @@ namespace Render::RHI::gl
         // 每个 Pass 开始时视口覆盖整个目标；调用方可随后 setViewport 覆盖。
         if (f.Viewport)
         {
-            f.Viewport(0, 0, static_cast<GLsizei>(m_passExtent.width),
-                       static_cast<GLsizei>(m_passExtent.height));
+            f.Viewport(0, 0, static_cast<GLsizei>(m_passExtent.width), static_cast<GLsizei>(m_passExtent.height));
         }
         // 裁剪默认关闭：上一帧遗留的 scissor 会让本帧局部不刷新，
         // 这是 GL 全局状态最容易泄漏的一项。
@@ -118,8 +119,8 @@ namespace Render::RHI::gl
             clearMask |= GL_COLOR_BUFFER_BIT;
         }
         const bool surfaceHasDepth = m_surface && m_surface->depthFormat() != Format::Unknown;
-        const bool clearDepth = desc.depthAttachment.loadOp == LoadOp::Clear &&
-                                (desc.hasDepthAttachment || surfaceHasDepth);
+        const bool clearDepth =
+            desc.depthAttachment.loadOp == LoadOp::Clear && (desc.hasDepthAttachment || surfaceHasDepth);
         if (clearDepth)
         {
             // GL 要求深度写开启才能清深度。管线可能把 depthWrite 关了，
@@ -184,22 +185,22 @@ namespace Render::RHI::gl
             if (f.BlendFuncSeparate)
             {
                 f.BlendFuncSeparate(toGlBlendFactor(pipeline.blend.srcColor),
-                                    toGlBlendFactor(pipeline.blend.dstColor),
-                                    toGlBlendFactor(pipeline.blend.srcAlpha),
-                                    toGlBlendFactor(pipeline.blend.dstAlpha));
+                    toGlBlendFactor(pipeline.blend.dstColor),
+                    toGlBlendFactor(pipeline.blend.srcAlpha),
+                    toGlBlendFactor(pipeline.blend.dstAlpha));
             }
             else if (f.BlendFunc)
             {
                 // 退化路径：只能用颜色因子，alpha 因子被忽略。
                 // 记一条 Debug 而不是静默，否则半透明表现不一致时无从查起。
-                f.BlendFunc(toGlBlendFactor(pipeline.blend.srcColor),
-                            toGlBlendFactor(pipeline.blend.dstColor));
-                m_device->log().debug("[gl] glBlendFuncSeparate missing, alpha blend factors ignored");  // 缺少 glBlendFuncSeparate，alpha 混合因子被忽略
+                f.BlendFunc(toGlBlendFactor(pipeline.blend.srcColor), toGlBlendFactor(pipeline.blend.dstColor));
+                m_device->log().debug(
+                    "[gl] glBlendFuncSeparate missing, alpha blend factors ignored");  // 缺少 glBlendFuncSeparate，alpha
+                                                                                       // 混合因子被忽略
             }
             if (f.BlendEquationSeparate)
             {
-                f.BlendEquationSeparate(toGlBlendOp(pipeline.blend.colorOp),
-                                        toGlBlendOp(pipeline.blend.alphaOp));
+                f.BlendEquationSeparate(toGlBlendOp(pipeline.blend.colorOp), toGlBlendOp(pipeline.blend.alphaOp));
             }
         }
         else
@@ -230,16 +231,21 @@ namespace Render::RHI::gl
             // 夹到设备实际支持的范围：超范围会产生 GL_INVALID_VALUE，
             // 而 GL 不会替你回退，后续状态全部作废。
             float width = pipeline.raster.lineWidth;
-            if (width < 1.0f) { width = 1.0f; }
-            if (width > m_device->capabilities().maxLineWidth) { width = m_device->capabilities().maxLineWidth; }
+            if (width < 1.0f)
+            {
+                width = 1.0f;
+            }
+            if (width > m_device->capabilities().maxLineWidth)
+            {
+                width = m_device->capabilities().maxLineWidth;
+            }
             f.LineWidth(width);
         }
         // 深度偏移：两个系数都为 0 就整体关掉，避免给 2D 管线留下"开着但偏移 0"
         // 的状态——GL 的 POLYGON_OFFSET_FILL 是全局开关，不关会传染给下一条管线。
         if (f.PolygonOffset)
         {
-            const bool biasEnabled =
-                pipeline.raster.depthBiasConstant != 0.0f || pipeline.raster.depthBiasSlope != 0.0f;
+            const bool biasEnabled = pipeline.raster.depthBiasConstant != 0.0f || pipeline.raster.depthBiasSlope != 0.0f;
             if (biasEnabled)
             {
                 f.Enable(GL_POLYGON_OFFSET_FILL);
@@ -301,8 +307,10 @@ namespace Render::RHI::gl
         // RHI 的 y 轴向下（左上角原点），GL 向上，故做一次翻转。
         const int32_t flippedY =
             static_cast<int32_t>(m_passExtent.height) - static_cast<int32_t>(viewport.y + viewport.height);
-        f.Viewport(static_cast<GLint>(viewport.x), static_cast<GLint>(flippedY),
-                   static_cast<GLsizei>(viewport.width), static_cast<GLsizei>(viewport.height));
+        f.Viewport(static_cast<GLint>(viewport.x),
+            static_cast<GLint>(flippedY),
+            static_cast<GLsizei>(viewport.width),
+            static_cast<GLsizei>(viewport.height));
     }
 
     void GlCommandList::setScissor(const Rect2D& rect)
@@ -322,7 +330,8 @@ namespace Render::RHI::gl
     {
         if (slot >= kMaxVertexBufferSlots)
         {
-            m_device->log().error("[gl] bindVertexBuffer: slot=%u exceeds limit %u", slot, kMaxVertexBufferSlots);  // slot 超过上限
+            m_device->log().error(
+                "[gl] bindVertexBuffer: slot=%u exceeds limit %u", slot, kMaxVertexBufferSlots);  // slot 超过上限
             return;
         }
         if (m_vertexBindings[slot].buffer == buffer && m_vertexBindings[slot].offset == offsetBytes)
@@ -379,20 +388,23 @@ namespace Render::RHI::gl
             }
 
             const GlVertexAttribFormat format = toGlVertexAttrib(attr.type);
-            const auto pointer =
-                reinterpret_cast<const void*>(static_cast<uintptr_t>(binding.offset + attr.offset));
+            const auto pointer = reinterpret_cast<const void*>(static_cast<uintptr_t>(binding.offset + attr.offset));
 
             f.BindBuffer(GL_ARRAY_BUFFER, buffer->name);
             f.EnableVertexAttribArray(attr.location);
             if (format.isInteger && f.VertexAttribIPointer)
             {
-                f.VertexAttribIPointer(attr.location, format.components, format.type,
-                                       static_cast<GLsizei>(stride), pointer);
+                f.VertexAttribIPointer(
+                    attr.location, format.components, format.type, static_cast<GLsizei>(stride), pointer);
             }
             else
             {
-                f.VertexAttribPointer(attr.location, format.components, format.type, format.normalized,
-                                      static_cast<GLsizei>(stride), pointer);
+                f.VertexAttribPointer(attr.location,
+                    format.components,
+                    format.type,
+                    format.normalized,
+                    static_cast<GLsizei>(stride),
+                    pointer);
             }
 
             // [ColorProbe] 临时诊断：核对 GL 实际拿到的属性步长/偏移，定位颜色通道是否被正确解释
@@ -413,9 +425,10 @@ namespace Render::RHI::gl
             }
             else if (perInstance)
             {
-m_device->log().warn("[gl] glVertexAttribDivisor missing, per-instance attribute location=%u "
-                                      "treated as per-vertex, instanced draw will be incorrect",  // 缺少 glVertexAttribDivisor，逐实例属性被当作逐顶点
-                                      attr.location);
+                m_device->log().warn(
+                    "[gl] glVertexAttribDivisor missing, per-instance attribute location=%u "
+                    "treated as per-vertex, instanced draw will be incorrect",  // 缺少 glVertexAttribDivisor，逐实例属性被当作逐顶点
+                    attr.location);
             }
         }
 
@@ -436,13 +449,15 @@ m_device->log().warn("[gl] glVertexAttribDivisor missing, per-instance attribute
     {
         if (set >= kMaxDescriptorSets)
         {
-            m_device->log().error("[gl] bindBindGroup: set=%u exceeds limit %u", set, kMaxDescriptorSets);  // set 超过上限
+            m_device->log().error(
+                "[gl] bindBindGroup: set=%u exceeds limit %u", set, kMaxDescriptorSets);  // set 超过上限
             return;
         }
         if (!boundPipeline())
         {
-            m_device->log().error("[gl] bindBindGroup must be called after bindPipeline: "
-                                  "(set,binding) -> GL slot mapping stored in pipeline");  // bindBindGroup 必须在 bindPipeline 之后调用
+            m_device->log().error(
+                "[gl] bindBindGroup must be called after bindPipeline: "
+                "(set,binding) -> GL slot mapping stored in pipeline");  // bindBindGroup 必须在 bindPipeline 之后调用
             return;
         }
         GlBindGroupRecord* record = m_device->bindGroupRecord(group);
@@ -473,8 +488,9 @@ m_device->log().warn("[gl] glVertexAttribDivisor missing, per-instance attribute
             BindingType type = BindingType::UniformBuffer;
             if (!findSlot(entry.binding, &slot, &type))
             {
-                m_device->log().warn("[gl] bindBindGroup: pipeline does not declare set=%u binding=%u, skipping", set,
-                                     entry.binding);  // 当前管线未声明 set binding
+                m_device->log().warn("[gl] bindBindGroup: pipeline does not declare set=%u binding=%u, skipping",
+                    set,
+                    entry.binding);  // 当前管线未声明 set binding
                 continue;
             }
             GlBufferRecord* buffer = m_device->bufferRecord(entry.buffer);
@@ -482,11 +498,10 @@ m_device->log().warn("[gl] glVertexAttribDivisor missing, per-instance attribute
             {
                 continue;
             }
-            const GLenum target =
-                type == BindingType::StorageBuffer ? GL_SHADER_STORAGE_BUFFER : GL_UNIFORM_BUFFER;
+            const GLenum target = type == BindingType::StorageBuffer ? GL_SHADER_STORAGE_BUFFER : GL_UNIFORM_BUFFER;
             const uint64_t size = entry.size == 0 ? buffer->desc.size - entry.offset : entry.size;
-            f.BindBufferRange(target, slot, buffer->name, static_cast<GLintptr>(entry.offset),
-                              static_cast<GLsizeiptr>(size));
+            f.BindBufferRange(
+                target, slot, buffer->name, static_cast<GLintptr>(entry.offset), static_cast<GLsizeiptr>(size));
         }
 
         for (const TextureBinding& entry : record->textures)
@@ -495,8 +510,10 @@ m_device->log().warn("[gl] glVertexAttribDivisor missing, per-instance attribute
             BindingType type = BindingType::SampledTexture;
             if (!findSlot(entry.binding, &unit, &type))
             {
-                m_device->log().warn("[gl] bindBindGroup: pipeline does not declare texture set=%u binding=%u, skipping",
-                                     set, entry.binding);  // 当前管线未声明纹理 set binding
+                m_device->log().warn(
+                    "[gl] bindBindGroup: pipeline does not declare texture set=%u binding=%u, skipping",
+                    set,
+                    entry.binding);  // 当前管线未声明纹理 set binding
                 continue;
             }
             GlTextureRecord* texture = m_device->textureRecord(entry.texture);
@@ -529,7 +546,9 @@ m_device->log().warn("[gl] glVertexAttribDivisor missing, per-instance attribute
         if (offsetBytes + sizeBytes > kMaxPushConstantBytes)
         {
             m_device->log().error("[gl] pushConstants: offset=%u size=%u exceeds kMaxPushConstantBytes=%u",
-                                  offsetBytes, sizeBytes, kMaxPushConstantBytes);  // offset size 超过 kMaxPushConstantBytes
+                offsetBytes,
+                sizeBytes,
+                kMaxPushConstantBytes);  // offset size 超过 kMaxPushConstantBytes
             return;
         }
         std::memcpy(m_pushConstants + offsetBytes, data, sizeBytes);
@@ -553,14 +572,17 @@ m_device->log().warn("[gl] glVertexAttribDivisor missing, per-instance attribute
             return;
         }
 
-        const uint32_t bytes =
-            m_pushConstantHighWater > boundPipeline()->pushConstantBytes ? boundPipeline()->pushConstantBytes
-                                                                   : m_pushConstantHighWater;
+        const uint32_t bytes = m_pushConstantHighWater > boundPipeline()->pushConstantBytes
+            ? boundPipeline()->pushConstantBytes
+            : m_pushConstantHighWater;
         f.BindBuffer(GL_UNIFORM_BUFFER, ubo);
         f.BufferSubData(GL_UNIFORM_BUFFER, 0, static_cast<GLsizeiptr>(bytes), m_pushConstants);
         f.BindBuffer(GL_UNIFORM_BUFFER, 0);
-        f.BindBufferRange(GL_UNIFORM_BUFFER, GlDevice::kPushConstantBinding, ubo, 0,
-                          static_cast<GLsizeiptr>(boundPipeline()->pushConstantBytes));
+        f.BindBufferRange(GL_UNIFORM_BUFFER,
+            GlDevice::kPushConstantBinding,
+            ubo,
+            0,
+            static_cast<GLsizeiptr>(boundPipeline()->pushConstantBytes));
         m_pushConstantsDirty = false;
     }
 
@@ -568,7 +590,8 @@ m_device->log().warn("[gl] glVertexAttribDivisor missing, per-instance attribute
     {
         if (!m_inRenderPass)
         {
-            m_device->log().error("[gl] %s must be called between beginRenderPass / endRenderPass", what);  // 必须在 beginRenderPass / endRenderPass 之间调用
+            m_device->log().error("[gl] %s must be called between beginRenderPass / endRenderPass",
+                what);  // 必须在 beginRenderPass / endRenderPass 之间调用
             return false;
         }
         if (!boundPipeline())
@@ -589,9 +612,7 @@ m_device->log().warn("[gl] glVertexAttribDivisor missing, per-instance attribute
         return true;
     }
 
-
-    void GlCommandList::draw(uint32_t vertexCount, uint32_t instanceCount, uint32_t firstVertex,
-                             uint32_t firstInstance)
+    void GlCommandList::draw(uint32_t vertexCount, uint32_t instanceCount, uint32_t firstVertex, uint32_t firstInstance)
     {
         if (vertexCount == 0 || !prepareDraw("draw"))
         {
@@ -600,29 +621,32 @@ m_device->log().warn("[gl] glVertexAttribDivisor missing, per-instance attribute
         const GLFuncs& f = m_device->gl();
         if (instanceCount <= 1)
         {
-            f.DrawArrays(boundPipeline()->topology, static_cast<GLint>(firstVertex),
-                         static_cast<GLsizei>(vertexCount));
+            f.DrawArrays(boundPipeline()->topology, static_cast<GLint>(firstVertex), static_cast<GLsizei>(vertexCount));
         }
         else if (f.DrawArraysInstanced)
         {
             if (firstInstance != 0)
             {
                 // glDrawArraysInstancedBaseInstance（GL 4.2）未纳入函数表
-                m_device->log().warn("[gl] draw: firstInstance=%u unsupported, treating as 0", firstInstance);  // firstInstance 不支持
+                m_device->log().warn(
+                    "[gl] draw: firstInstance=%u unsupported, treating as 0", firstInstance);  // firstInstance 不支持
             }
-            f.DrawArraysInstanced(boundPipeline()->topology, static_cast<GLint>(firstVertex),
-                                  static_cast<GLsizei>(vertexCount), static_cast<GLsizei>(instanceCount));
+            f.DrawArraysInstanced(boundPipeline()->topology,
+                static_cast<GLint>(firstVertex),
+                static_cast<GLsizei>(vertexCount),
+                static_cast<GLsizei>(instanceCount));
         }
-else
-            {
-                m_device->log().error("[gl] draw: glDrawArraysInstanced missing, instanced draw skipped");  // 缺少 glDrawArraysInstanced
-                return;
-            }
+        else
+        {
+            m_device->log().error(
+                "[gl] draw: glDrawArraysInstanced missing, instanced draw skipped");  // 缺少 glDrawArraysInstanced
+            return;
+        }
         m_stats.drawCalls += 1;
     }
 
-    void GlCommandList::drawMulti(const DrawRange* ranges, uint32_t rangeCount, uint32_t instanceCount,
-                                  uint32_t firstInstance)
+    void GlCommandList::drawMulti(
+        const DrawRange* ranges, uint32_t rangeCount, uint32_t instanceCount, uint32_t firstInstance)
     {
         if (ranges == nullptr || rangeCount == 0 || !prepareDraw("drawMulti"))
         {
@@ -656,13 +680,13 @@ else
             m_multiFirst[i] = static_cast<GLint>(ranges[i].firstVertex);
             m_multiCount[i] = static_cast<GLsizei>(ranges[i].vertexCount);
         }
-        f.MultiDrawArrays(boundPipeline()->topology, m_multiFirst.data(), m_multiCount.data(),
-                          static_cast<GLsizei>(rangeCount));
+        f.MultiDrawArrays(
+            boundPipeline()->topology, m_multiFirst.data(), m_multiCount.data(), static_cast<GLsizei>(rangeCount));
         m_stats.drawCalls += 1;
     }
 
-    void GlCommandList::drawIndexed(uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex,
-                                    int32_t vertexOffset, uint32_t firstInstance)
+    void GlCommandList::drawIndexed(
+        uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, int32_t vertexOffset, uint32_t firstInstance)
     {
         if (indexCount == 0 || !prepareDraw("drawIndexed"))
         {
@@ -677,7 +701,8 @@ else
         {
             // glDrawElementsBaseVertex 未纳入函数表；Capabilities::baseVertexOffset
             // 已声明为 false，上层不应走到这里。
-            m_device->log().error("[gl] drawIndexed: vertexOffset unsupported (baseVertexOffset=false)");  // 不支持 vertexOffset
+            m_device->log().error(
+                "[gl] drawIndexed: vertexOffset unsupported (baseVertexOffset=false)");  // 不支持 vertexOffset
             return;
         }
 
@@ -695,21 +720,26 @@ else
         {
             if (firstInstance != 0)
             {
-                m_device->log().warn("[gl] drawIndexed: firstInstance=%u unsupported, treating as 0", firstInstance);  // firstInstance 不支持
+                m_device->log().warn("[gl] drawIndexed: firstInstance=%u unsupported, treating as 0",
+                    firstInstance);  // firstInstance 不支持
             }
-            f.DrawElementsInstanced(boundPipeline()->topology, static_cast<GLsizei>(indexCount), type, offset,
-                                    static_cast<GLsizei>(instanceCount));
+            f.DrawElementsInstanced(boundPipeline()->topology,
+                static_cast<GLsizei>(indexCount),
+                type,
+                offset,
+                static_cast<GLsizei>(instanceCount));
         }
-else
-            {
-                m_device->log().error("[gl] drawIndexed: glDrawElementsInstanced missing, instanced draw skipped");  // 缺少 glDrawElementsInstanced
-                return;
-            }
+        else
+        {
+            m_device->log().error(
+                "[gl] drawIndexed: glDrawElementsInstanced missing, instanced draw skipped");  // 缺少 glDrawElementsInstanced
+            return;
+        }
         m_stats.drawCalls += 1;
     }
 
-    void GlCommandList::drawIndirect(BufferHandle argsBuffer, uint64_t offsetBytes, uint32_t drawCount,
-                                     uint32_t strideBytes)
+    void GlCommandList::drawIndirect(
+        BufferHandle argsBuffer, uint64_t offsetBytes, uint32_t drawCount, uint32_t strideBytes)
     {
         if (!prepareDraw("drawIndirect"))
         {
@@ -719,29 +749,31 @@ else
         GlBufferRecord* args = m_device->bufferRecord(argsBuffer);
         if (!args || !f.DrawArraysIndirect)
         {
-            m_device->log().error("[gl] drawIndirect unavailable (invalid handle or missing glDrawArraysIndirect)");  // drawIndirect 不可用
+            m_device->log().error(
+                "[gl] drawIndirect unavailable (invalid handle or missing glDrawArraysIndirect)");  // drawIndirect 不可用
             return;
         }
         f.BindBuffer(GL_DRAW_INDIRECT_BUFFER, args->name);
         const auto indirect = reinterpret_cast<const void*>(static_cast<uintptr_t>(offsetBytes));
         if (drawCount > 1 && f.MultiDrawArraysIndirect)
         {
-            f.MultiDrawArraysIndirect(boundPipeline()->topology, indirect, static_cast<GLsizei>(drawCount),
-                                      static_cast<GLsizei>(strideBytes));
+            f.MultiDrawArraysIndirect(
+                boundPipeline()->topology, indirect, static_cast<GLsizei>(drawCount), static_cast<GLsizei>(strideBytes));
         }
         else
         {
             f.DrawArraysIndirect(boundPipeline()->topology, indirect);
             if (drawCount > 1)
             {
-                m_device->log().warn("[gl] drawIndirect: glMultiDrawArraysIndirect missing, only 1 draw emitted");  // 缺少 glMultiDrawArraysIndirect
+                m_device->log().warn(
+                    "[gl] drawIndirect: glMultiDrawArraysIndirect missing, only 1 draw emitted");  // 缺少 glMultiDrawArraysIndirect
             }
         }
         m_stats.drawCalls += drawCount;
     }
 
-    void GlCommandList::drawIndexedIndirect(BufferHandle argsBuffer, uint64_t offsetBytes,
-                                            uint32_t drawCount, uint32_t strideBytes)
+    void GlCommandList::drawIndexedIndirect(
+        BufferHandle argsBuffer, uint64_t offsetBytes, uint32_t drawCount, uint32_t strideBytes)
     {
         if (!prepareDraw("drawIndexedIndirect"))
         {
@@ -764,8 +796,11 @@ else
         const auto indirect = reinterpret_cast<const void*>(static_cast<uintptr_t>(offsetBytes));
         if (drawCount > 1 && f.MultiDrawElementsIndirect)
         {
-            f.MultiDrawElementsIndirect(boundPipeline()->topology, type, indirect,
-                                        static_cast<GLsizei>(drawCount), static_cast<GLsizei>(strideBytes));
+            f.MultiDrawElementsIndirect(boundPipeline()->topology,
+                type,
+                indirect,
+                static_cast<GLsizei>(drawCount),
+                static_cast<GLsizei>(strideBytes));
         }
         else
         {
@@ -773,7 +808,8 @@ else
             if (drawCount > 1)
             {
                 m_device->log().warn(
-                    "[gl] drawIndexedIndirect: glMultiDrawElementsIndirect missing, only 1 draw emitted");  // 缺少 glMultiDrawElementsIndirect
+                    "[gl] drawIndexedIndirect: glMultiDrawElementsIndirect missing, only 1 draw emitted");  // 缺少
+                                                                                                            // glMultiDrawElementsIndirect
             }
         }
         m_stats.drawCalls += drawCount;
@@ -783,12 +819,14 @@ else
     {
         if (m_inRenderPass)
         {
-            m_device->log().error("[gl] dispatchCompute must be called outside RenderPass");  // dispatchCompute 必须在 RenderPass 之外调用
+            m_device->log().error(
+                "[gl] dispatchCompute must be called outside RenderPass");  // dispatchCompute 必须在 RenderPass 之外调用
             return;
         }
         if (!boundPipeline() || !boundPipeline()->isCompute)
         {
-            m_device->log().error("[gl] dispatchCompute: current pipeline is not a compute pipeline");  // 当前绑定的不是计算管线
+            m_device->log().error(
+                "[gl] dispatchCompute: current pipeline is not a compute pipeline");  // 当前绑定的不是计算管线
             return;
         }
         // 同 prepareDraw：program==0 的空壳管线派发出去只会静默失败
@@ -830,33 +868,38 @@ else
         }
     }
 
-    void GlCommandList::copyBuffer(BufferHandle src, uint64_t srcOffset, BufferHandle dst,
-                                   uint64_t dstOffset, uint64_t sizeBytes)
+    void GlCommandList::copyBuffer(
+        BufferHandle src, uint64_t srcOffset, BufferHandle dst, uint64_t dstOffset, uint64_t sizeBytes)
     {
         const GLFuncs& f = m_device->gl();
         GlBufferRecord* source = m_device->bufferRecord(src);
         GlBufferRecord* target = m_device->bufferRecord(dst);
         if (!source || !target || sizeBytes == 0 || !f.CopyBufferSubData)
         {
-            m_device->log().error("[gl] copyBuffer unavailable (invalid handle or missing glCopyBufferSubData)");  // copyBuffer 不可用
+            m_device->log().error(
+                "[gl] copyBuffer unavailable (invalid handle or missing glCopyBufferSubData)");  // copyBuffer 不可用
             return;
         }
         // 用专用的 COPY_READ/COPY_WRITE 绑定点，避免污染 ARRAY_BUFFER 等
         // 正在使用的绑定点——这是 GL 全局状态最容易互相踩的地方。
         f.BindBuffer(GL_COPY_READ_BUFFER, source->name);
         f.BindBuffer(GL_COPY_WRITE_BUFFER, target->name);
-        f.CopyBufferSubData(GL_COPY_READ_BUFFER, GL_COPY_WRITE_BUFFER, static_cast<GLintptr>(srcOffset),
-                            static_cast<GLintptr>(dstOffset), static_cast<GLsizeiptr>(sizeBytes));
+        f.CopyBufferSubData(GL_COPY_READ_BUFFER,
+            GL_COPY_WRITE_BUFFER,
+            static_cast<GLintptr>(srcOffset),
+            static_cast<GLintptr>(dstOffset),
+            static_cast<GLsizeiptr>(sizeBytes));
         f.BindBuffer(GL_COPY_READ_BUFFER, 0);
         f.BindBuffer(GL_COPY_WRITE_BUFFER, 0);
     }
 
-    void GlCommandList::copyTextureToBuffer(TextureHandle src, BufferHandle dst, uint64_t dstOffset,
-                                            const Rect2D& region)
+    void GlCommandList::copyTextureToBuffer(
+        TextureHandle src, BufferHandle dst, uint64_t dstOffset, const Rect2D& region)
     {
         if (m_inRenderPass)
         {
-            m_device->log().error("[gl] copyTextureToBuffer must be called outside RenderPass");  // copyTextureToBuffer 必须在 RenderPass 之外调用
+            m_device->log().error(
+                "[gl] copyTextureToBuffer must be called outside RenderPass");  // copyTextureToBuffer 必须在 RenderPass 之外调用
             return;
         }
         const GLFuncs& f = m_device->gl();
@@ -892,10 +935,13 @@ else
         // 注意：走 PBO 时 ReadPixels 的最后一个参数是缓冲内偏移，不是指针。
         // 这里不做 y 翻转——数据落在 GPU 缓冲里由 shader 使用，
         // 由使用方按 GL 的左下角原点解释；需要 CPU 侧左上角原点时用 readTexture。
-        f.ReadPixels(region.x, region.y, static_cast<GLsizei>(region.width),
-                     static_cast<GLsizei>(region.height), toGlBaseFormat(texture->desc.format),
-                     toGlPixelType(texture->desc.format),
-                     reinterpret_cast<void*>(static_cast<uintptr_t>(dstOffset)));
+        f.ReadPixels(region.x,
+            region.y,
+            static_cast<GLsizei>(region.width),
+            static_cast<GLsizei>(region.height),
+            toGlBaseFormat(texture->desc.format),
+            toGlPixelType(texture->desc.format),
+            reinterpret_cast<void*>(static_cast<uintptr_t>(dstOffset)));
         f.BindBuffer(GL_PIXEL_PACK_BUFFER, 0);
         f.BindFramebuffer(GL_FRAMEBUFFER, static_cast<GLuint>(previousFbo < 0 ? 0 : previousFbo));
     }
@@ -908,5 +954,4 @@ else
     }
 
     void GlCommandList::popDebugGroup() {}
-
 }  // namespace Render::RHI::gl

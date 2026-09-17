@@ -39,7 +39,8 @@ namespace Render::RT::detail
 
         if (!device || !desc.data || desc.dataBytes == 0 || desc.pixelHeight <= 0.0f)
         {
-            log.error("[rt] rxFontCreate: font data is null or pixelHeight is not positive");  // 字体数据为空或 pixelHeight 非正
+            log.error(
+                "[rt] rxFontCreate: font data is null or pixelHeight is not positive");  // 字体数据为空或 pixelHeight 非正
             return RxResult::ErrorInvalidArgument;
         }
 
@@ -47,15 +48,17 @@ namespace Render::RT::detail
         const uint32_t height = desc.atlasHeight != 0 ? desc.atlasHeight : kDefaultAtlasSide;
         if (caps.maxTextureSize != 0 && (width > caps.maxTextureSize || height > caps.maxTextureSize))
         {
-log.error("[rt] rxFontCreate: atlas %ux%u exceeds backend limit %u", width, height,  // 图集超出后端上限
-                       caps.maxTextureSize);
+            log.error("[rt] rxFontCreate: atlas %ux%u exceeds backend limit %u",
+                width,
+                height,  // 图集超出后端上限
+                caps.maxTextureSize);
             return RxResult::ErrorInvalidArgument;
         }
 
         auto font = new Font();
         font->runtime = this;
-        font->data.assign(static_cast<const uint8_t*>(desc.data),
-                          static_cast<const uint8_t*>(desc.data) + desc.dataBytes);
+        font->data.assign(
+            static_cast<const uint8_t*>(desc.data), static_cast<const uint8_t*>(desc.data) + desc.dataBytes);
 
         // offset 取 0 号字体：ttc 集合里的其余字体需要调用方自己拆，
         // DLL 不做字体集合解析（那属于字体管理，不是渲染）。
@@ -114,9 +117,11 @@ log.error("[rt] rxFontCreate: atlas %ux%u exceeds backend limit %u", width, heig
 
         *outFont = static_cast<FontHandle>(fonts.insert(font));
         log.debug("[rt] Font ready: pixelHeight=%.1f atlas %ux%u (R8 %s, %.2f MB)",  // 字体就绪
-                 static_cast<double>(desc.pixelHeight), width, height,
-                 desc.sdfPadding != 0 ? "SDF" : "coverage",
-                 static_cast<double>(font->pixels.size()) / (1024.0 * 1024.0));
+            static_cast<double>(desc.pixelHeight),
+            width,
+            height,
+            desc.sdfPadding != 0 ? "SDF" : "coverage",
+            static_cast<double>(font->pixels.size()) / (1024.0 * 1024.0));
         return RxResult::Ok;
     }
 
@@ -155,7 +160,6 @@ log.error("[rt] rxFontCreate: atlas %ux%u exceeds backend limit %u", width, heig
         }
         fonts.clear();
     }
-
 }  // namespace Render::RT::detail
 
 // ==================== 图集打包与查询 ====================
@@ -168,8 +172,7 @@ namespace Render::RT::detail
     namespace
     {
         /// 把字形位图放进图集，返回左上角坐标；放不下返回 false
-        bool packGlyph(Font& font, uint32_t glyphWidth, uint32_t glyphHeight, uint32_t& outX,
-                       uint32_t& outY)
+        bool packGlyph(Font& font, uint32_t glyphWidth, uint32_t glyphHeight, uint32_t& outX, uint32_t& outY)
         {
             const uint32_t needW = glyphWidth + kGlyphPadding;
             const uint32_t needH = glyphHeight + kGlyphPadding;
@@ -264,9 +267,16 @@ namespace Render::RT::detail
             // pixel_dist_scale=128/padding：偏离 1 像素变化多少级灰度。
             // 两者共同决定可表达的距离范围恰为 ±padding 像素 —— 超出即饱和，
             // 表现为放大到极限时边缘出现台阶，所以 padding 不能太小。
-            sdfPixels = stbtt_GetGlyphSDF(&font.info, font.scale, glyphIndex, padding, 128,
-                                          128.0f / static_cast<float>(padding), &glyphW, &glyphH,
-                                          &offX, &offY);
+            sdfPixels = stbtt_GetGlyphSDF(&font.info,
+                font.scale,
+                glyphIndex,
+                padding,
+                128,
+                128.0f / static_cast<float>(padding),
+                &glyphW,
+                &glyphH,
+                &offX,
+                &offY);
             if (!sdfPixels || glyphW <= 0 || glyphH <= 0)
             {
                 // 距离场生成失败：按缺字处理并缓存，不中断整行排版，也不每帧重试。
@@ -289,8 +299,7 @@ namespace Render::RT::detail
 
         uint32_t atlasX = 0;
         uint32_t atlasY = 0;
-        if (!packGlyph(font, static_cast<uint32_t>(glyphW), static_cast<uint32_t>(glyphH), atlasX,
-                       atlasY))
+        if (!packGlyph(font, static_cast<uint32_t>(glyphW), static_cast<uint32_t>(glyphH), atlasX, atlasY))
         {
             if (sdfPixels)
             {
@@ -299,9 +308,10 @@ namespace Render::RT::detail
             if (!font.warnedFull)
             {
                 font.warnedFull = true;
-runtime.log.error("[rt] glyph atlas %ux%u is full, subsequent glyphs cannot be added; "
-                                   "rebuild font with larger FontDesc::atlasWidth/atlasHeight",
-                                   font.atlasWidth, font.atlasHeight);  // 字形图集已满
+                runtime.log.error("[rt] glyph atlas %ux%u is full, subsequent glyphs cannot be added; "
+                                  "rebuild font with larger FontDesc::atlasWidth/atlasHeight",
+                    font.atlasWidth,
+                    font.atlasHeight);  // 字形图集已满
             }
             // 不缓存：换更大的图集重建后仍应能光栅化。
             *outGlyph = GlyphInfo{};
@@ -314,8 +324,8 @@ runtime.log.error("[rt] glyph atlas %ux%u is full, subsequent glyphs cannot be a
             for (int row = 0; row < glyphH; ++row)
             {
                 std::memcpy(&font.pixels[(static_cast<size_t>(atlasY) + row) * font.atlasWidth + atlasX],
-                            sdfPixels + static_cast<size_t>(row) * glyphW,
-                            static_cast<size_t>(glyphW));
+                    sdfPixels + static_cast<size_t>(row) * glyphW,
+                    static_cast<size_t>(glyphW));
             }
             stbtt_FreeSDF(sdfPixels, nullptr);
         }
@@ -323,9 +333,13 @@ runtime.log.error("[rt] glyph atlas %ux%u is full, subsequent glyphs cannot be a
         {
             // 覆盖率位图可直接光栅化进 CPU 影子，步长是整张图集的宽度
             stbtt_MakeGlyphBitmap(&font.info,
-                                  &font.pixels[static_cast<size_t>(atlasY) * font.atlasWidth + atlasX],
-                                  glyphW, glyphH, static_cast<int>(font.atlasWidth), font.scale,
-                                  font.scale, glyphIndex);
+                &font.pixels[static_cast<size_t>(atlasY) * font.atlasWidth + atlasX],
+                glyphW,
+                glyphH,
+                static_cast<int>(font.atlasWidth),
+                font.scale,
+                font.scale,
+                glyphIndex);
         }
         font.markDirtyRows(atlasY, atlasY + static_cast<uint32_t>(glyphH));
 
@@ -401,5 +415,4 @@ runtime.log.error("[rt] glyph atlas %ux%u is full, subsequent glyphs cannot be a
         font.dirtyY1 = 0;
         return result == RHI::RhiResult::Ok ? RxResult::Ok : RxResult::ErrorUnknown;
     }
-
 }  // namespace Render::RT::detail

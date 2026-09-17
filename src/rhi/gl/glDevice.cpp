@@ -68,17 +68,16 @@
 
 namespace Render::RHI::gl
 {
-
     // ==================== GlSurface ====================
 
     GlSurface::GlSurface(GlDevice* device, const SurfaceDesc& desc, const RhiLogger& logger)
-        : m_device(device),
-          m_window(desc.window),
-          m_extent(desc.initialExtent),
-          m_colorFormat(desc.preferredColorFormat),
-          m_depthFormat(desc.depthFormat),
-          m_presentMode(desc.presentMode),
-          m_log(logger)
+        : m_device(device)
+        , m_window(desc.window)
+        , m_extent(desc.initialExtent)
+        , m_colorFormat(desc.preferredColorFormat)
+        , m_depthFormat(desc.depthFormat)
+        , m_presentMode(desc.presentMode)
+        , m_log(logger)
     {
     }
 
@@ -143,8 +142,13 @@ namespace Render::RHI::gl
         /// GL 调用内部**被调用，因此日志里紧随其后的就是元凶。没有它的话，
         /// GL 错误要等到下一次 glGetError 才被发现（本后端此前根本没查过），
         /// 而驱动内部崩溃更是一点线索都没有。
-        void RENDER_GLAPI glDebugMessageThunk(GLenum source, GLenum type, GLuint id,
-            GLenum severity, GLsizei length, const GLchar* message, const void* userParam)
+        void RENDER_GLAPI glDebugMessageThunk(GLenum source,
+            GLenum type,
+            GLuint id,
+            GLenum severity,
+            GLsizei length,
+            const GLchar* message,
+            const void* userParam)
         {
             (void)source;
             (void)length;
@@ -164,15 +168,17 @@ namespace Render::RHI::gl
             {
                 return;
             }
-            const char* level = severity == GL_DEBUG_SEVERITY_HIGH     ? "HIGH"
-                                : severity == GL_DEBUG_SEVERITY_MEDIUM ? "MEDIUM"
-                                                                       : "LOW";
+            const char* level = severity == GL_DEBUG_SEVERITY_HIGH ? "HIGH"
+                : severity == GL_DEBUG_SEVERITY_MEDIUM             ? "MEDIUM"
+                                                                   : "LOW";
             log->warn("[gl][driver] %s type=0x%04X id=%u: %s", level, type, id, message);
         }
     }  // namespace
 
     GlDevice::GlDevice(const DeviceDesc& desc, const GLFuncs& functions)
-        : m_gl(functions), m_log(desc.logCallback, desc.logUserData), m_commands(this)
+        : m_gl(functions)
+        , m_log(desc.logCallback, desc.logUserData)
+        , m_commands(this)
     {
         queryCapabilities();
 
@@ -182,8 +188,7 @@ namespace Render::RHI::gl
         {
             m_gl.GenBuffers(1, &m_pushConstantUbo);
             m_gl.BindBuffer(GL_UNIFORM_BUFFER, m_pushConstantUbo);
-            m_gl.BufferData(GL_UNIFORM_BUFFER, static_cast<GLsizeiptr>(kMaxPushConstantBytes), nullptr,
-                            GL_STREAM_DRAW);
+            m_gl.BufferData(GL_UNIFORM_BUFFER, static_cast<GLsizeiptr>(kMaxPushConstantBytes), nullptr, GL_STREAM_DRAW);
             m_gl.BindBuffer(GL_UNIFORM_BUFFER, 0);
         }
 
@@ -205,22 +210,26 @@ namespace Render::RHI::gl
             m_gl.DebugMessageCallback(&glDebugMessageThunk, &m_log);
             if (m_gl.DebugMessageControl)
             {
-                m_gl.DebugMessageControl(GL_DONT_CARE, GL_DONT_CARE, GL_DONT_CARE, 0, nullptr,
-                    GL_TRUE);
+                m_gl.DebugMessageControl(GL_DONT_CARE, GL_DONT_CARE, GL_DONT_CARE, 0, nullptr, GL_TRUE);
             }
             m_log.debug("[gl] debug output enabled (synchronous)");
         }
         m_log.debug("[gl] Capabilities: compute=%u indirect=%u multiIndirect=%u storage=%u persistentMap=%u "  // 能力
                     "maxTexture=%u maxUboBindings(1 used for pushConstant)",
-                    m_caps.computeShaders, m_caps.indirectDraw, m_caps.multiDrawIndirect,
-                    m_caps.storageBuffers, m_caps.persistentMapping, m_caps.maxTextureSize);
+            m_caps.computeShaders,
+            m_caps.indirectDraw,
+            m_caps.multiDrawIndirect,
+            m_caps.storageBuffers,
+            m_caps.persistentMapping,
+            m_caps.maxTextureSize);
     }
 
     GlDevice::~GlDevice()
     {
         if (!m_surfaces.empty())
         {
-            m_log.error("[gl] Device destroyed with %zu surfaces still alive (host lifecycle error)", m_surfaces.size());  // 设备销毁时仍有表面未销毁
+            m_log.error("[gl] Device destroyed with %zu surfaces still alive (host lifecycle error)",
+                m_surfaces.size());  // 设备销毁时仍有表面未销毁
             for (GlSurface* s : m_surfaces)
             {
                 delete s;
@@ -277,10 +286,9 @@ namespace Render::RHI::gl
         };
 
         m_caps.maxTextureSize = queryInt(GL_MAX_TEXTURE_SIZE, 2048);
-        m_caps.maxColorAttachments =
-            queryInt(GL_MAX_COLOR_ATTACHMENTS, 1) > kMaxColorAttachments
-                ? kMaxColorAttachments
-                : queryInt(GL_MAX_COLOR_ATTACHMENTS, 1);
+        m_caps.maxColorAttachments = queryInt(GL_MAX_COLOR_ATTACHMENTS, 1) > kMaxColorAttachments
+            ? kMaxColorAttachments
+            : queryInt(GL_MAX_COLOR_ATTACHMENTS, 1);
         m_caps.uniformBufferOffsetAlignment = queryInt(GL_UNIFORM_BUFFER_OFFSET_ALIGNMENT, 256);
         m_caps.storageBufferOffsetAlignment = queryInt(GL_SHADER_STORAGE_BUFFER_OFFSET_ALIGNMENT, 256);
         m_caps.maxPushConstantBytes = kMaxPushConstantBytes;
@@ -289,14 +297,13 @@ namespace Render::RHI::gl
         // 驱动/上下文配置千差万别，指针存在与否才是能不能调用的唯一依据。
         m_caps.computeShaders = m_gl.DispatchCompute != nullptr && m_gl.MemoryBarrier != nullptr;
         m_caps.indirectDraw = m_gl.DrawArraysIndirect != nullptr && m_gl.DrawElementsIndirect != nullptr;
-        m_caps.multiDrawIndirect =
-            m_gl.MultiDrawArraysIndirect != nullptr && m_gl.MultiDrawElementsIndirect != nullptr;
+        m_caps.multiDrawIndirect = m_gl.MultiDrawArraysIndirect != nullptr && m_gl.MultiDrawElementsIndirect != nullptr;
         m_caps.storageBuffers = m_gl.BindBufferRange != nullptr && m_caps.computeShaders;
         m_caps.persistentMapping = m_gl.BufferStorage != nullptr && m_gl.MapBufferRange != nullptr;
         m_caps.timestampQueries = false;
         m_caps.wireframeFill = m_gl.PolygonMode != nullptr;  // GLES 没有 glPolygonMode
-        m_caps.baseVertexOffset = false;  // glDrawElementsBaseVertex 未纳入函数表
-        m_caps.maxFramesInFlight = 1;     // GL 没有显式的帧内飞行概念
+        m_caps.baseVertexOffset = false;                     // glDrawElementsBaseVertex 未纳入函数表
+        m_caps.maxFramesInFlight = 1;                        // GL 没有显式的帧内飞行概念
 
         if (m_gl.GetFloatv)
         {
@@ -337,21 +344,24 @@ namespace Render::RHI::gl
         }
     }
 
-
     // ==================== 表面 ====================
 
     ISurface* GlDevice::createSurface(const SurfaceDesc& desc)
     {
         if (desc.window.kind != NativeWindow::Kind::ForeignGlContext)
         {
-            m_log.error("[gl] createSurface: only ForeignGlContext (host-owned context) is supported, got kind=%d. Host-owned WGL/GLX/NSOpenGL contexts are not in this backend's scope.", static_cast<int>(desc.window.kind));  // 仅支持 ForeignGlContext
+            m_log.error("[gl] createSurface: only ForeignGlContext (host-owned context) is supported, got kind=%d. "
+                        "Host-owned WGL/GLX/NSOpenGL contexts are not in this backend's scope.",
+                static_cast<int>(desc.window.kind));  // 仅支持 ForeignGlContext
             return nullptr;
         }
 
         auto* surface = new GlSurface(this, desc, m_log);
         m_surfaces.push_back(surface);
-        m_log.debug("[gl] createSurface: %ux%u (surface count: %zu)", desc.initialExtent.width,  // 创建表面
-                    desc.initialExtent.height, m_surfaces.size());
+        m_log.debug("[gl] createSurface: %ux%u (surface count: %zu)",
+            desc.initialExtent.width,  // 创建表面
+            desc.initialExtent.height,
+            m_surfaces.size());
         return surface;
     }
 
@@ -392,8 +402,9 @@ namespace Render::RHI::gl
         }
         if (desc.language != ShaderLanguage::GlslSource)
         {
-            m_log.error("[gl] createShader: this backend only accepts GlslSource, got language=%d",  // 本后端只接受 GlslSource
-                        static_cast<int>(desc.language));
+            m_log.error(
+                "[gl] createShader: this backend only accepts GlslSource, got language=%d",  // 本后端只接受 GlslSource
+                static_cast<int>(desc.language));
             return ShaderHandle{};
         }
 
@@ -443,12 +454,15 @@ namespace Render::RHI::gl
             // 阶段用词而不是只打 GL 枚举：debugName 是「管线名」（取自顶点
             // shader 文件名），三个阶段共用同一个，只看它会把片元阶段的错误
             // 误读成顶点 shader 的错误。
-            const char* stageWord = stage == GL_VERTEX_SHADER     ? "vertex"
-                                    : stage == GL_FRAGMENT_SHADER ? "fragment"
-                                    : stage == GL_COMPUTE_SHADER  ? "compute"
-                                                                  : "unknown";
-            m_log.error("[gl] shader compilation failed (stage=%s(0x%04X), pipeline=%s): %s", stageWord, stage,  // 着色器编译失败
-                        debugName ? debugName : "?", log.data());
+            const char* stageWord = stage == GL_VERTEX_SHADER ? "vertex"
+                : stage == GL_FRAGMENT_SHADER                 ? "fragment"
+                : stage == GL_COMPUTE_SHADER                  ? "compute"
+                                                              : "unknown";
+            m_log.error("[gl] shader compilation failed (stage=%s(0x%04X), pipeline=%s): %s",
+                stageWord,
+                stage,  // 着色器编译失败
+                debugName ? debugName : "?",
+                log.data());
             m_gl.DeleteShader(name);
             return 0;
         }
@@ -461,20 +475,26 @@ namespace Render::RHI::gl
         const GlShaderRecord* fs = m_shaders.get(desc.fragmentShader);
         if (!vs || !fs)
         {
-            m_log.error("[gl] createGraphicsPipeline: vertex or fragment shader handle invalid (vs=%s fs=%s)",  // 顶点或片段着色器句柄无效
-                        vs ? "ok" : "无效", fs ? "ok" : "无效");
+            m_log.error(
+                "[gl] createGraphicsPipeline: vertex or fragment shader handle invalid (vs=%s fs=%s)",  // 顶点或片段着色器句柄无效
+                vs ? "ok" : "无效",
+                fs ? "ok" : "无效");
             return PipelineHandle{};
         }
         if (desc.attributeCount > kMaxVertexAttributes || desc.bufferLayoutCount > kMaxVertexBufferSlots)
         {
-            m_log.error("[gl] createGraphicsPipeline: vertex attributes/binding slots exceed limit (attr=%u slots=%u)",  // 顶点属性/绑定槽数量超限
-                        desc.attributeCount, desc.bufferLayoutCount);
+            m_log.error(
+                "[gl] createGraphicsPipeline: vertex attributes/binding slots exceed limit (attr=%u slots=%u)",  // 顶点属性/绑定槽数量超限
+                desc.attributeCount,
+                desc.bufferLayoutCount);
             return PipelineHandle{};
         }
         if (desc.pushConstantBytes > kMaxPushConstantBytes)
         {
-            m_log.error("[gl] createGraphicsPipeline: pushConstantBytes=%u exceeds limit %u",  // pushConstantBytes 超过上限
-                        desc.pushConstantBytes, kMaxPushConstantBytes);
+            m_log.error(
+                "[gl] createGraphicsPipeline: pushConstantBytes=%u exceeds limit %u",  // pushConstantBytes 超过上限
+                desc.pushConstantBytes,
+                kMaxPushConstantBytes);
             return PipelineHandle{};
         }
 
@@ -509,7 +529,8 @@ namespace Render::RHI::gl
             {
                 m_gl.GetProgramInfoLog(program, length, nullptr, log.data());
             }
-            m_log.error("[gl] pipeline link failed (%s): %s", desc.debugName ? desc.debugName : "?", log.data());  // 管线链接失败
+            m_log.error(
+                "[gl] pipeline link failed (%s): %s", desc.debugName ? desc.debugName : "?", log.data());  // 管线链接失败
             m_gl.DeleteProgram(program);
             return PipelineHandle{};
         }
@@ -545,10 +566,11 @@ namespace Render::RHI::gl
             {
                 // 不当作错误：着色器可能仍用独立 uniform（迁移期）。
                 // 但要留下明确记录，否则「pushConstants 写了却没生效」很难查。
-m_log.warn("[gl] pipeline %s declares %u bytes pushConstant, "
-                            "but shader lacks uniform block \"%s\", pushConstants will have no effect",
-                            desc.debugName ? desc.debugName : "?", desc.pushConstantBytes,
-                            kPushConstantBlockName);  // 管线声明了 pushConstant 但找不到 uniform block
+                m_log.warn("[gl] pipeline %s declares %u bytes pushConstant, "
+                           "but shader lacks uniform block \"%s\", pushConstants will have no effect",
+                    desc.debugName ? desc.debugName : "?",
+                    desc.pushConstantBytes,
+                    kPushConstantBlockName);  // 管线声明了 pushConstant 但找不到 uniform block
             }
             else
             {
@@ -576,9 +598,12 @@ m_log.warn("[gl] pipeline %s declares %u bytes pushConstant, "
                     const GLuint blockIndex = m_gl.GetUniformBlockIndex(program, slot.glName);
                     if (blockIndex == GL_INVALID_INDEX)
                     {
-                        m_log.warn("[gl] pipeline %s: uniform block \"%s\" (set=%u binding=%u) not found",  // uniform block 未找到
-                                   desc.debugName ? desc.debugName : "?", slot.glName, slot.set,
-                                   slot.binding);
+                        m_log.warn(
+                            "[gl] pipeline %s: uniform block \"%s\" (set=%u binding=%u) not found",  // uniform block 未找到
+                            desc.debugName ? desc.debugName : "?",
+                            slot.glName,
+                            slot.set,
+                            slot.binding);
                     }
                     else
                     {
@@ -592,10 +617,13 @@ m_log.warn("[gl] pipeline %s declares %u bytes pushConstant, "
                 mapping.glSlot = nextUboBinding++;
                 // SSBO 的块绑定需要 glShaderStorageBlockBinding（GL 4.3），
                 // 未纳入函数表；着色器需自行写 layout(binding = N)。
-m_log.debug("[gl] pipeline %s: StorageBuffer set=%u binding=%u uses GL binding=%u, "
-                             "shader must explicitly declare layout(binding = %u)",  // StorageBuffer 使用 GL binding
-                            desc.debugName ? desc.debugName : "?", slot.set, slot.binding, mapping.glSlot,
-                            mapping.glSlot);
+                m_log.debug("[gl] pipeline %s: StorageBuffer set=%u binding=%u uses GL binding=%u, "
+                            "shader must explicitly declare layout(binding = %u)",  // StorageBuffer 使用 GL binding
+                    desc.debugName ? desc.debugName : "?",
+                    slot.set,
+                    slot.binding,
+                    mapping.glSlot,
+                    mapping.glSlot);
                 break;
             }
             case BindingType::SampledTexture:
@@ -607,9 +635,12 @@ m_log.debug("[gl] pipeline %s: StorageBuffer set=%u binding=%u uses GL binding=%
                     const GLint location = m_gl.GetUniformLocation(program, slot.glName);
                     if (location < 0)
                     {
-                        m_log.warn("[gl] pipeline %s: sampler uniform \"%s\" (set=%u binding=%u) not found",  // 采样器 uniform 未找到
-                                   desc.debugName ? desc.debugName : "?", slot.glName, slot.set,
-                                   slot.binding);
+                        m_log.warn(
+                            "[gl] pipeline %s: sampler uniform \"%s\" (set=%u binding=%u) not found",  // 采样器 uniform 未找到
+                            desc.debugName ? desc.debugName : "?",
+                            slot.glName,
+                            slot.set,
+                            slot.binding);
                     }
                     else
                     {
@@ -677,8 +708,9 @@ m_log.debug("[gl] pipeline %s: StorageBuffer set=%u binding=%u uses GL binding=%
             {
                 m_gl.GetProgramInfoLog(program, length, nullptr, log.data());
             }
-            m_log.error("[gl] compute pipeline link failed (%s): %s", desc.debugName ? desc.debugName : "?",  // 计算管线链接失败
-                        log.data());
+            m_log.error("[gl] compute pipeline link failed (%s): %s",
+                desc.debugName ? desc.debugName : "?",  // 计算管线链接失败
+                log.data());
             m_gl.DeleteProgram(program);
             return PipelineHandle{};
         }
@@ -697,10 +729,9 @@ m_log.debug("[gl] pipeline %s: StorageBuffer set=%u binding=%u uses GL binding=%
             mapping.set = slot.set;
             mapping.binding = slot.binding;
             mapping.type = slot.type;
-            mapping.glSlot = (slot.type == BindingType::SampledTexture ||
-                              slot.type == BindingType::StorageTexture)
-                                 ? nextTextureUnit++
-                                 : nextUboBinding++;
+            mapping.glSlot = (slot.type == BindingType::SampledTexture || slot.type == BindingType::StorageTexture)
+                ? nextTextureUnit++
+                : nextUboBinding++;
             record.bindings.push_back(mapping);
         }
 
@@ -750,8 +781,7 @@ m_log.debug("[gl] pipeline %s: StorageBuffer set=%u binding=%u uses GL binding=%
         m_gl.GenBuffers(1, &record.name);
         m_gl.BindBuffer(record.target, record.name);
 
-        const bool wantPersistent =
-            m_caps.persistentMapping &&
+        const bool wantPersistent = m_caps.persistentMapping &&
             (desc.access == MemoryAccess::CpuToGpu || desc.access == MemoryAccess::CpuToGpuCoherent);
         if (wantPersistent)
         {
@@ -773,8 +803,8 @@ m_log.debug("[gl] pipeline %s: StorageBuffer set=%u binding=%u uses GL binding=%
         }
         else
         {
-            m_gl.BufferData(record.target, static_cast<GLsizeiptr>(desc.size), nullptr,
-                            toGlBufferUsageHint(desc.access));
+            m_gl.BufferData(
+                record.target, static_cast<GLsizeiptr>(desc.size), nullptr, toGlBufferUsageHint(desc.access));
         }
         m_gl.BindBuffer(record.target, 0);
 
@@ -806,8 +836,7 @@ m_log.debug("[gl] pipeline %s: StorageBuffer set=%u binding=%u uses GL binding=%
         m_buffers.remove(buffer);
     }
 
-    RhiResult GlDevice::writeBuffer(BufferHandle buffer, uint64_t offset, const void* data,
-                                    uint64_t sizeBytes)
+    RhiResult GlDevice::writeBuffer(BufferHandle buffer, uint64_t offset, const void* data, uint64_t sizeBytes)
     {
         GlBufferRecord* record = m_buffers.get(buffer);
         if (!record || !data || sizeBytes == 0)
@@ -817,14 +846,13 @@ m_log.debug("[gl] pipeline %s: StorageBuffer set=%u binding=%u uses GL binding=%
         if (offset + sizeBytes > record->desc.size)
         {
             m_log.error("[gl] writeBuffer out of bounds: offset=%llu size=%llu buffer=%llu",  // writeBuffer 越界
-                        static_cast<unsigned long long>(offset),
-                        static_cast<unsigned long long>(sizeBytes),
-                        static_cast<unsigned long long>(record->desc.size));
+                static_cast<unsigned long long>(offset),
+                static_cast<unsigned long long>(sizeBytes),
+                static_cast<unsigned long long>(record->desc.size));
             return RhiResult::ErrorInvalidArgument;
         }
         m_gl.BindBuffer(record->target, record->name);
-        m_gl.BufferSubData(record->target, static_cast<GLintptr>(offset),
-                           static_cast<GLsizeiptr>(sizeBytes), data);
+        m_gl.BufferSubData(record->target, static_cast<GLintptr>(offset), static_cast<GLsizeiptr>(sizeBytes), data);
         m_gl.BindBuffer(record->target, 0);
         return RhiResult::Ok;
     }
@@ -862,7 +890,7 @@ m_log.debug("[gl] pipeline %s: StorageBuffer set=%u binding=%u uses GL binding=%
         {
             access |= GL_MAP_PERSISTENT_BIT;
             access |= (record->desc.access == MemoryAccess::CpuToGpuCoherent) ? GL_MAP_COHERENT_BIT
-                                                                             : GL_MAP_FLUSH_EXPLICIT_BIT;
+                                                                              : GL_MAP_FLUSH_EXPLICIT_BIT;
         }
         else
         {
@@ -872,8 +900,8 @@ m_log.debug("[gl] pipeline %s: StorageBuffer set=%u binding=%u uses GL binding=%
         }
 
         m_gl.BindBuffer(record->target, record->name);
-        void* ptr = m_gl.MapBufferRange(record->target, static_cast<GLintptr>(offset),
-                                        static_cast<GLsizeiptr>(size), access);
+        void* ptr =
+            m_gl.MapBufferRange(record->target, static_cast<GLintptr>(offset), static_cast<GLsizeiptr>(size), access);
         m_gl.BindBuffer(record->target, 0);
         if (!ptr)
         {
@@ -905,8 +933,7 @@ m_log.debug("[gl] pipeline %s: StorageBuffer set=%u binding=%u uses GL binding=%
             return;
         }
         m_gl.BindBuffer(record->target, record->name);
-        m_gl.FlushMappedBufferRange(record->target, static_cast<GLintptr>(offset),
-                                    static_cast<GLsizeiptr>(sizeBytes));
+        m_gl.FlushMappedBufferRange(record->target, static_cast<GLintptr>(offset), static_cast<GLsizeiptr>(sizeBytes));
         m_gl.BindBuffer(record->target, 0);
     }
 
@@ -921,8 +948,10 @@ m_log.debug("[gl] pipeline %s: StorageBuffer set=%u binding=%u uses GL binding=%
         }
         if (desc.width > m_caps.maxTextureSize || desc.height > m_caps.maxTextureSize)
         {
-            m_log.error("[gl] createTexture: %ux%u exceeds maxTextureSize=%u", desc.width, desc.height,  // createTexture 超过 maxTextureSize
-                        m_caps.maxTextureSize);
+            m_log.error("[gl] createTexture: %ux%u exceeds maxTextureSize=%u",
+                desc.width,
+                desc.height,  // createTexture 超过 maxTextureSize
+                m_caps.maxTextureSize);
             return TextureHandle{};
         }
         const GLenum internalFormat = toGlInternalFormat(desc.format);
@@ -936,9 +965,15 @@ m_log.debug("[gl] pipeline %s: StorageBuffer set=%u binding=%u uses GL binding=%
         record.desc = desc;
         m_gl.GenTextures(1, &record.name);
         m_gl.BindTexture(GL_TEXTURE_2D, record.name);
-        m_gl.TexImage2D(GL_TEXTURE_2D, 0, static_cast<GLint>(internalFormat),
-                        static_cast<GLsizei>(desc.width), static_cast<GLsizei>(desc.height), 0,
-                        toGlBaseFormat(desc.format), toGlPixelType(desc.format), nullptr);
+        m_gl.TexImage2D(GL_TEXTURE_2D,
+            0,
+            static_cast<GLint>(internalFormat),
+            static_cast<GLsizei>(desc.width),
+            static_cast<GLsizei>(desc.height),
+            0,
+            toGlBaseFormat(desc.format),
+            toGlPixelType(desc.format),
+            nullptr);
         // 默认过滤/环绕：不设的话 GL 默认 MIPMAP_LINEAR，而我们只分配了 mip 0，
         // 采样结果会是黑色——这是一个经典的「纹理全黑」成因。
         m_gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -968,8 +1003,8 @@ m_log.debug("[gl] pipeline %s: StorageBuffer set=%u binding=%u uses GL binding=%
         m_textures.remove(texture);
     }
 
-    RhiResult GlDevice::writeTexture(TextureHandle texture, uint32_t mipLevel, const Rect2D& region,
-                                     const void* data, uint64_t sizeBytes)
+    RhiResult GlDevice::writeTexture(
+        TextureHandle texture, uint32_t mipLevel, const Rect2D& region, const void* data, uint64_t sizeBytes)
     {
         GlTextureRecord* record = m_textures.get(texture);
         if (!record || !data)
@@ -994,9 +1029,15 @@ m_log.debug("[gl] pipeline %s: StorageBuffer set=%u binding=%u uses GL binding=%
             // 表现为字形整体倾斜/撕裂。
             m_gl.PixelStorei(GL_UNPACK_ALIGNMENT, 1);
         }
-        m_gl.TexSubImage2D(GL_TEXTURE_2D, static_cast<GLint>(mipLevel), region.x, region.y,
-                           static_cast<GLsizei>(region.width), static_cast<GLsizei>(region.height),
-                           toGlBaseFormat(record->desc.format), toGlPixelType(record->desc.format), data);
+        m_gl.TexSubImage2D(GL_TEXTURE_2D,
+            static_cast<GLint>(mipLevel),
+            region.x,
+            region.y,
+            static_cast<GLsizei>(region.width),
+            static_cast<GLsizei>(region.height),
+            toGlBaseFormat(record->desc.format),
+            toGlPixelType(record->desc.format),
+            data);
         m_gl.BindTexture(GL_TEXTURE_2D, 0);
         return RhiResult::Ok;
     }
@@ -1187,8 +1228,7 @@ m_log.debug("[gl] pipeline %s: StorageBuffer set=%u binding=%u uses GL binding=%
         m_gl.BindFramebuffer(GL_FRAMEBUFFER, entry.fbo);
         for (uint32_t i = 0; i < colorCount; ++i)
         {
-            m_gl.FramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + i, GL_TEXTURE_2D,
-                                      entry.colorNames[i], 0);
+            m_gl.FramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + i, GL_TEXTURE_2D, entry.colorNames[i], 0);
         }
         if (depthName)
         {
@@ -1200,8 +1240,10 @@ m_log.debug("[gl] pipeline %s: StorageBuffer set=%u binding=%u uses GL binding=%
             const GLenum status = m_gl.CheckFramebufferStatus(GL_FRAMEBUFFER);
             if (status != GL_FRAMEBUFFER_COMPLETE)
             {
-                m_log.error("[gl] framebuffer incomplete (status=0x%04X, color=%u depth=%u)", status, colorCount,  // 帧缓冲不完整
-                            depthName);
+                m_log.error("[gl] framebuffer incomplete (status=0x%04X, color=%u depth=%u)",
+                    status,
+                    colorCount,  // 帧缓冲不完整
+                    depthName);
                 m_gl.BindFramebuffer(GL_FRAMEBUFFER, 0);
                 m_gl.DeleteFramebuffers(1, &entry.fbo);
                 return 0;
@@ -1213,8 +1255,8 @@ m_log.debug("[gl] pipeline %s: StorageBuffer set=%u binding=%u uses GL binding=%
         return entry.fbo;
     }
 
-    RhiResult GlDevice::readTexture(TextureHandle texture, const Rect2D& region, void* outPixels,
-                                    uint64_t bufferSize, uint32_t* outRowPitch)
+    RhiResult GlDevice::readTexture(
+        TextureHandle texture, const Rect2D& region, void* outPixels, uint64_t bufferSize, uint32_t* outRowPitch)
     {
         GlTextureRecord* record = m_textures.get(texture);
         if (!record || !outPixels || region.width == 0 || region.height == 0)
@@ -1258,9 +1300,13 @@ m_log.debug("[gl] pipeline %s: StorageBuffer set=%u binding=%u uses GL binding=%
         for (uint32_t row = 0; row < region.height; ++row)
         {
             const int32_t glY = texHeight - (region.y + static_cast<int32_t>(row)) - 1;
-            m_gl.ReadPixels(region.x, glY, static_cast<GLsizei>(region.width), 1,
-                            toGlBaseFormat(record->desc.format), toGlPixelType(record->desc.format),
-                            dst + static_cast<size_t>(row) * rowPitch);
+            m_gl.ReadPixels(region.x,
+                glY,
+                static_cast<GLsizei>(region.width),
+                1,
+                toGlBaseFormat(record->desc.format),
+                toGlPixelType(record->desc.format),
+                dst + static_cast<size_t>(row) * rowPitch);
         }
 
         m_gl.BindFramebuffer(GL_FRAMEBUFFER, static_cast<GLuint>(previousFbo < 0 ? 0 : previousFbo));
@@ -1282,8 +1328,8 @@ m_log.debug("[gl] pipeline %s: StorageBuffer set=%u binding=%u uses GL binding=%
         }
         for (const auto& texture : self->m_textures)
         {
-            total += static_cast<uint64_t>(texture.desc.width) * texture.desc.height *
-                     formatByteSize(texture.desc.format);
+            total +=
+                static_cast<uint64_t>(texture.desc.width) * texture.desc.height * formatByteSize(texture.desc.format);
         }
         return total;
     }
@@ -1296,8 +1342,12 @@ m_log.debug("[gl] pipeline %s: StorageBuffer set=%u binding=%u uses GL binding=%
         uint32_t leaked = m_buffers.size() + m_textures.size() + m_pipelines.size();
         if (leaked > 0)
         {
-            m_log.warn("[gl] Device destroyed with %u unreleased resources (buffers=%u textures=%u pipelines=%u)",  // 设备销毁时仍有资源未释放
-                       leaked, m_buffers.size(), m_textures.size(), m_pipelines.size());
+            m_log.warn(
+                "[gl] Device destroyed with %u unreleased resources (buffers=%u textures=%u pipelines=%u)",  // 设备销毁时仍有资源未释放
+                leaked,
+                m_buffers.size(),
+                m_textures.size(),
+                m_pipelines.size());
         }
 
         for (auto& buffer : m_buffers)
@@ -1333,12 +1383,10 @@ m_log.debug("[gl] pipeline %s: StorageBuffer set=%u binding=%u uses GL binding=%
         m_pipelines.clear();
         m_bindGroups.clear();
     }
-
 }  // namespace Render::RHI::gl
 
 namespace Render::RHI
 {
-
     IGpuDevice* createGlDevice(const DeviceDesc& desc)
     {
         RhiLogger logger(desc.logCallback, desc.logUserData);
@@ -1355,5 +1403,4 @@ namespace Render::RHI
 
         return new gl::GlDevice(desc, functions);
     }
-
 }  // namespace Render::RHI

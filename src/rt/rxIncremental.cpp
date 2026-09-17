@@ -12,7 +12,6 @@
 
 namespace Render::RT::detail
 {
-
     namespace
     {
         constexpr uint64_t kDefaultInitialBytes = 4ull * 1024ull * 1024ull;
@@ -88,13 +87,12 @@ namespace Render::RT::detail
         /// 把两个 int32 格子坐标编码成一个 uint64 哈希键（双射，无碰撞）
         uint64_t encodeGridCell(int32_t cx, int32_t cy)
         {
-            return (static_cast<uint64_t>(static_cast<uint32_t>(cx)) << 32) |
-                   static_cast<uint32_t>(cy);
+            return (static_cast<uint64_t>(static_cast<uint32_t>(cx)) << 32) | static_cast<uint32_t>(cy);
         }
 
         /// 计算 AABB 覆盖的格子坐标范围（含两端）
-        void gridCellRange(const float bounds[4], float cellSize,
-                           int32_t& cxMin, int32_t& cxMax, int32_t& cyMin, int32_t& cyMax)
+        void gridCellRange(
+            const float bounds[4], float cellSize, int32_t& cxMin, int32_t& cxMax, int32_t& cyMin, int32_t& cyMax)
         {
             cxMin = static_cast<int32_t>(std::floor(bounds[0] / cellSize));
             cxMax = static_cast<int32_t>(std::floor(bounds[2] / cellSize));
@@ -138,8 +136,8 @@ namespace Render::RT::detail
         if (initial > m_maxBytes)
         {
             m_owner->log.warn("[rt] rxGeometryStoreCreate: initialBytes(%llu) exceeds maxBytes(%llu), clamped",
-                              static_cast<unsigned long long>(initial),
-                              static_cast<unsigned long long>(m_maxBytes));  // initialBytes 超过 maxBytes，已钳制
+                static_cast<unsigned long long>(initial),
+                static_cast<unsigned long long>(m_maxBytes));  // initialBytes 超过 maxBytes，已钳制
             initial = m_maxBytes;
         }
 
@@ -155,8 +153,9 @@ namespace Render::RT::detail
         m_free.emplace(0u, static_cast<uint32_t>(initial));
 
         m_owner->log.debug("[rt] Geometry store ready: capacity %llu bytes, granularity %u, %s",  // 几何仓就绪
-                          static_cast<unsigned long long>(initial), m_granularity,
-                          m_forIndices ? "indices" : "vertices");
+            static_cast<unsigned long long>(initial),
+            m_granularity,
+            m_forIndices ? "indices" : "vertices");
         return true;
     }
 
@@ -174,8 +173,8 @@ namespace Render::RT::detail
         const RHI::BufferHandle created = m_owner->device->createBuffer(desc);
         if (!created.valid())
         {
-m_owner->log.error("[rt] geometry store buffer creation failed (%llu bytes)",  // 几何仓缓冲创建失败
-                                static_cast<unsigned long long>(capacity));
+            m_owner->log.error("[rt] geometry store buffer creation failed (%llu bytes)",  // 几何仓缓冲创建失败
+                static_cast<unsigned long long>(capacity));
             return false;
         }
 
@@ -190,7 +189,8 @@ m_owner->log.error("[rt] geometry store buffer creation failed (%llu bytes)",  /
             if (!slot)
             {
                 // 槽位应当一直存在（shutdown 才会摘除），走到这里说明句柄表被外部改坏了
-                m_owner->log.error("[rt] geometry store public handle slot lost, cannot complete expansion");  // 几何仓公共句柄槽位丢失
+                m_owner->log.error(
+                    "[rt] geometry store public handle slot lost, cannot complete expansion");  // 几何仓公共句柄槽位丢失
                 m_owner->device->destroyBuffer(created);
                 return false;
             }
@@ -235,8 +235,8 @@ m_owner->log.error("[rt] geometry store buffer creation failed (%llu bytes)",  /
     {
         if (m_capacity >= m_maxBytes)
         {
-m_owner->log.error("[rt] geometry store reached limit %llu bytes, cannot allocate more",  // 几何仓已达上限
-                                static_cast<unsigned long long>(m_maxBytes));
+            m_owner->log.error("[rt] geometry store reached limit %llu bytes, cannot allocate more",  // 几何仓已达上限
+                static_cast<unsigned long long>(m_maxBytes));
             return false;
         }
 
@@ -249,9 +249,10 @@ m_owner->log.error("[rt] geometry store reached limit %llu bytes, cannot allocat
         next = (std::min)(alignUp(next, m_granularity), m_maxBytes);
         if (next < requiredCapacity)
         {
-m_owner->log.error("[rt] geometry store grew to limit %llu but still insufficient (need %llu)",  // 几何仓扩容到上限仍不足
-                                static_cast<unsigned long long>(m_maxBytes),
-                                static_cast<unsigned long long>(requiredCapacity));
+            m_owner->log.error(
+                "[rt] geometry store grew to limit %llu but still insufficient (need %llu)",  // 几何仓扩容到上限仍不足
+                static_cast<unsigned long long>(m_maxBytes),
+                static_cast<unsigned long long>(requiredCapacity));
             return false;
         }
 
@@ -266,16 +267,16 @@ m_owner->log.error("[rt] geometry store grew to limit %llu but still insufficien
         m_growCount += 1;
 
         // 尾部新增空间进空闲表；已有块的偏移不变，所以只需要补这一段
-        insertFreeRange(Range{ static_cast<uint32_t>(oldCapacity),
-                               static_cast<uint32_t>(next - oldCapacity) });
+        insertFreeRange(Range{ static_cast<uint32_t>(oldCapacity), static_cast<uint32_t>(next - oldCapacity) });
 
         // 新缓冲内容未定义，整段标脏，由下一次 flush 从影子重传
         m_dirty.clear();
         markDirty(0, static_cast<uint32_t>(next));
 
         m_owner->log.debug("[rt] Geometry store expanded: %llu -> %llu bytes (attempt %u)",  // 几何仓扩容
-                          static_cast<unsigned long long>(oldCapacity),
-                          static_cast<unsigned long long>(next), m_growCount);
+            static_cast<unsigned long long>(oldCapacity),
+            static_cast<unsigned long long>(next),
+            m_growCount);
         return true;
     }
 
@@ -378,8 +379,9 @@ m_owner->log.error("[rt] geometry store grew to limit %llu but still insufficien
         }
 
         // 扩容成功却仍找不到空洞 = 空闲表与容量不一致，属于内部错误
-m_owner->log.error("[rt] geometry store grew but still cannot allocate %llu bytes (free table may be corrupted)",  // 几何仓扩容后仍无法分配
-                                static_cast<unsigned long long>(need));
+        m_owner->log.error(
+            "[rt] geometry store grew but still cannot allocate %llu bytes (free table may be corrupted)",  // 几何仓扩容后仍无法分配
+            static_cast<unsigned long long>(need));
         return RxResult::ErrorOutOfMemory;
     }
 
@@ -392,8 +394,7 @@ m_owner->log.error("[rt] geometry store grew but still cannot allocate %llu byte
         m_dirty.push_back(Range{ offset, size });
     }
 
-    RxResult GeometryStore::write(uint64_t blockId, uint32_t byteOffset, uint32_t sizeBytes,
-                                 const void* data)
+    RxResult GeometryStore::write(uint64_t blockId, uint32_t byteOffset, uint32_t sizeBytes, const void* data)
     {
         if (!data || sizeBytes == 0)
         {
@@ -407,14 +408,16 @@ m_owner->log.error("[rt] geometry store grew but still cannot allocate %llu byte
         const Block* block = m_blocks.find(blockId);
         if (!block)
         {
-m_owner->log.warn("[rt] rxGeometryWrite: block %llu invalid (possibly freed)",  // 块无效
-                                static_cast<unsigned long long>(blockId));
+            m_owner->log.warn("[rt] rxGeometryWrite: block %llu invalid (possibly freed)",  // 块无效
+                static_cast<unsigned long long>(blockId));
             return RxResult::ErrorInvalidHandle;
         }
         if (static_cast<uint64_t>(byteOffset) + sizeBytes > block->size)
         {
-m_owner->log.error("[rt] rxGeometryWrite: write out of bounds (block %u bytes, request %u+%u)",  // 写入越界
-                                block->size, byteOffset, sizeBytes);
+            m_owner->log.error("[rt] rxGeometryWrite: write out of bounds (block %u bytes, request %u+%u)",  // 写入越界
+                block->size,
+                byteOffset,
+                sizeBytes);
             return RxResult::ErrorInvalidArgument;
         }
 
@@ -433,8 +436,8 @@ m_owner->log.error("[rt] rxGeometryWrite: write out of bounds (block %u bytes, r
         const Block* block = m_blocks.find(blockId);
         if (!block)
         {
-m_owner->log.warn("[rt] rxGeometryFree: block %llu already freed or never existed",  // 块已释放或从未存在
-                                static_cast<unsigned long long>(blockId));
+            m_owner->log.warn("[rt] rxGeometryFree: block %llu already freed or never existed",  // 块已释放或从未存在
+                static_cast<unsigned long long>(blockId));
             return RxResult::ErrorInvalidHandle;
         }
 
@@ -459,8 +462,9 @@ m_owner->log.warn("[rt] rxGeometryFree: block %llu already freed or never existe
             return RxResult::Ok;
         }
 
-        std::sort(m_dirty.begin(), m_dirty.end(),
-                  [](const Range& a, const Range& b) { return a.offset < b.offset; });
+        std::sort(m_dirty.begin(), m_dirty.end(), [](const Range& a, const Range& b) {
+            return a.offset < b.offset;
+        });
 
         // 合并重叠与近邻区间。kDirtyMergeGap 是刻意的过度传输：
         // 多传几 KB 远比多一次 writeBuffer（含驱动侧同步）便宜。
@@ -469,12 +473,14 @@ m_owner->log.warn("[rt] rxGeometryFree: block %llu already freed or never existe
         RxResult result = RxResult::Ok;
 
         auto submit = [&](const Range& range) {
-            const RHI::RhiResult wrote = m_owner->device->writeBuffer(
-                m_buffer, range.offset, m_shadow.data() + range.offset, range.size);
+            const RHI::RhiResult wrote =
+                m_owner->device->writeBuffer(m_buffer, range.offset, m_shadow.data() + range.offset, range.size);
             if (wrote != RHI::RhiResult::Ok)
             {
-m_owner->log.error("[rt] geometry store upload failed (offset=%u size=%u, %s)", range.offset,  // 几何仓上传失败
-                                    range.size, RHI::resultName(wrote));
+                m_owner->log.error("[rt] geometry store upload failed (offset=%u size=%u, %s)",
+                    range.offset,  // 几何仓上传失败
+                    range.size,
+                    RHI::resultName(wrote));
                 result = RxResult::ErrorDeviceLost;
                 return;
             }
@@ -588,13 +594,11 @@ m_owner->log.error("[rt] geometry store upload failed (offset=%u size=%u, %s)", 
             return upsertImpl(slot, command, nullptr, static_cast<uint8_t>(BoundsNone));
         }
         // RxAabb3 的字段顺序与 Entry::bounds 的前六个 float 一致，按同一顺序搬
-        const float values[6] = { bounds->minX, bounds->minY, bounds->minZ,
-                                  bounds->maxX, bounds->maxY, bounds->maxZ };
+        const float values[6] = { bounds->minX, bounds->minY, bounds->minZ, bounds->maxX, bounds->maxY, bounds->maxZ };
         return upsertImpl(slot, command, values, static_cast<uint8_t>(BoundsAabb3));
     }
 
-    RxResult DrawList::upsertImpl(uint32_t slot, const DrawCommand& command, const float* bounds,
-                                 uint8_t boundsKind)
+    RxResult DrawList::upsertImpl(uint32_t slot, const DrawCommand& command, const float* bounds, uint8_t boundsKind)
     {
         if (!m_owner)
         {
@@ -606,9 +610,10 @@ m_owner->log.error("[rt] geometry store upload failed (offset=%u size=%u, %s)", 
         constexpr uint32_t kMaxSlot = 1u << 24;  // 1600 万槽 ≈ 上限
         if (slot >= kMaxSlot)
         {
-m_owner->log.error("[rt] rxDrawListUpsert: slot %u too large (limit %u). "
-                                "Slots should be compactly allocated, not use the 64-bit ID of the primitive directly",
-                                slot, kMaxSlot);  // 槽号过大
+            m_owner->log.error("[rt] rxDrawListUpsert: slot %u too large (limit %u). "
+                               "Slots should be compactly allocated, not use the 64-bit ID of the primitive directly",
+                slot,
+                kMaxSlot);  // 槽号过大
             return RxResult::ErrorInvalidArgument;
         }
         if (slot >= m_entries.size())
@@ -629,9 +634,8 @@ m_owner->log.error("[rt] rxDrawListUpsert: slot %u too large (limit %u). "
         bool boundsChanged = false;
         if (wasIndexed2D)
         {
-            boundsChanged = !willBeIndexed2D ||
-                            entry.bounds[0] != bounds[0] || entry.bounds[1] != bounds[1] ||
-                            entry.bounds[2] != bounds[2] || entry.bounds[3] != bounds[3];
+            boundsChanged = !willBeIndexed2D || entry.bounds[0] != bounds[0] || entry.bounds[1] != bounds[1] ||
+                entry.bounds[2] != bounds[2] || entry.bounds[3] != bounds[3];
             if (boundsChanged)
             {
                 indexRemove(slot);
@@ -747,9 +751,9 @@ m_owner->log.error("[rt] rxDrawListUpsert: slot %u too large (limit %u). "
         }
 
         // 任何影响管线或绑定的字段不同都不能共批
-        if (a.pipelineIndex != b.pipelineIndex || a.space != b.space ||
-            a.vertexFormat != b.vertexFormat || a.materialIndex != b.materialIndex ||
-            a.texture != b.texture || a.lineWidth != b.lineWidth || a.pointSize != b.pointSize)
+        if (a.pipelineIndex != b.pipelineIndex || a.space != b.space || a.vertexFormat != b.vertexFormat ||
+            a.materialIndex != b.materialIndex || a.texture != b.texture || a.lineWidth != b.lineWidth ||
+            a.pointSize != b.pointSize)
         {
             return false;
         }
@@ -769,8 +773,7 @@ m_owner->log.error("[rt] rxDrawListUpsert: slot %u too large (limit %u). "
         if (aIndexed)
         {
             // 索引区间也要归属同一个坐标系：vertexOffset 必须完全相同
-            return a.indexBuffer == b.indexBuffer && a.indexType == b.indexType &&
-                   a.vertexOffset == b.vertexOffset;
+            return a.indexBuffer == b.indexBuffer && a.indexType == b.indexType && a.vertexOffset == b.vertexOffset;
         }
         return true;
     }
@@ -796,8 +799,7 @@ m_owner->log.error("[rt] rxDrawListUpsert: slot %u too large (limit %u). "
 
     void DrawList::appendResolved(const DrawCommand& command, uint32_t& mergedOut)
     {
-        if (!m_enableMerging || m_resolved.empty() ||
-            !canBatchSharedState(m_resolved.back().command, command))
+        if (!m_enableMerging || m_resolved.empty() || !canBatchSharedState(m_resolved.back().command, command))
         {
             beginBatch(command);
             return;
@@ -862,9 +864,12 @@ m_owner->log.error("[rt] rxDrawListUpsert: slot %u too large (limit %u). "
         mergedOut += 1;
     }
 
-    void DrawList::resolveLinear(bool cull2D, const float* viewBounds, bool cull3D,
-                                 const RxFrustum* frustum, uint32_t& culledOut,
-                                 uint32_t& mergedOut)
+    void DrawList::resolveLinear(bool cull2D,
+        const float* viewBounds,
+        bool cull3D,
+        const RxFrustum* frustum,
+        uint32_t& culledOut,
+        uint32_t& mergedOut)
     {
         // 两个判据各自独立生效：条目带的是哪一种包围盒，就用对应那一种去裁。
         // 类型不匹配时一律不裁（宁可多画）——混用两种 upsert 的列表里，
@@ -878,10 +883,8 @@ m_owner->log.error("[rt] rxDrawListUpsert: slot %u too large (limit %u). "
             }
             if (cull2D && entry.boundsKind == BoundsAabb2)
             {
-                const bool disjoint = entry.bounds[2] < viewBounds[0] ||
-                                      entry.bounds[0] > viewBounds[2] ||
-                                      entry.bounds[3] < viewBounds[1] ||
-                                      entry.bounds[1] > viewBounds[3];
+                const bool disjoint = entry.bounds[2] < viewBounds[0] || entry.bounds[0] > viewBounds[2] ||
+                    entry.bounds[3] < viewBounds[1] || entry.bounds[1] > viewBounds[3];
                 if (disjoint)
                 {
                     culledOut += 1;
@@ -900,8 +903,7 @@ m_owner->log.error("[rt] rxDrawListUpsert: slot %u too large (limit %u). "
         }
     }
 
-    void DrawList::resolveIndexed2D(const float viewBounds[4], uint32_t& culledOut,
-                                    uint32_t& mergedOut)
+    void DrawList::resolveIndexed2D(const float viewBounds[4], uint32_t& culledOut, uint32_t& mergedOut)
     {
         // 1. 网格粗筛收集候选：跨格图元用 frameStamp 去重，保证每个 slot 只进一次。
         m_visible.clear();
@@ -974,10 +976,8 @@ m_owner->log.error("[rt] rxDrawListUpsert: slot %u too large (limit %u). "
             }
             if (entry.boundsKind == BoundsAabb2)
             {
-                const bool disjoint = entry.bounds[2] < viewBounds[0] ||
-                                      entry.bounds[0] > viewBounds[2] ||
-                                      entry.bounds[3] < viewBounds[1] ||
-                                      entry.bounds[1] > viewBounds[3];
+                const bool disjoint = entry.bounds[2] < viewBounds[0] || entry.bounds[0] > viewBounds[2] ||
+                    entry.bounds[3] < viewBounds[1] || entry.bounds[1] > viewBounds[3];
                 if (disjoint)
                 {
                     culledOut += 1;
@@ -990,10 +990,9 @@ m_owner->log.error("[rt] rxDrawListUpsert: slot %u too large (limit %u). "
 
         // 4. 按 sortKey 排序：合批要求同状态相邻。
         const std::vector<Entry>& entries = m_entries;
-        std::stable_sort(m_visible.begin(), m_visible.end(),
-                         [&entries](uint32_t a, uint32_t b) {
-                             return entries[a].command.sortKey < entries[b].command.sortKey;
-                         });
+        std::stable_sort(m_visible.begin(), m_visible.end(), [&entries](uint32_t a, uint32_t b) {
+            return entries[a].command.sortKey < entries[b].command.sortKey;
+        });
 
         // 5. 合批。
         for (uint32_t slot : m_visible)
@@ -1095,21 +1094,20 @@ m_owner->log.error("[rt] rxDrawListUpsert: slot %u too large (limit %u). "
         entry.nonIndexedPos = kInvalidNonIndexedPos;
     }
 
-    const std::vector<ResolvedBatch>& DrawList::resolve(const float* viewBounds, uint32_t& culledOut,
-                                                        uint32_t& mergedOut)
+    const std::vector<ResolvedBatch>& DrawList::resolve(
+        const float* viewBounds, uint32_t& culledOut, uint32_t& mergedOut)
     {
         return resolveImpl(viewBounds, nullptr, culledOut, mergedOut);
     }
 
-    const std::vector<ResolvedBatch>& DrawList::resolveFrustum(const RxFrustum* frustum,
-                                                               uint32_t& culledOut, uint32_t& mergedOut)
+    const std::vector<ResolvedBatch>& DrawList::resolveFrustum(
+        const RxFrustum* frustum, uint32_t& culledOut, uint32_t& mergedOut)
     {
         return resolveImpl(nullptr, frustum, culledOut, mergedOut);
     }
 
-    const std::vector<ResolvedBatch>& DrawList::resolveImpl(const float* viewBounds,
-                                                            const RxFrustum* frustum,
-                                                            uint32_t& culledOut, uint32_t& mergedOut)
+    const std::vector<ResolvedBatch>& DrawList::resolveImpl(
+        const float* viewBounds, const RxFrustum* frustum, uint32_t& culledOut, uint32_t& mergedOut)
     {
         culledOut = 0;
         mergedOut = 0;
@@ -1128,10 +1126,9 @@ m_owner->log.error("[rt] rxDrawListUpsert: slot %u too large (limit %u). "
             }
             const std::vector<Entry>& entries = m_entries;
             // 稳定排序：同 sortKey 的条目维持槽位顺序，叠放才可预测
-            std::stable_sort(m_order.begin(), m_order.end(),
-                             [&entries](uint32_t lhs, uint32_t rhs) {
-                                 return entries[lhs].command.sortKey < entries[rhs].command.sortKey;
-                             });
+            std::stable_sort(m_order.begin(), m_order.end(), [&entries](uint32_t lhs, uint32_t rhs) {
+                return entries[lhs].command.sortKey < entries[rhs].command.sortKey;
+            });
             m_orderDirty = false;
             m_sortCount += 1;
         }
@@ -1166,8 +1163,7 @@ m_owner->log.error("[rt] rxDrawListUpsert: slot %u too large (limit %u). "
         out->drawCallCount = m_lastDrawCalls;
         out->sortCount = m_sortCount;
         out->capacityBytes = static_cast<uint64_t>(m_entries.capacity()) * sizeof(Entry) +
-                             static_cast<uint64_t>(m_order.capacity()) * sizeof(uint32_t) +
-                             static_cast<uint64_t>(m_resolved.capacity()) * sizeof(DrawCommand);
+            static_cast<uint64_t>(m_order.capacity()) * sizeof(uint32_t) +
+            static_cast<uint64_t>(m_resolved.capacity()) * sizeof(DrawCommand);
     }
-
 }  // namespace Render::RT::detail

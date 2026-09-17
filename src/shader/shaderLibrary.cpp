@@ -54,10 +54,14 @@ namespace Render::shader
     {
         switch (lang)
         {
-        case Language::Glsl: return "glsl";
-        case Language::SpirV: return "spirv";
-        case Language::Msl: return "msl";
-        case Language::MetalLib: return "metallib";
+        case Language::Glsl:
+            return "glsl";
+        case Language::SpirV:
+            return "spirv";
+        case Language::Msl:
+            return "msl";
+        case Language::MetalLib:
+            return "metallib";
         }
         return "unknown";
     }
@@ -134,5 +138,4 @@ namespace Render::shader
             return Language::Glsl;
         return lang;
     }
-
 }  // namespace Render::shader

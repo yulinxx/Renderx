@@ -158,8 +158,7 @@ extern "C" bool gl_loader_load(GLFuncs* out, void* getProcAddress)
     f.NamedBufferSubData = (PFNGLNAMEDBUFFERSUBDATAPROC)getProc("glNamedBufferSubData");
     f.MapNamedBufferRange = (PFNGLMAPNAMEDBUFFERRANGEPROC)getProc("glMapNamedBufferRange");
     f.UnmapNamedBuffer = (PFNGLUNMAPNAMEDBUFFERPROC)getProc("glUnmapNamedBuffer");
-    f.FlushMappedNamedBufferRange =
-        (PFNGLFLUSHMAPPEDNAMEDBUFFERRANGEPROC)getProc("glFlushMappedNamedBufferRange");
+    f.FlushMappedNamedBufferRange = (PFNGLFLUSHMAPPEDNAMEDBUFFERRANGEPROC)getProc("glFlushMappedNamedBufferRange");
     f.CopyNamedBufferSubData = (PFNGLCOPYNAMEDBUFFERSUBDATAPROC)getProc("glCopyNamedBufferSubData");
 
     f.Flush = (PFNGLFLUSHPROC)getProc("glFlush");

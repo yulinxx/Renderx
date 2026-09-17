@@ -24,7 +24,6 @@
 
 namespace Render::RT::detail
 {
-
     namespace
     {
         /// RHI 结果码 → 公共结果码。两套枚举独立演进，这里是唯一的翻译点。
@@ -32,17 +31,28 @@ namespace Render::RT::detail
         {
             switch (result)
             {
-            case RHI::RhiResult::Ok: return RxResult::Ok;
-            case RHI::RhiResult::ErrorInvalidArgument: return RxResult::ErrorInvalidArgument;
-            case RHI::RhiResult::ErrorOutOfMemory: return RxResult::ErrorOutOfMemory;
-            case RHI::RhiResult::ErrorDeviceLost: return RxResult::ErrorDeviceLost;
-            case RHI::RhiResult::ErrorUnsupported: return RxResult::ErrorUnsupportedBackend;
-            case RHI::RhiResult::ErrorNotInitialized: return RxResult::ErrorInvalidHandle;
-            case RHI::RhiResult::ErrorSurfaceLost: return RxResult::ErrorSurfaceLost;
-            case RHI::RhiResult::ErrorSwapchainOutOfDate: return RxResult::ErrorSurfaceOutOfDate;
-            case RHI::RhiResult::ErrorShaderCompilation: return RxResult::ErrorShaderCompilation;
-            case RHI::RhiResult::ErrorResourceCreation: return RxResult::ErrorOutOfMemory;
-            case RHI::RhiResult::ErrorUnknown: return RxResult::ErrorUnknown;
+            case RHI::RhiResult::Ok:
+                return RxResult::Ok;
+            case RHI::RhiResult::ErrorInvalidArgument:
+                return RxResult::ErrorInvalidArgument;
+            case RHI::RhiResult::ErrorOutOfMemory:
+                return RxResult::ErrorOutOfMemory;
+            case RHI::RhiResult::ErrorDeviceLost:
+                return RxResult::ErrorDeviceLost;
+            case RHI::RhiResult::ErrorUnsupported:
+                return RxResult::ErrorUnsupportedBackend;
+            case RHI::RhiResult::ErrorNotInitialized:
+                return RxResult::ErrorInvalidHandle;
+            case RHI::RhiResult::ErrorSurfaceLost:
+                return RxResult::ErrorSurfaceLost;
+            case RHI::RhiResult::ErrorSwapchainOutOfDate:
+                return RxResult::ErrorSurfaceOutOfDate;
+            case RHI::RhiResult::ErrorShaderCompilation:
+                return RxResult::ErrorShaderCompilation;
+            case RHI::RhiResult::ErrorResourceCreation:
+                return RxResult::ErrorOutOfMemory;
+            case RHI::RhiResult::ErrorUnknown:
+                return RxResult::ErrorUnknown;
             }
             return RxResult::ErrorUnknown;
         }
@@ -60,8 +70,8 @@ namespace Render::RT::detail
         }
 
         /// 每条命令要绘制的图元数量，仅用于统计
-        void accumulateTopologyStats(PrimitiveTopology topology, uint32_t elementCount,
-                                     uint32_t instanceCount, FrameStats& stats)
+        void accumulateTopologyStats(
+            PrimitiveTopology topology, uint32_t elementCount, uint32_t instanceCount, FrameStats& stats)
         {
             const uint32_t instances = instanceCount == 0 ? 1u : instanceCount;
             switch (topology)
@@ -111,8 +121,10 @@ namespace Render::RT::detail
         }
         if (surface->boundSession)
         {
-runtime->log.error("[rt] rxSessionCreate: surface is already bound to another Session. "
-                                "Two Sessions drawing the same window will overwrite each other; use one Session per window");  // Surface 已被另一个 Session 绑定
+            runtime->log
+                .error(
+                    "[rt] rxSessionCreate: surface is already bound to another Session. "
+                    "Two Sessions drawing the same window will overwrite each other; use one Session per window");  // Surface 已被另一个 Session 绑定
             return false;
         }
 
@@ -128,8 +140,10 @@ runtime->log.error("[rt] rxSessionCreate: surface is already bound to another Se
 
         surface->boundSession = this;
         runtime->sessions.push_back(this);
-        runtime->log.debug("[rt] Session ready: surface=%ux%u depth=%s", surface->width, surface->height,  // Session 就绪
-                          surface->hasDepth ? "on" : "off");
+        runtime->log.debug("[rt] Session ready: surface=%ux%u depth=%s",
+            surface->width,
+            surface->height,  // Session 就绪
+            surface->hasDepth ? "on" : "off");
         return true;
     }
 
@@ -204,7 +218,7 @@ runtime->log.error("[rt] rxSessionCreate: surface is already bound to another Se
     }
 
     // ==================== 帧 ====================
-RxResult Session::beginFrame()
+    RxResult Session::beginFrame()
     {
         if (!runtime || !runtime->device || !surface || !surface->rhi)
         {
@@ -227,8 +241,9 @@ RxResult Session::beginFrame()
                 // OutOfDate 是正常的窗口尺寸变化，调用方 resize 后重试本帧，不记为错误。
                 if (acquired != RHI::RhiResult::ErrorSwapchainOutOfDate)
                 {
-runtime->log.error("[rt] rxSessionBeginFrame: acquireNextImage failed (%s)",  // acquireNextImage 失败
-                                        RHI::resultName(acquired));
+                    runtime->log.error(
+                        "[rt] rxSessionBeginFrame: acquireNextImage failed (%s)",  // acquireNextImage 失败
+                        RHI::resultName(acquired));
                 }
                 return toRxResult(acquired);
             }
@@ -237,7 +252,8 @@ runtime->log.error("[rt] rxSessionBeginFrame: acquireNextImage failed (%s)",  //
         cmd = runtime->device->beginFrame(surface->rhi);
         if (!cmd)
         {
-            runtime->log.error("[rt] rxSessionBeginFrame: device did not return command recorder");  // 设备未返回命令记录器
+            runtime->log.error(
+                "[rt] rxSessionBeginFrame: device did not return command recorder");  // 设备未返回命令记录器
             return RxResult::ErrorDeviceLost;
         }
 
@@ -252,9 +268,8 @@ runtime->log.error("[rt] rxSessionBeginFrame: acquireNextImage failed (%s)",  //
 
         // 窗口尺寸以 Surface 的实际交换链尺寸为准：宿主可能漏调 rxSurfaceResize。
         // 离屏渲染时用 offscreenWidth/Height。
-        const RHI::Extent2D extent = isOffscreen
-            ? RHI::Extent2D{ offscreenWidth, offscreenHeight }
-            : surface->rhi->extent();
+        const RHI::Extent2D extent =
+            isOffscreen ? RHI::Extent2D{ offscreenWidth, offscreenHeight } : surface->rhi->extent();
         if (!isOffscreen)
         {
             surface->width = extent.width;
@@ -282,8 +297,7 @@ runtime->log.error("[rt] rxSessionBeginFrame: acquireNextImage failed (%s)",  //
             pass.colorAttachments[0].texture = offscreenColorTexture;
             pass.colorAttachments[0].loadOp = RHI::LoadOp::Clear;
             pass.colorAttachments[0].storeOp = RHI::StoreOp::Store;
-            pass.colorAttachments[0].clearValue = { clearColor[0], clearColor[1], clearColor[2],
-                                                    clearColor[3] };
+            pass.colorAttachments[0].clearValue = { clearColor[0], clearColor[1], clearColor[2], clearColor[3] };
             if (offscreenDepthTexture.valid())
             {
                 pass.hasDepthAttachment = true;
@@ -303,8 +317,7 @@ runtime->log.error("[rt] rxSessionBeginFrame: acquireNextImage failed (%s)",  //
             pass.colorAttachments[0].texture = {};
             pass.colorAttachments[0].loadOp = RHI::LoadOp::Clear;
             pass.colorAttachments[0].storeOp = RHI::StoreOp::Store;
-            pass.colorAttachments[0].clearValue = { clearColor[0], clearColor[1], clearColor[2],
-                                                    clearColor[3] };
+            pass.colorAttachments[0].clearValue = { clearColor[0], clearColor[1], clearColor[2], clearColor[3] };
             pass.hasDepthAttachment = surface->hasDepth;
             if (surface->hasDepth)
             {
@@ -320,8 +333,8 @@ runtime->log.error("[rt] rxSessionBeginFrame: acquireNextImage failed (%s)",  //
         const RHI::RhiResult began = cmd->beginRenderPass(pass);
         if (began != RHI::RhiResult::Ok)
         {
-runtime->log.error("[rt] rxSessionBeginFrame: beginRenderPass failed (%s)",  // beginRenderPass 失败
-                                RHI::resultName(began));
+            runtime->log.error("[rt] rxSessionBeginFrame: beginRenderPass failed (%s)",  // beginRenderPass 失败
+                RHI::resultName(began));
             // 设备帧已经开了，必须配对提交，否则后续所有帧都会被判为未配对。
             runtime->device->submitFrame();
             runtime->sessionsInFrame -= 1;
@@ -353,7 +366,8 @@ runtime->log.error("[rt] rxSessionBeginFrame: beginRenderPass failed (%s)",  // 
         }
         if (!inFrame)
         {
-            runtime->log.error("[rt] rxSessionAllocTransient: must be called between BeginFrame/EndFrame");  // 必须在 BeginFrame/EndFrame 之间调用
+            runtime->log.error(
+                "[rt] rxSessionAllocTransient: must be called between BeginFrame/EndFrame");  // 必须在 BeginFrame/EndFrame 之间调用
             return RxResult::ErrorUnknown;
         }
         if (!runtime->transient.allocate(sizeBytes, out))
@@ -363,16 +377,12 @@ runtime->log.error("[rt] rxSessionBeginFrame: beginRenderPass failed (%s)",  // 
         return RxResult::Ok;
     }
 
-    bool Session::prepareSubmitState(const float* packetViewMatrix, const float* packetViewport,
-                                     PushConstants* out)
+    bool Session::prepareSubmitState(const float* packetViewMatrix, const float* packetViewport, PushConstants* out)
     {
         // 视口：packet.viewport 优先（分屏/子视口场景），否则整个表面
-        const bool hasPacketViewport =
-            packetViewport != nullptr && packetViewport[2] > 0.0f && packetViewport[3] > 0.0f;
-        const float viewportW =
-            hasPacketViewport ? packetViewport[2] : static_cast<float>(surface->width);
-        const float viewportH =
-            hasPacketViewport ? packetViewport[3] : static_cast<float>(surface->height);
+        const bool hasPacketViewport = packetViewport != nullptr && packetViewport[2] > 0.0f && packetViewport[3] > 0.0f;
+        const float viewportW = hasPacketViewport ? packetViewport[2] : static_cast<float>(surface->width);
+        const float viewportH = hasPacketViewport ? packetViewport[3] : static_cast<float>(surface->height);
         if (hasPacketViewport)
         {
             RHI::Viewport viewport{};
@@ -409,27 +419,23 @@ runtime->log.error("[rt] rxSessionBeginFrame: beginRenderPass failed (%s)",  // 
         return hasPacketViewport;
     }
 
-    bool Session::bindCommandState(const DrawCommand& command, uint32_t index, DrawStateCache& cache,
-                                   PushConstants& push)
+    bool Session::bindCommandState(
+        const DrawCommand& command, uint32_t index, DrawStateCache& cache, PushConstants& push)
     {
         const RHI::BufferHandle vertexBuffer = runtime->resolveBuffer(command.vertexBuffer);
         if (!vertexBuffer.valid())
         {
-            runtime->log.warn("[rt] command %u has invalid vertex buffer handle, skipped", static_cast<unsigned>(index));  // 顶点缓冲句柄无效
+            runtime->log.warn("[rt] command %u has invalid vertex buffer handle, skipped",
+                static_cast<unsigned>(index));  // 顶点缓冲句柄无效
             return false;
         }
 
         // 材质提供缺省线宽/点大小，命令里的非零值覆盖它
-        const MaterialDesc* material = command.materialIndex != 0 &&
-                                               command.materialIndex < runtime->materials.size()
-                                           ? &runtime->materials[command.materialIndex]
-                                           : nullptr;
-        float lineWidth = command.lineWidth > 0.0f
-                              ? command.lineWidth
-                              : (material ? material->lineWidth : 1.0f);
-        const float pointSize = command.pointSize > 0.0f
-                                    ? command.pointSize
-                                    : (material ? material->pointSize : 1.0f);
+        const MaterialDesc* material = command.materialIndex != 0 && command.materialIndex < runtime->materials.size()
+            ? &runtime->materials[command.materialIndex]
+            : nullptr;
+        float lineWidth = command.lineWidth > 0.0f ? command.lineWidth : (material ? material->lineWidth : 1.0f);
+        const float pointSize = command.pointSize > 0.0f ? command.pointSize : (material ? material->pointSize : 1.0f);
         if (lineWidth <= 0.0f)
         {
             lineWidth = 1.0f;
@@ -440,9 +446,12 @@ runtime->log.error("[rt] rxSessionBeginFrame: beginRenderPass failed (%s)",  // 
         uint16_t pipelineIndex = command.pipelineIndex;
         if (pipelineIndex == 0)
         {
-            pipelineIndex = runtime->resolvePipeline(command.vertexFormat, command.space,
-                                                     command.topology, currentColorFormat(),
-                                                     currentDepthFormat(), lineWidth);
+            pipelineIndex = runtime->resolvePipeline(command.vertexFormat,
+                command.space,
+                command.topology,
+                currentColorFormat(),
+                currentDepthFormat(),
+                lineWidth);
         }
         else
         {
@@ -451,17 +460,17 @@ runtime->log.error("[rt] rxSessionBeginFrame: beginRenderPass failed (%s)",  // 
             // API 契约，直接把预热那条绑上来会被 Metal 校验层判为 validation
             // error（实测像素仍正确，但属未定义行为）。同格式变体在这里按需
             // 补建；格式一致时是纯查询。
-            pipelineIndex = runtime->pipelineWithFormats(pipelineIndex, currentColorFormat(),
-                                                         currentDepthFormat());
+            pipelineIndex = runtime->pipelineWithFormats(pipelineIndex, currentColorFormat(), currentDepthFormat());
         }
         const RHI::PipelineHandle pipeline = runtime->rhiPipeline(pipelineIndex);
         if (!pipeline.valid())
         {
-runtime->log.warn("[rt] command %u has no available pipeline (fmt=%d space=%d topo=%d), skipped",  // 命令没有可用管线
-                               static_cast<unsigned>(index),
-                               static_cast<int>(command.vertexFormat),
-                               static_cast<int>(command.space),
-                               static_cast<int>(command.topology));
+            runtime->log.warn(
+                "[rt] command %u has no available pipeline (fmt=%d space=%d topo=%d), skipped",  // 命令没有可用管线
+                static_cast<unsigned>(index),
+                static_cast<int>(command.vertexFormat),
+                static_cast<int>(command.space),
+                static_cast<int>(command.topology));
             return false;
         }
 
@@ -524,8 +533,7 @@ runtime->log.warn("[rt] command %u has no available pipeline (fmt=%d space=%d to
         // 同一坐标系），因此直接作为绑定偏移使用。
         // 多段提交里 firstVertex 是相对这个偏移算的，所以批次的 vertexOffset
         // 是整批的基准偏移，而不是其中某一段的起点。
-        if (command.vertexBuffer != cache.boundVertexBuffer ||
-            command.vertexOffset != cache.boundVertexOffset)
+        if (command.vertexBuffer != cache.boundVertexBuffer || command.vertexOffset != cache.boundVertexOffset)
         {
             cmd->bindVertexBuffer(0, vertexBuffer, command.vertexOffset);
             cache.boundVertexBuffer = command.vertexBuffer;
@@ -542,14 +550,14 @@ runtime->log.warn("[rt] command %u has no available pipeline (fmt=%d space=%d to
             }
             else
             {
-                runtime->log.warn("[rt] command %u has invalid texture handle", static_cast<unsigned>(index));  // 纹理句柄无效
+                runtime->log.warn(
+                    "[rt] command %u has invalid texture handle", static_cast<unsigned>(index));  // 纹理句柄无效
             }
         }
         return true;
     }
 
-    void Session::recordCommands(const DrawCommand* commands, const uint32_t* order, uint32_t count,
-                                 PushConstants& push)
+    void Session::recordCommands(const DrawCommand* commands, const uint32_t* order, uint32_t count, PushConstants& push)
     {
         DrawStateCache cache{};
 
@@ -575,12 +583,12 @@ runtime->log.warn("[rt] command %u has no available pipeline (fmt=%d space=%d to
                 const RHI::BufferHandle indexBuffer = runtime->resolveBuffer(command.indexBuffer);
                 if (!indexBuffer.valid())
                 {
-runtime->log.warn("[rt] command %u declares indexed draw but index buffer handle invalid, skipped",  // 索引绘制但索引缓冲句柄无效
-                                       static_cast<unsigned>(index));
+                    runtime->log.warn(
+                        "[rt] command %u declares indexed draw but index buffer handle invalid, skipped",  // 索引绘制但索引缓冲句柄无效
+                        static_cast<unsigned>(index));
                     continue;
                 }
-                cmd->bindIndexBuffer(indexBuffer, command.indexOffset,
-                                     toRhiIndexType(command.indexType));
+                cmd->bindIndexBuffer(indexBuffer, command.indexOffset, toRhiIndexType(command.indexType));
                 cmd->drawIndexed(command.indexCount, instanceCount, 0, 0, command.firstInstance);
                 accumulateTopologyStats(command.topology, command.indexCount, instanceCount, stats);
             }
@@ -596,8 +604,11 @@ runtime->log.warn("[rt] command %u declares indexed draw but index buffer handle
         }
     }
 
-    void Session::recordBatches(const ResolvedBatch* batches, uint32_t batchCount,
-                                const RHI::DrawRange* ranges, uint32_t rangeCount, PushConstants& push)
+    void Session::recordBatches(const ResolvedBatch* batches,
+        uint32_t batchCount,
+        const RHI::DrawRange* ranges,
+        uint32_t rangeCount,
+        PushConstants& push)
     {
         DrawStateCache cache{};
 
@@ -619,12 +630,12 @@ runtime->log.warn("[rt] command %u declares indexed draw but index buffer handle
                 const RHI::BufferHandle indexBuffer = runtime->resolveBuffer(command.indexBuffer);
                 if (!indexBuffer.valid())
                 {
-runtime->log.warn("[rt] batch %u declares indexed draw but index buffer handle invalid, skipped",  // 索引绘制但索引缓冲句柄无效
-                                      static_cast<unsigned>(b));
+                    runtime->log.warn(
+                        "[rt] batch %u declares indexed draw but index buffer handle invalid, skipped",  // 索引绘制但索引缓冲句柄无效
+                        static_cast<unsigned>(b));
                     continue;
                 }
-                cmd->bindIndexBuffer(indexBuffer, command.indexOffset,
-                                     toRhiIndexType(command.indexType));
+                cmd->bindIndexBuffer(indexBuffer, command.indexOffset, toRhiIndexType(command.indexType));
                 cmd->drawIndexed(command.indexCount, instanceCount, 0, 0, command.firstInstance);
                 accumulateTopologyStats(command.topology, command.indexCount, instanceCount, stats);
                 stats.drawCallCount += 1;
@@ -635,18 +646,17 @@ runtime->log.warn("[rt] batch %u declares indexed draw but index buffer handle i
             if (batch.rangeBegin + batch.rangeCount > rangeCount)
             {
                 runtime->log.error("[rt] batch %u range window [%u,%u) exceeds range table size %u, skipped",
-                                   static_cast<unsigned>(b),
-                                   static_cast<unsigned>(batch.rangeBegin),
-                                   static_cast<unsigned>(batch.rangeBegin + batch.rangeCount),
-                                   static_cast<unsigned>(rangeCount));  // 段窗口越界
+                    static_cast<unsigned>(b),
+                    static_cast<unsigned>(batch.rangeBegin),
+                    static_cast<unsigned>(batch.rangeBegin + batch.rangeCount),
+                    static_cast<unsigned>(rangeCount));  // 段窗口越界
                 continue;
             }
             const RHI::DrawRange* batchRanges = ranges + batch.rangeBegin;
 
             if (batch.rangeCount == 1)
             {
-                cmd->draw(batchRanges[0].vertexCount, instanceCount, batchRanges[0].firstVertex,
-                          command.firstInstance);
+                cmd->draw(batchRanges[0].vertexCount, instanceCount, batchRanges[0].firstVertex, command.firstInstance);
                 accumulateTopologyStats(command.topology, batchRanges[0].vertexCount, instanceCount, stats);
             }
             else
@@ -657,8 +667,7 @@ runtime->log.warn("[rt] batch %u declares indexed draw but index buffer handle i
                 // 按段累加统计：LineStrip 每段只画 n-1 条线，不能拿总顶点数算
                 for (uint32_t r = 0; r < batch.rangeCount; ++r)
                 {
-                    accumulateTopologyStats(command.topology, batchRanges[r].vertexCount, instanceCount,
-                                            stats);
+                    accumulateTopologyStats(command.topology, batchRanges[r].vertexCount, instanceCount, stats);
                 }
             }
 
@@ -675,7 +684,8 @@ runtime->log.warn("[rt] batch %u declares indexed draw but index buffer handle i
         }
         if (!inFrame || !cmd)
         {
-            runtime->log.error("[rt] rxSessionSubmit: must be called between BeginFrame/EndFrame");  // 必须在 BeginFrame/EndFrame 之间调用
+            runtime->log.error(
+                "[rt] rxSessionSubmit: must be called between BeginFrame/EndFrame");  // 必须在 BeginFrame/EndFrame 之间调用
             return RxResult::ErrorUnknown;
         }
         if (packet.commandCount == 0)
@@ -704,10 +714,9 @@ runtime->log.warn("[rt] batch %u declares indexed draw but index buffer handle i
             sortScratch[i] = i;
         }
         const DrawCommand* commands = packet.commands;
-        std::stable_sort(sortScratch.begin(), sortScratch.end(),
-                         [commands](uint32_t a, uint32_t b) {
-                             return commands[a].sortKey < commands[b].sortKey;
-                         });
+        std::stable_sort(sortScratch.begin(), sortScratch.end(), [commands](uint32_t a, uint32_t b) {
+            return commands[a].sortKey < commands[b].sortKey;
+        });
 
         recordCommands(commands, sortScratch.data(), packet.commandCount, push);
 
@@ -732,8 +741,7 @@ runtime->log.warn("[rt] batch %u declares indexed draw but index buffer handle i
         return submitDrawListImpl(list, nullptr, frustum);
     }
 
-    RxResult Session::submitDrawListImpl(DrawList* list, const float* viewBounds,
-                                        const RxFrustum* frustum)
+    RxResult Session::submitDrawListImpl(DrawList* list, const float* viewBounds, const RxFrustum* frustum)
     {
         if (!runtime || !surface)
         {
@@ -745,7 +753,8 @@ runtime->log.warn("[rt] batch %u declares indexed draw but index buffer handle i
         }
         if (!inFrame || !cmd)
         {
-            runtime->log.error("[rt] rxSessionSubmitDrawList: must be called between BeginFrame/EndFrame");  // 必须在 BeginFrame/EndFrame 之间调用
+            runtime->log.error(
+                "[rt] rxSessionSubmitDrawList: must be called between BeginFrame/EndFrame");  // 必须在 BeginFrame/EndFrame 之间调用
             return RxResult::ErrorUnknown;
         }
 
@@ -759,9 +768,8 @@ runtime->log.warn("[rt] batch %u declares indexed draw but index buffer handle i
 
         uint32_t culled = 0;
         uint32_t merged = 0;
-        const std::vector<ResolvedBatch>& batches =
-            frustum != nullptr ? list->resolveFrustum(frustum, culled, merged)
-                               : list->resolve(viewBounds, culled, merged);
+        const std::vector<ResolvedBatch>& batches = frustum != nullptr ? list->resolveFrustum(frustum, culled, merged)
+                                                                       : list->resolve(viewBounds, culled, merged);
         stats.culledCommandCount += culled;
         stats.mergedDrawCount += merged;
 
@@ -769,8 +777,11 @@ runtime->log.warn("[rt] batch %u declares indexed draw but index buffer handle i
         // 「每帧不重排」正是保留式列表相对 DrawPacket 的收益所在。
         // 成批之后一次提交覆盖多段不连续区间，draw call 数与命令数解耦。
         const std::vector<RHI::DrawRange>& ranges = list->resolvedRanges();
-        recordBatches(batches.data(), static_cast<uint32_t>(batches.size()), ranges.data(),
-                      static_cast<uint32_t>(ranges.size()), push);
+        recordBatches(batches.data(),
+            static_cast<uint32_t>(batches.size()),
+            ranges.data(),
+            static_cast<uint32_t>(ranges.size()),
+            push);
 
         if (restoreViewport)
         {
@@ -781,7 +792,6 @@ runtime->log.warn("[rt] batch %u declares indexed draw but index buffer handle i
         }
         return RxResult::Ok;
     }
-
 
     RxResult Session::endFrame()
     {
@@ -839,35 +849,45 @@ runtime->log.warn("[rt] batch %u declares indexed draw but index buffer handle i
 
         if (submitted != RHI::RhiResult::Ok)
         {
-runtime->log.error("[rt] rxSessionEndFrame: submitFrame failed (%s)",  // submitFrame 失败
-                                RHI::resultName(submitted));
+            runtime->log.error("[rt] rxSessionEndFrame: submitFrame failed (%s)",  // submitFrame 失败
+                RHI::resultName(submitted));
             return toRxResult(submitted);
         }
         if (presented != RHI::RhiResult::Ok)
         {
             if (presented != RHI::RhiResult::ErrorSwapchainOutOfDate)
             {
-runtime->log.error("[rt] rxSessionEndFrame: present failed (%s)",  // present 失败
-                                RHI::resultName(presented));
+                runtime->log.error("[rt] rxSessionEndFrame: present failed (%s)",  // present 失败
+                    RHI::resultName(presented));
             }
             return toRxResult(presented);
         }
         return RxResult::Ok;
     }
 
-    RxResult Session::readPixels(int32_t x, int32_t y, uint32_t width, uint32_t height,
-                                 void* outBytes, uint64_t outByteCapacity)
+    RxResult Session::readPixels(
+        int32_t x, int32_t y, uint32_t width, uint32_t height, void* outBytes, uint64_t outByteCapacity)
     {
         // 交换链渲染必须在帧内读取；离屏渲染由 readPixelsFromTexture 处理
-        return readPixelsImpl(offscreenColorTexture.valid() ? offscreenColorTexture
-                                                             : surface->rhi->currentColorTexture(),
-                              x, y, width, height, outBytes, outByteCapacity,
-                              surface->rhi->colorFormat(), true);
+        return readPixelsImpl(
+            offscreenColorTexture.valid() ? offscreenColorTexture : surface->rhi->currentColorTexture(),
+            x,
+            y,
+            width,
+            height,
+            outBytes,
+            outByteCapacity,
+            surface->rhi->colorFormat(),
+            true);
     }
 
-    RxResult Session::readPixelsFromTexture(RHI::TextureHandle texture, int32_t x, int32_t y,
-                                            uint32_t width, uint32_t height,
-                                            void* outBytes, uint64_t outByteCapacity)
+    RxResult Session::readPixelsFromTexture(RHI::TextureHandle texture,
+        int32_t x,
+        int32_t y,
+        uint32_t width,
+        uint32_t height,
+        void* outBytes,
+        uint64_t outByteCapacity)
     {
         if (!runtime || !runtime->device)
         {
@@ -883,14 +903,18 @@ runtime->log.error("[rt] rxSessionEndFrame: present failed (%s)",  // present �
         }
 
         // 离屏纹理读取不要求在帧内，但需要同步等待
-        return readPixelsImpl(texture, x, y, width, height, outBytes, outByteCapacity,
-                              RHI::Format::RGBA8Unorm, false);
+        return readPixelsImpl(texture, x, y, width, height, outBytes, outByteCapacity, RHI::Format::RGBA8Unorm, false);
     }
 
-    RxResult Session::readPixelsImpl(RHI::TextureHandle texture, int32_t x, int32_t y,
-                                     uint32_t width, uint32_t height,
-                                     void* outBytes, uint64_t outByteCapacity,
-                                     RHI::Format format, bool requireInFrame)
+    RxResult Session::readPixelsImpl(RHI::TextureHandle texture,
+        int32_t x,
+        int32_t y,
+        uint32_t width,
+        uint32_t height,
+        void* outBytes,
+        uint64_t outByteCapacity,
+        RHI::Format format,
+        bool requireInFrame)
     {
         if (!runtime || !runtime->device)
         {
@@ -913,9 +937,9 @@ runtime->log.error("[rt] rxSessionEndFrame: present failed (%s)",  // present �
         const uint64_t required = static_cast<uint64_t>(width) * height * kBytesPerPixel;
         if (outByteCapacity < required)
         {
-runtime->log.error("[rt] rxSessionReadPixels: output buffer too small (need %llu, got %llu)",  // 输出缓冲不足
-                                static_cast<unsigned long long>(required),
-                                static_cast<unsigned long long>(outByteCapacity));
+            runtime->log.error("[rt] rxSessionReadPixels: output buffer too small (need %llu, got %llu)",  // 输出缓冲不足
+                static_cast<unsigned long long>(required),
+                static_cast<unsigned long long>(outByteCapacity));
             return RxResult::ErrorInvalidArgument;
         }
 
@@ -940,8 +964,7 @@ runtime->log.error("[rt] rxSessionReadPixels: output buffer too small (need %llu
         region.height = height;
 
         uint32_t rowPitch = 0;
-        const RHI::RhiResult read =
-            runtime->device->readTexture(texture, region, outBytes, outByteCapacity, &rowPitch);
+        const RHI::RhiResult read = runtime->device->readTexture(texture, region, outBytes, outByteCapacity, &rowPitch);
 
         // 读回后必须重开 RenderPass：EndFrame 会无条件 endRenderPass，
         // 不重开就变成未配对的 end，后端会报错并把整帧判废。
@@ -951,8 +974,8 @@ runtime->log.error("[rt] rxSessionReadPixels: output buffer too small (need %llu
             // 帧内没有任何接口能改它（setLighting3D 只写 CPU 侧的 frameUniforms）。
             RHI::RenderPassBeginDesc pass{};
             pass.colorAttachmentCount = 1;
-            pass.colorAttachments[0].texture = offscreenColorTexture.valid()
-                ? offscreenColorTexture : RHI::TextureHandle{};
+            pass.colorAttachments[0].texture =
+                offscreenColorTexture.valid() ? offscreenColorTexture : RHI::TextureHandle{};
             // Load 而不是 Clear：本帧已画好的内容不能被清掉
             pass.colorAttachments[0].loadOp = RHI::LoadOp::Load;
             pass.colorAttachments[0].storeOp = RHI::StoreOp::Store;
@@ -969,17 +992,16 @@ runtime->log.error("[rt] rxSessionReadPixels: output buffer too small (need %llu
                 pass.depthAttachment.loadOp = RHI::LoadOp::Load;
                 pass.depthAttachment.storeOp = RHI::StoreOp::DontCare;
             }
-            pass.extent = offscreenColorTexture.valid()
-                ? RHI::Extent2D{ offscreenWidth, offscreenHeight }
-                : surface->rhi->extent();
+            pass.extent = offscreenColorTexture.valid() ? RHI::Extent2D{ offscreenWidth, offscreenHeight }
+                                                        : surface->rhi->extent();
             pass.debugName = "RxSessionPassAfterReadback";
             cmd->beginRenderPass(pass);
         }
 
         if (read != RHI::RhiResult::Ok)
         {
-runtime->log.error("[rt] rxSessionReadPixels: readTexture failed (%s)",  // readTexture 失败
-                                RHI::resultName(read));
+            runtime->log.error("[rt] rxSessionReadPixels: readTexture failed (%s)",  // readTexture 失败
+                RHI::resultName(read));
             return toRxResult(read);
         }
 
@@ -992,8 +1014,8 @@ runtime->log.error("[rt] rxSessionReadPixels: readTexture failed (%s)",  // read
         {
             for (uint32_t row = 1; row < height; ++row)
             {
-                std::memmove(bytes + static_cast<size_t>(row) * tight,
-                             bytes + static_cast<size_t>(row) * rowPitch, tight);
+                std::memmove(
+                    bytes + static_cast<size_t>(row) * tight, bytes + static_cast<size_t>(row) * rowPitch, tight);
             }
         }
 
@@ -1007,9 +1029,8 @@ runtime->log.error("[rt] rxSessionReadPixels: readTexture failed (%s)",  // read
         return RxResult::Ok;
     }
 
-    RxResult Session::setRenderTarget(RHI::TextureHandle colorTexture,
-                                      RHI::TextureHandle depthTexture,
-                                      uint32_t width, uint32_t height)
+    RxResult Session::setRenderTarget(
+        RHI::TextureHandle colorTexture, RHI::TextureHandle depthTexture, uint32_t width, uint32_t height)
     {
         if (!runtime || !runtime->device)
         {
@@ -1017,7 +1038,8 @@ runtime->log.error("[rt] rxSessionReadPixels: readTexture failed (%s)",  // read
         }
         if (inFrame)
         {
-            runtime->log.error("[rt] rxSessionSetRenderTarget: must be called after EndFrame");  // 必须在 EndFrame 之后调用
+            runtime->log.error(
+                "[rt] rxSessionSetRenderTarget: must be called after EndFrame");  // 必须在 EndFrame 之后调用
             return RxResult::ErrorUnknown;
         }
 
@@ -1027,14 +1049,15 @@ runtime->log.error("[rt] rxSessionReadPixels: readTexture failed (%s)",  // read
         offscreenHeight = height;
 
         runtime->log.debug("[rt] Session render target set: color=%s depth=%s %ux%u",
-                           colorTexture.valid() ? "valid" : "swapchain",
-                           depthTexture.valid() ? "valid" : "none",
-                           width, height);
+            colorTexture.valid() ? "valid" : "swapchain",
+            depthTexture.valid() ? "valid" : "none",
+            width,
+            height);
         return RxResult::Ok;
     }
 
-    RxResult Session::queryVisibility(const float* aabbs, uint32_t aabbCount,
-                                      const float viewBounds[4], VisibilityResult* out)
+    RxResult Session::queryVisibility(
+        const float* aabbs, uint32_t aabbCount, const float viewBounds[4], VisibilityResult* out)
     {
         if (!out || !out->indices || !aabbs || !viewBounds)
         {
@@ -1057,8 +1080,7 @@ runtime->log.error("[rt] rxSessionReadPixels: readTexture failed (%s)",  // read
         for (uint32_t i = 0; i < aabbCount; ++i)
         {
             const float* box = aabbs + static_cast<size_t>(i) * 4;
-            const bool disjoint =
-                box[2] < viewMinX || box[0] > viewMaxX || box[3] < viewMinY || box[1] > viewMaxY;
+            const bool disjoint = box[2] < viewMinX || box[0] > viewMaxX || box[3] < viewMinY || box[1] > viewMaxY;
             if (disjoint)
             {
                 continue;
@@ -1068,8 +1090,9 @@ runtime->log.error("[rt] rxSessionReadPixels: readTexture failed (%s)",  // read
                 // 容量不足不是错误：调用方按 count == capacity 判断是否需要扩容重试。
                 if (runtime)
                 {
-                    runtime->log.warn("[rt] rxSessionQueryVisibility: output capacity %u full, results truncated",  // 输出容量已满
-                                      out->capacity);
+                    runtime->log.warn(
+                        "[rt] rxSessionQueryVisibility: output capacity %u full, results truncated",  // 输出容量已满
+                        out->capacity);
                 }
                 break;
             }
@@ -1078,5 +1101,4 @@ runtime->log.error("[rt] rxSessionReadPixels: readTexture failed (%s)",  // read
         }
         return RxResult::Ok;
     }
-
 }  // namespace Render::RT::detail

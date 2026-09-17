@@ -113,14 +113,12 @@
 //      故抬 major。旧接口恒返回 ErrorUnsupportedBackend，无可用调用方。
 #define RENDERX_ABI_VERSION_MAJOR 5
 #define RENDERX_ABI_VERSION_MINOR 3
-#define RENDERX_ABI_VERSION \
-    ((RENDERX_ABI_VERSION_MAJOR << 16) | RENDERX_ABI_VERSION_MINOR)
+#define RENDERX_ABI_VERSION       ((RENDERX_ABI_VERSION_MAJOR << 16) | RENDERX_ABI_VERSION_MINOR)
 
 namespace Render
 {
     namespace RT
     {
-
         // ==================== 结果码 ====================
 
         enum class RxResult : int32_t
@@ -154,19 +152,43 @@ namespace Render
         // enum class : uint64_t —— 8 字节 C 布局 + 编译期类型隔离。
         // 0 恒为无效值。
 
-        enum class RuntimeHandle : uint64_t { Invalid = 0 };
-        enum class SurfaceHandle : uint64_t { Invalid = 0 };
-        enum class SessionHandle : uint64_t { Invalid = 0 };
-        enum class BufferHandle : uint64_t { Invalid = 0 };
-        enum class TextureHandle : uint64_t { Invalid = 0 };
+        enum class RuntimeHandle : uint64_t
+        {
+            Invalid = 0
+        };
+        enum class SurfaceHandle : uint64_t
+        {
+            Invalid = 0
+        };
+        enum class SessionHandle : uint64_t
+        {
+            Invalid = 0
+        };
+        enum class BufferHandle : uint64_t
+        {
+            Invalid = 0
+        };
+        enum class TextureHandle : uint64_t
+        {
+            Invalid = 0
+        };
         /// 持久几何仓：可增量更新的顶点/索引存储（见「增量渲染」一节）
-        enum class GeometryStoreHandle : uint64_t { Invalid = 0 };
+        enum class GeometryStoreHandle : uint64_t
+        {
+            Invalid = 0
+        };
         /// 保留式绘制列表：DLL 侧持有并复用的 DrawCommand 集合
-        enum class DrawListHandle : uint64_t { Invalid = 0 };
+        enum class DrawListHandle : uint64_t
+        {
+            Invalid = 0
+        };
         /// 字体：一份字体数据 + 一个固定像素高度 + 它专属的字形图集
-        enum class FontHandle : uint64_t { Invalid = 0 };
+        enum class FontHandle : uint64_t
+        {
+            Invalid = 0
+        };
 
-        template <typename H>
+        template<typename H>
         constexpr bool rxValid(H h)
         {
             return h != H::Invalid;
@@ -290,12 +312,18 @@ namespace Render
         {
             switch (fmt)
             {
-            case VertexFormat::P3C3: return 24;
-            case VertexFormat::P3C4: return 28;
-            case VertexFormat::P3N3: return 24;
-            case VertexFormat::P2T2C4: return 32;
-            case VertexFormat::P3O2C4: return 36;
-            case VertexFormat::P3T2C4: return 36;
+            case VertexFormat::P3C3:
+                return 24;
+            case VertexFormat::P3C4:
+                return 28;
+            case VertexFormat::P3N3:
+                return 24;
+            case VertexFormat::P2T2C4:
+                return 32;
+            case VertexFormat::P3O2C4:
+                return 36;
+            case VertexFormat::P3T2C4:
+                return 36;
             }
             return 0;
         }
@@ -477,6 +505,7 @@ namespace Render
              */
             void* glGetProcAddress;
         };
+
         static_assert(sizeof(RuntimeDesc) == 56, "RuntimeDesc ABI size changed");
 
         struct SurfaceDesc
@@ -492,6 +521,7 @@ namespace Render
             uint8_t _pad0[3];
             uint32_t _pad1;
         };
+
         static_assert(sizeof(SurfaceDesc) == 40, "SurfaceDesc ABI size changed");
 
         struct SessionDesc
@@ -501,6 +531,7 @@ namespace Render
             SurfaceHandle surface;
             float clearColor[4];
         };
+
         static_assert(sizeof(SessionDesc) == 32, "SessionDesc ABI size changed");
 
         struct BufferDesc
@@ -511,6 +542,7 @@ namespace Render
             uint8_t cpuWritable;
             uint8_t _pad0[7];
         };
+
         static_assert(sizeof(BufferDesc) == 16, "BufferDesc ABI size changed");
 
         struct PipelineDesc
@@ -544,6 +576,7 @@ namespace Render
             /// 空指针表示按 vertexFormat + space 使用默认 shader。
             const char* shaderName;
         };
+
         static_assert(sizeof(PipelineDesc) == 32, "PipelineDesc ABI size changed");
 
         struct TextureDesc
@@ -554,6 +587,7 @@ namespace Render
             const uint8_t* rgba;
             uint64_t rgbaBytes;
         };
+
         static_assert(sizeof(TextureDesc) == 24, "TextureDesc ABI size changed");
 
         /// 纹理用途标志（用于创建渲染目标等特殊用途纹理）
@@ -569,6 +603,7 @@ namespace Render
             /// 可作为 GPU 读回源（readPixels 支持）
             TransferSrc = 1u << 3,
         };
+
         inline TextureUsageFlag operator|(TextureUsageFlag a, TextureUsageFlag b)
         {
             return static_cast<TextureUsageFlag>(static_cast<uint32_t>(a) | static_cast<uint32_t>(b));
@@ -582,6 +617,7 @@ namespace Render
             TextureUsageFlag usage;  /// 必须包含 ColorAttachment | TransferSrc
             uint32_t _pad0;
         };
+
         static_assert(sizeof(RenderTargetDesc) == 16, "RenderTargetDesc ABI size changed");
 
         // ---------- 字体 ----------
@@ -628,6 +664,7 @@ namespace Render
              */
             uint32_t sdfPadding;
         };
+
         static_assert(sizeof(FontDesc) == 32, "FontDesc ABI size changed");
 
         /// 字体级度量，单位为像素，已按 FontDesc::pixelHeight 缩放
@@ -642,6 +679,7 @@ namespace Render
             /// 回显创建时的 pixelHeight，便于调用方按需缩放
             float pixelHeight;
         };
+
         static_assert(sizeof(FontMetrics) == 16, "FontMetrics ABI size changed");
 
         /**
@@ -669,6 +707,7 @@ namespace Render
             /// 水平步进（像素）
             float advance;
         };
+
         static_assert(sizeof(GlyphInfo) == 36, "GlyphInfo ABI size changed");
 
         struct MaterialDesc
@@ -688,6 +727,7 @@ namespace Render
             /// Phong 高光指数，越大高光越锐。仅 Mesh3D / Mesh3DWire 消费。
             float shininess;
         };
+
         static_assert(sizeof(MaterialDesc) == 56, "MaterialDesc ABI size changed");
 
         // ==================== 3D 光照 ====================
@@ -714,6 +754,7 @@ namespace Render
             float color[3];
             float intensity;
         };
+
         static_assert(sizeof(DirectionalLight3D) == 32, "DirectionalLight3D ABI size changed");
 
         struct Lighting3DDesc
@@ -749,6 +790,7 @@ namespace Render
             /// 占位，把结构体尺寸补到 16 的倍数，与 std140 块尺寸一致
             uint32_t _pad0[2];
         };
+
         static_assert(sizeof(Lighting3DDesc) == 160, "Lighting3DDesc ABI size changed");
 
         // ==================== 绘制命令 ====================
@@ -787,6 +829,7 @@ namespace Render
             float lineWidth;
             float pointSize;
         };
+
         static_assert(sizeof(DrawCommand) == 80, "DrawCommand ABI size changed");
 
         /**
@@ -807,6 +850,7 @@ namespace Render
             float viewport[4];
             uint64_t frameId;
         };
+
         static_assert(sizeof(DrawPacket) == 104, "DrawPacket ABI size changed");
 
         /// 瞬态缓冲分配结果。cpuPtr 仅在本帧 begin/end 之间有效。
@@ -817,6 +861,7 @@ namespace Render
             uint32_t offset;
             uint32_t sizeBytes;
         };
+
         static_assert(sizeof(TransientAlloc) == 24, "TransientAlloc ABI size changed");
 
         /// 可见性查询结果。indices 数组由调用方分配，DLL 只填充。
@@ -826,6 +871,7 @@ namespace Render
             uint32_t count;
             uint32_t capacity;
         };
+
         static_assert(sizeof(VisibilityResult) == 16, "VisibilityResult ABI size changed");
 
         // ==================== 增量渲染：持久几何仓 ====================
@@ -860,6 +906,7 @@ namespace Render
             uint8_t forIndices;
             uint8_t _pad0[3];
         };
+
         static_assert(sizeof(GeometryStoreDesc) == 24, "GeometryStoreDesc ABI size changed");
 
         /**
@@ -885,6 +932,7 @@ namespace Render
             uint32_t offset;
             uint32_t sizeBytes;
         };
+
         static_assert(sizeof(GeometryBlock) == 24, "GeometryBlock ABI size changed");
 
         struct GeometryStoreStats
@@ -902,6 +950,7 @@ namespace Render
             uint32_t growCount;
             uint32_t _pad0;
         };
+
         static_assert(sizeof(GeometryStoreStats) == 48, "GeometryStoreStats ABI size changed");
 
         // ==================== 增量渲染：保留式绘制列表 ====================
@@ -935,6 +984,7 @@ namespace Render
             float maxY;
             float maxZ;
         };
+
         static_assert(sizeof(RxAabb3) == 24, "RxAabb3 ABI size changed");
 
         /**
@@ -951,6 +1001,7 @@ namespace Render
         {
             float planes[6][4];
         };
+
         static_assert(sizeof(RxFrustum) == 96, "RxFrustum ABI size changed");
 
         struct DrawListDesc
@@ -963,6 +1014,7 @@ namespace Render
             uint8_t enableCulling;
             uint8_t _pad0[2];
         };
+
         static_assert(sizeof(DrawListDesc) == 8, "DrawListDesc ABI size changed");
 
         struct DrawListStats
@@ -978,6 +1030,7 @@ namespace Render
             uint32_t sortCount;
             uint64_t capacityBytes;
         };
+
         static_assert(sizeof(DrawListStats) == 24, "DrawListStats ABI size changed");
 
         struct FrameStats
@@ -999,6 +1052,7 @@ namespace Render
             uint64_t geometryUploadBytes;
             uint64_t gpuMemoryBytes;
         };
+
         static_assert(sizeof(FrameStats) == 56, "FrameStats ABI size changed");
 
         /**
@@ -1029,6 +1083,7 @@ namespace Render
             uint32_t uniformBufferOffsetAlignment;
             uint32_t maxFramesInFlight;
         };
+
         static_assert(sizeof(Capabilities) == 292, "Capabilities ABI size changed");
 
         // ==================== C API ====================
@@ -1042,396 +1097,397 @@ namespace Render
 
         extern "C"
         {
+            /// 返回 DLL 编译时的 ABI 版本，用于与 RENDERX_ABI_VERSION 比对
+            RENDER_API uint32_t rxGetAbiVersion();
+            RENDER_API const char* rxResultName(RxResult result);
+            RENDER_API const char* rxBackendName(Backend backend);
 
-        /// 返回 DLL 编译时的 ABI 版本，用于与 RENDERX_ABI_VERSION 比对
-        RENDER_API uint32_t rxGetAbiVersion();
-        RENDER_API const char* rxResultName(RxResult result);
-        RENDER_API const char* rxBackendName(Backend backend);
+            /// 查询某后端在当前 DLL 构建与当前机器上是否可用
+            RENDER_API uint8_t rxIsBackendAvailable(Backend backend);
 
-        /// 查询某后端在当前 DLL 构建与当前机器上是否可用
-        RENDER_API uint8_t rxIsBackendAvailable(Backend backend);
+            // ---------- Runtime：进程内的 GPU 与共享资源 ----------
 
-        // ---------- Runtime：进程内的 GPU 与共享资源 ----------
+            /**
+             * @brief 创建 Runtime
+             *
+             * 一个 Runtime 拥有一个 GPU 设备与全部共享资源（管线缓存、字体图集、
+             * 缓冲池）。多窗口共享同一个 Runtime，各窗口只需各自的 Surface 与
+             * Session——这是资源共享的前提。此前设备与窗口一对一绑死，
+             * 每个窗口各自持有一份 2048x2048 字体图集与全套管线。
+             *
+             * 失败返回 Invalid，原因通过 desc->logCallback 报告。
+             * 后端不可用时直接失败，不会静默回退到 Null 后端。
+             */
+            RENDER_API RuntimeHandle rxRuntimeCreate(const RuntimeDesc* desc);
+            RENDER_API void rxRuntimeDestroy(RuntimeHandle runtime);
+            RENDER_API RxResult rxRuntimeGetCapabilities(RuntimeHandle runtime, Capabilities* out);
 
-        /**
-         * @brief 创建 Runtime
-         *
-         * 一个 Runtime 拥有一个 GPU 设备与全部共享资源（管线缓存、字体图集、
-         * 缓冲池）。多窗口共享同一个 Runtime，各窗口只需各自的 Surface 与
-         * Session——这是资源共享的前提。此前设备与窗口一对一绑死，
-         * 每个窗口各自持有一份 2048x2048 字体图集与全套管线。
-         *
-         * 失败返回 Invalid，原因通过 desc->logCallback 报告。
-         * 后端不可用时直接失败，不会静默回退到 Null 后端。
-         */
-        RENDER_API RuntimeHandle rxRuntimeCreate(const RuntimeDesc* desc);
-        RENDER_API void rxRuntimeDestroy(RuntimeHandle runtime);
-        RENDER_API RxResult rxRuntimeGetCapabilities(RuntimeHandle runtime, Capabilities* out);
+            RENDER_API BufferHandle rxBufferCreate(RuntimeHandle runtime, const BufferDesc* desc);
+            RENDER_API void rxBufferDestroy(RuntimeHandle runtime, BufferHandle buffer);
+            RENDER_API RxResult rxBufferUpload(
+                RuntimeHandle runtime, BufferHandle buffer, uint64_t offset, uint64_t sizeBytes, const void* data);
 
-        RENDER_API BufferHandle rxBufferCreate(RuntimeHandle runtime, const BufferDesc* desc);
-        RENDER_API void rxBufferDestroy(RuntimeHandle runtime, BufferHandle buffer);
-        RENDER_API RxResult rxBufferUpload(RuntimeHandle runtime, BufferHandle buffer,
-                                           uint64_t offset, uint64_t sizeBytes, const void* data);
+            /**
+             * @brief 创建自定义管线，返回管线索引
+             *
+             * 返回值是索引而不是句柄：DrawCommand::pipelineIndex 是 uint16，
+             * 绘制路径每帧要用它做数万次查表，索引可以直接下标寻址。
+             * 0 表示创建失败（0 恒为「让 Runtime 按 DrawCommand 自行解析」）。
+             */
+            RENDER_API uint16_t rxPipelineCreate(RuntimeHandle runtime, const PipelineDesc* desc);
+            RENDER_API uint16_t rxPipelineGetDefault(RuntimeHandle runtime, DefaultPipeline kind);
 
-        /**
-         * @brief 创建自定义管线，返回管线索引
-         *
-         * 返回值是索引而不是句柄：DrawCommand::pipelineIndex 是 uint16，
-         * 绘制路径每帧要用它做数万次查表，索引可以直接下标寻址。
-         * 0 表示创建失败（0 恒为「让 Runtime 按 DrawCommand 自行解析」）。
-         */
-        RENDER_API uint16_t rxPipelineCreate(RuntimeHandle runtime, const PipelineDesc* desc);
-        RENDER_API uint16_t rxPipelineGetDefault(RuntimeHandle runtime, DefaultPipeline kind);
+            RENDER_API TextureHandle rxTextureCreate(RuntimeHandle runtime, const TextureDesc* desc);
+            RENDER_API void rxTextureDestroy(RuntimeHandle runtime, TextureHandle texture);
+            RENDER_API RxResult rxTextureUpdate(RuntimeHandle runtime, TextureHandle texture, const TextureDesc* desc);
 
-        RENDER_API TextureHandle rxTextureCreate(RuntimeHandle runtime, const TextureDesc* desc);
-        RENDER_API void rxTextureDestroy(RuntimeHandle runtime, TextureHandle texture);
-        RENDER_API RxResult rxTextureUpdate(RuntimeHandle runtime, TextureHandle texture,
-                                            const TextureDesc* desc);
+            /**
+             * @brief 创建渲染目标纹理（离屏渲染用）
+             *
+             * 创建可作为 Framebuffer 颜色附件的纹理。必须包含 ColorAttachment 用途，
+             * 建议同时包含 TransferSrc 以支持 rxSessionReadPixelsFromTexture 读回。
+             *
+             * @param usage 必须包含 TextureUsageFlag::ColorAttachment
+             * @return 无效句柄表示创建失败
+             */
+            RENDER_API TextureHandle rxTextureCreateRenderTarget(RuntimeHandle runtime, const RenderTargetDesc* desc);
 
-        /**
-         * @brief 创建渲染目标纹理（离屏渲染用）
-         *
-         * 创建可作为 Framebuffer 颜色附件的纹理。必须包含 ColorAttachment 用途，
-         * 建议同时包含 TransferSrc 以支持 rxSessionReadPixelsFromTexture 读回。
-         *
-         * @param usage 必须包含 TextureUsageFlag::ColorAttachment
-         * @return 无效句柄表示创建失败
-         */
-        RENDER_API TextureHandle rxTextureCreateRenderTarget(RuntimeHandle runtime,
-                                                             const RenderTargetDesc* desc);
+            RENDER_API uint16_t rxMaterialAdd(RuntimeHandle runtime, const MaterialDesc* desc);
+            RENDER_API RxResult rxMaterialUpdate(RuntimeHandle runtime, uint16_t index, const MaterialDesc* desc);
 
-        RENDER_API uint16_t rxMaterialAdd(RuntimeHandle runtime, const MaterialDesc* desc);
-        RENDER_API RxResult rxMaterialUpdate(RuntimeHandle runtime, uint16_t index,
-                                             const MaterialDesc* desc);
+            /**
+             * @brief 创建字体（光栅化器 + 专属字形图集）
+             *
+             * DLL 不做文件 IO——字体数据由调用方以内存注入。此前
+             * renderCreateDevice 用 std::filesystem 推导可执行文件目录并从磁盘读
+             * default_screen_font.ttf，使 DLL 依赖运行目录布局，在 macOS .app
+             * bundle 下极易失效。
+             *
+             * 图集是懒填充的：创建时不预烘任何字符，字形在首次 rxFontGlyph 时
+             * 才光栅化。CAD 场景的字符集无法预知（图纸里可能是任意 Unicode），
+             * 预烘 ASCII 既浪费又不够用。
+             */
+            RENDER_API RxResult rxFontCreate(RuntimeHandle runtime, const FontDesc* desc, FontHandle* outFont);
+            RENDER_API void rxFontDestroy(RuntimeHandle runtime, FontHandle font);
 
-        /**
-         * @brief 创建字体（光栅化器 + 专属字形图集）
-         *
-         * DLL 不做文件 IO——字体数据由调用方以内存注入。此前
-         * renderCreateDevice 用 std::filesystem 推导可执行文件目录并从磁盘读
-         * default_screen_font.ttf，使 DLL 依赖运行目录布局，在 macOS .app
-         * bundle 下极易失效。
-         *
-         * 图集是懒填充的：创建时不预烘任何字符，字形在首次 rxFontGlyph 时
-         * 才光栅化。CAD 场景的字符集无法预知（图纸里可能是任意 Unicode），
-         * 预烘 ASCII 既浪费又不够用。
-         */
-        RENDER_API RxResult rxFontCreate(RuntimeHandle runtime, const FontDesc* desc,
-                                        FontHandle* outFont);
-        RENDER_API void rxFontDestroy(RuntimeHandle runtime, FontHandle font);
+            RENDER_API RxResult rxFontMetrics(RuntimeHandle runtime, FontHandle font, FontMetrics* outMetrics);
 
-        RENDER_API RxResult rxFontMetrics(RuntimeHandle runtime, FontHandle font,
-                                         FontMetrics* outMetrics);
+            /**
+             * @brief 查字形，未光栅化则就地光栅化并写入图集
+             *
+             * 只改 CPU 侧图集影子，不碰 GPU：上传统一由 rxFontFlushAtlas 做，
+             * 否则「排一行字」会变成逐字符一次纹理上传。
+             *
+             * @return Ok；`ErrorOutOfMemory` 表示图集已满（当前实现不做逐出，
+             *         调用方应换更大的 atlasWidth/Height 重建字体）。
+             *         字体里没有该码点时返回 Ok 且 GlyphInfo 全零 —— 缺字不是错误，
+             *         调用方跳过该四边形即可，不应因此中断整行排版。
+             */
+            RENDER_API RxResult rxFontGlyph(
+                RuntimeHandle runtime, FontHandle font, uint32_t codepoint, GlyphInfo* outGlyph);
 
-        /**
-         * @brief 查字形，未光栅化则就地光栅化并写入图集
-         *
-         * 只改 CPU 侧图集影子，不碰 GPU：上传统一由 rxFontFlushAtlas 做，
-         * 否则「排一行字」会变成逐字符一次纹理上传。
-         *
-         * @return Ok；`ErrorOutOfMemory` 表示图集已满（当前实现不做逐出，
-         *         调用方应换更大的 atlasWidth/Height 重建字体）。
-         *         字体里没有该码点时返回 Ok 且 GlyphInfo 全零 —— 缺字不是错误，
-         *         调用方跳过该四边形即可，不应因此中断整行排版。
-         */
-        RENDER_API RxResult rxFontGlyph(RuntimeHandle runtime, FontHandle font,
-                                       uint32_t codepoint, GlyphInfo* outGlyph);
+            /**
+             * @brief 把图集脏区上传到 GPU
+             *
+             * 必须在提交引用了本字体图集的 DrawCommand **之前**调用，且应当每帧
+             * 只调一次（无脏区时是空操作）。放在 rxSessionBeginFrame 之后、
+             * 拼字形四边形之前最自然。
+             */
+            RENDER_API RxResult rxFontFlushAtlas(RuntimeHandle runtime, FontHandle font);
 
-        /**
-         * @brief 把图集脏区上传到 GPU
-         *
-         * 必须在提交引用了本字体图集的 DrawCommand **之前**调用，且应当每帧
-         * 只调一次（无脏区时是空操作）。放在 rxSessionBeginFrame 之后、
-         * 拼字形四边形之前最自然。
-         */
-        RENDER_API RxResult rxFontFlushAtlas(RuntimeHandle runtime, FontHandle font);
+            /// 取图集纹理，填进 DrawCommand::texture。字体销毁后该句柄立即失效。
+            RENDER_API TextureHandle rxFontAtlas(RuntimeHandle runtime, FontHandle font);
 
-        /// 取图集纹理，填进 DrawCommand::texture。字体销毁后该句柄立即失效。
-        RENDER_API TextureHandle rxFontAtlas(RuntimeHandle runtime, FontHandle font);
+            // ---------- 持久几何仓：增量更新的顶点/索引存储 ----------
+            //
+            // 典型用法（10 万条线段的场景，编辑一条）：
+            //
+            //   GeometryStoreHandle store = rxGeometryStoreCreate(runtime, &storeDesc);
+            //   // 建场景：每个图元一块
+            //   for (每个图元) {
+            //       GeometryBlock block{};
+            //       rxGeometryAlloc(store, bytes, &block);
+            //       rxGeometryWrite(store, block.id, 0, bytes, vertices);
+            //       记录 block;  // 之后靠它做增量更新
+            //   }
+            //   // 编辑一条：只重写那一块，其余 99999 条一个字节都不动
+            //   rxGeometryWrite(store, block.id, 0, bytes, newVertices);
 
-        // ---------- 持久几何仓：增量更新的顶点/索引存储 ----------
-        //
-        // 典型用法（10 万条线段的场景，编辑一条）：
-        //
-        //   GeometryStoreHandle store = rxGeometryStoreCreate(runtime, &storeDesc);
-        //   // 建场景：每个图元一块
-        //   for (每个图元) {
-        //       GeometryBlock block{};
-        //       rxGeometryAlloc(store, bytes, &block);
-        //       rxGeometryWrite(store, block.id, 0, bytes, vertices);
-        //       记录 block;  // 之后靠它做增量更新
-        //   }
-        //   // 编辑一条：只重写那一块，其余 99999 条一个字节都不动
-        //   rxGeometryWrite(store, block.id, 0, bytes, newVertices);
+            RENDER_API GeometryStoreHandle rxGeometryStoreCreate(RuntimeHandle runtime, const GeometryStoreDesc* desc);
+            RENDER_API void rxGeometryStoreDestroy(RuntimeHandle runtime, GeometryStoreHandle store);
 
-        RENDER_API GeometryStoreHandle rxGeometryStoreCreate(RuntimeHandle runtime,
-                                                            const GeometryStoreDesc* desc);
-        RENDER_API void rxGeometryStoreDestroy(RuntimeHandle runtime, GeometryStoreHandle store);
+            /**
+             * 取仓当前的底层缓冲句柄。
+             *
+             * 不要求在扩容后重新调用：公共句柄数值在扩容时保持不变（原地改写槽位），
+             * 因此这个访问器与 `GeometryBlock::buffer` 拿到的是同一个稳定句柄。
+             */
+            RENDER_API BufferHandle rxGeometryStoreGetBuffer(RuntimeHandle runtime, GeometryStoreHandle store);
 
-        /**
-         * 取仓当前的底层缓冲句柄。
-         *
-         * 不要求在扩容后重新调用：公共句柄数值在扩容时保持不变（原地改写槽位），
-         * 因此这个访问器与 `GeometryBlock::buffer` 拿到的是同一个稳定句柄。
-         */
-        RENDER_API BufferHandle rxGeometryStoreGetBuffer(RuntimeHandle runtime,
-                                                        GeometryStoreHandle store);
+            /**
+             * @brief 在仓内分配一块
+             *
+             * @return Ok；`ErrorGeometryStoreGrown` 表示分配成功但底层缓冲已被替换，
+             *         调用方需刷新此前持有的所有 GeometryBlock::buffer；
+             *         `ErrorOutOfMemory` 表示达到 maxBytes 上限。
+             */
+            RENDER_API RxResult rxGeometryAlloc(
+                RuntimeHandle runtime, GeometryStoreHandle store, uint64_t sizeBytes, GeometryBlock* out);
 
-        /**
-         * @brief 在仓内分配一块
-         *
-         * @return Ok；`ErrorGeometryStoreGrown` 表示分配成功但底层缓冲已被替换，
-         *         调用方需刷新此前持有的所有 GeometryBlock::buffer；
-         *         `ErrorOutOfMemory` 表示达到 maxBytes 上限。
-         */
-        RENDER_API RxResult rxGeometryAlloc(RuntimeHandle runtime, GeometryStoreHandle store,
-                                           uint64_t sizeBytes, GeometryBlock* out);
+            /**
+             * @brief 写入块内数据（增量更新的核心）
+             *
+             * 只标记脏区间，不立即上传。脏区间在帧末（或 rxGeometryFlush）合并后
+             * 一次性提交，因此「改 1 万个小块」不会变成 1 万次 GPU 传输。
+             *
+             * @param blockId  rxGeometryAlloc 返回的 GeometryBlock::id
+             * @param byteOffset 块内偏移
+             */
+            RENDER_API RxResult rxGeometryWrite(RuntimeHandle runtime,
+                GeometryStoreHandle store,
+                uint64_t blockId,
+                uint32_t byteOffset,
+                uint32_t sizeBytes,
+                const void* data);
 
-        /**
-         * @brief 写入块内数据（增量更新的核心）
-         *
-         * 只标记脏区间，不立即上传。脏区间在帧末（或 rxGeometryFlush）合并后
-         * 一次性提交，因此「改 1 万个小块」不会变成 1 万次 GPU 传输。
-         *
-         * @param blockId  rxGeometryAlloc 返回的 GeometryBlock::id
-         * @param byteOffset 块内偏移
-         */
-        RENDER_API RxResult rxGeometryWrite(RuntimeHandle runtime, GeometryStoreHandle store,
-                                           uint64_t blockId, uint32_t byteOffset,
-                                           uint32_t sizeBytes, const void* data);
+            /// 释放一块。空闲表会与相邻空洞合并，避免碎片累积。
+            RENDER_API RxResult rxGeometryFree(RuntimeHandle runtime, GeometryStoreHandle store, uint64_t blockId);
 
-        /// 释放一块。空闲表会与相邻空洞合并，避免碎片累积。
-        RENDER_API RxResult rxGeometryFree(RuntimeHandle runtime, GeometryStoreHandle store,
-                                          uint64_t blockId);
+            /// 主动把累积的脏区间刷到 GPU。正常情况下不需要调用——
+            /// Session 在提交前会自动刷；只有在帧外批量建场景时才需要。
+            RENDER_API RxResult rxGeometryFlush(RuntimeHandle runtime, GeometryStoreHandle store);
 
-        /// 主动把累积的脏区间刷到 GPU。正常情况下不需要调用——
-        /// Session 在提交前会自动刷；只有在帧外批量建场景时才需要。
-        RENDER_API RxResult rxGeometryFlush(RuntimeHandle runtime, GeometryStoreHandle store);
+            RENDER_API RxResult rxGeometryStoreGetStats(
+                RuntimeHandle runtime, GeometryStoreHandle store, GeometryStoreStats* out);
 
-        RENDER_API RxResult rxGeometryStoreGetStats(RuntimeHandle runtime, GeometryStoreHandle store,
-                                                   GeometryStoreStats* out);
+            // ---------- 保留式绘制列表 ----------
+            //
+            // 与几何仓配合使用：几何仓免掉重传顶点，绘制列表免掉重建命令。
+            //
+            //   DrawListHandle list = rxDrawListCreate(runtime, &listDesc);
+            //   rxDrawListUpsert(list, slot, &command, aabb);   // 只在图元变化时调
+            //   ...
+            //   rxSessionSubmitDrawList(session, list, viewBounds);  // 每帧一行
 
-        // ---------- 保留式绘制列表 ----------
-        //
-        // 与几何仓配合使用：几何仓免掉重传顶点，绘制列表免掉重建命令。
-        //
-        //   DrawListHandle list = rxDrawListCreate(runtime, &listDesc);
-        //   rxDrawListUpsert(list, slot, &command, aabb);   // 只在图元变化时调
-        //   ...
-        //   rxSessionSubmitDrawList(session, list, viewBounds);  // 每帧一行
+            RENDER_API DrawListHandle rxDrawListCreate(RuntimeHandle runtime, const DrawListDesc* desc);
+            RENDER_API void rxDrawListDestroy(RuntimeHandle runtime, DrawListHandle list);
 
-        RENDER_API DrawListHandle rxDrawListCreate(RuntimeHandle runtime, const DrawListDesc* desc);
-        RENDER_API void rxDrawListDestroy(RuntimeHandle runtime, DrawListHandle list);
+            /**
+             * @brief 写入/更新一个槽位
+             *
+             * @param slot 调用方自行分配的槽号，用它把渲染条目关联回业务图元。
+             *             槽号不必连续；列表按需增长。
+             * @param aabb 世界空间 (minX, minY, maxX, maxY)，用于 DLL 侧剔除。
+             *             传 nullptr 表示该条目永不被剔除（覆盖层通常如此）。
+             */
+            RENDER_API RxResult rxDrawListUpsert(RuntimeHandle runtime,
+                DrawListHandle list,
+                uint32_t slot,
+                const DrawCommand* command,
+                const float aabb[4]);
 
-        /**
-         * @brief 写入/更新一个槽位
-         *
-         * @param slot 调用方自行分配的槽号，用它把渲染条目关联回业务图元。
-         *             槽号不必连续；列表按需增长。
-         * @param aabb 世界空间 (minX, minY, maxX, maxY)，用于 DLL 侧剔除。
-         *             传 nullptr 表示该条目永不被剔除（覆盖层通常如此）。
-         */
-        RENDER_API RxResult rxDrawListUpsert(RuntimeHandle runtime, DrawListHandle list,
-                                             uint32_t slot, const DrawCommand* command,
-                                             const float aabb[4]);
+            /**
+             * @brief 写入/更新一个槽位（3D 包围盒）
+             *
+             * 与 rxDrawListUpsert 的唯一区别是包围盒契约：这里是世界空间 3D AABB，
+             * 与 rxSessionSubmitDrawList3D 的六平面视锥配套。
+             *
+             * 同一个列表里两种 upsert 可以混用（2D 覆盖层 + 3D 图元同框的场景），
+             * 但一个槽位只有一份包围盒：后写的那次覆盖前一次。
+             *
+             * @param bounds 传 nullptr 表示该条目不参与剔除（覆盖层通常如此）。
+             */
+            RENDER_API RxResult rxDrawListUpsert3D(RuntimeHandle runtime,
+                DrawListHandle list,
+                uint32_t slot,
+                const DrawCommand* command,
+                const RxAabb3* bounds);
 
-        /**
-         * @brief 写入/更新一个槽位（3D 包围盒）
-         *
-         * 与 rxDrawListUpsert 的唯一区别是包围盒契约：这里是世界空间 3D AABB，
-         * 与 rxSessionSubmitDrawList3D 的六平面视锥配套。
-         *
-         * 同一个列表里两种 upsert 可以混用（2D 覆盖层 + 3D 图元同框的场景），
-         * 但一个槽位只有一份包围盒：后写的那次覆盖前一次。
-         *
-         * @param bounds 传 nullptr 表示该条目不参与剔除（覆盖层通常如此）。
-         */
-        RENDER_API RxResult rxDrawListUpsert3D(RuntimeHandle runtime, DrawListHandle list,
-                                               uint32_t slot, const DrawCommand* command,
-                                               const RxAabb3* bounds);
+            /// 移除一个槽位。槽位可被后续 upsert 复用。
+            RENDER_API RxResult rxDrawListRemove(RuntimeHandle runtime, DrawListHandle list, uint32_t slot);
 
-        /// 移除一个槽位。槽位可被后续 upsert 复用。
-        RENDER_API RxResult rxDrawListRemove(RuntimeHandle runtime, DrawListHandle list,
-                                             uint32_t slot);
+            /// 清空全部条目，保留已分配容量。
+            RENDER_API RxResult rxDrawListClear(RuntimeHandle runtime, DrawListHandle list);
 
-        /// 清空全部条目，保留已分配容量。
-        RENDER_API RxResult rxDrawListClear(RuntimeHandle runtime, DrawListHandle list);
+            RENDER_API RxResult rxDrawListGetStats(RuntimeHandle runtime, DrawListHandle list, DrawListStats* out);
 
-        RENDER_API RxResult rxDrawListGetStats(RuntimeHandle runtime, DrawListHandle list,
-                                               DrawListStats* out);
+            // ---------- Surface：窗口表面 ----------
 
-        // ---------- Surface：窗口表面 ----------
+            /// 为一个窗口创建可呈现表面。同一 Runtime 可创建任意多个。
+            RENDER_API SurfaceHandle rxSurfaceCreate(RuntimeHandle runtime, const SurfaceDesc* desc);
+            RENDER_API void rxSurfaceDestroy(RuntimeHandle runtime, SurfaceHandle surface);
+            RENDER_API RxResult rxSurfaceResize(
+                RuntimeHandle runtime, SurfaceHandle surface, uint32_t width, uint32_t height);
 
-        /// 为一个窗口创建可呈现表面。同一 Runtime 可创建任意多个。
-        RENDER_API SurfaceHandle rxSurfaceCreate(RuntimeHandle runtime, const SurfaceDesc* desc);
-        RENDER_API void rxSurfaceDestroy(RuntimeHandle runtime, SurfaceHandle surface);
-        RENDER_API RxResult rxSurfaceResize(RuntimeHandle runtime, SurfaceHandle surface,
-                                            uint32_t width, uint32_t height);
+            // ---------- Session：一个视口的相机与提交 ----------
 
-        // ---------- Session：一个视口的相机与提交 ----------
+            RENDER_API SessionHandle rxSessionCreate(const SessionDesc* desc);
+            RENDER_API void rxSessionDestroy(SessionHandle session);
+            RENDER_API void rxSessionSetClearColor(SessionHandle session, float r, float g, float b, float a);
+            RENDER_API void rxSessionSetViewMatrix(SessionHandle session, const float viewMatrix[16]);
 
-        RENDER_API SessionHandle rxSessionCreate(const SessionDesc* desc);
-        RENDER_API void rxSessionDestroy(SessionHandle session);
-        RENDER_API void rxSessionSetClearColor(SessionHandle session, float r, float g, float b, float a);
-        RENDER_API void rxSessionSetViewMatrix(SessionHandle session, const float viewMatrix[16]);
+            /**
+             * @brief 设置本 Session 的可选模型矩阵（列主序 4x4）
+             *
+             * 与 rxSessionSetViewMatrix 是同一类状态：先按模型矩阵变换、再按视图矩阵
+             * 变换，DLL 把两者相乘后写进 push constant 的 uView。**因此着色器、管线与
+             * 三个后端都不需要知道模型矩阵的存在**，顶点也不必在 CPU 上按它重算一遍。
+             *
+             * 存在的理由：拖拽预览。图元顶点常驻显存，预览期间变的只是这个矩阵，
+             * 若在 CPU 上烘焙就得每帧重算并重传选中图元的全部顶点（五十万三角的模型
+             * 约 78MB/帧）。传模型矩阵后预览走同一份常驻几何，顶点一个都不传。
+             *
+             * 语义与使用约束：
+             * - 传 nullptr 复位为「不施加模型变换」。**调用方必须在预览提交结束后复位**，
+             *   否则同一帧的后续提交会继续带着它（2D 覆盖层与屏幕空间管线虽然不读 uView，
+             *   但世界空间的图元会整体偏移）。
+             * - 只适合「本次提交内所有命令共用同一个变换」的场景。逐命令不同的变换
+             *   不在本接口表达范围内（那属于几何本身）。
+             * - 相机与光照不受影响：Lighting3DDesc::viewPos 仍是真实眼点，
+             *   镜面高光位置正确。
+             * - 顶点法线会随该矩阵一起变换，因此旋转/等比缩放的预览光照正确；
+             *   非等比缩放与「把变换烘焙进顶点」有同样的法线近似。
+             */
+            RENDER_API void rxSessionSetModelMatrix(SessionHandle session, const float modelMatrix[16]);
 
-        /**
-         * @brief 设置本 Session 的可选模型矩阵（列主序 4x4）
-         *
-         * 与 rxSessionSetViewMatrix 是同一类状态：先按模型矩阵变换、再按视图矩阵
-         * 变换，DLL 把两者相乘后写进 push constant 的 uView。**因此着色器、管线与
-         * 三个后端都不需要知道模型矩阵的存在**，顶点也不必在 CPU 上按它重算一遍。
-         *
-         * 存在的理由：拖拽预览。图元顶点常驻显存，预览期间变的只是这个矩阵，
-         * 若在 CPU 上烘焙就得每帧重算并重传选中图元的全部顶点（五十万三角的模型
-         * 约 78MB/帧）。传模型矩阵后预览走同一份常驻几何，顶点一个都不传。
-         *
-         * 语义与使用约束：
-         * - 传 nullptr 复位为「不施加模型变换」。**调用方必须在预览提交结束后复位**，
-         *   否则同一帧的后续提交会继续带着它（2D 覆盖层与屏幕空间管线虽然不读 uView，
-         *   但世界空间的图元会整体偏移）。
-         * - 只适合「本次提交内所有命令共用同一个变换」的场景。逐命令不同的变换
-         *   不在本接口表达范围内（那属于几何本身）。
-         * - 相机与光照不受影响：Lighting3DDesc::viewPos 仍是真实眼点，
-         *   镜面高光位置正确。
-         * - 顶点法线会随该矩阵一起变换，因此旋转/等比缩放的预览光照正确；
-         *   非等比缩放与「把变换烘焙进顶点」有同样的法线近似。
-         */
-        RENDER_API void rxSessionSetModelMatrix(SessionHandle session, const float modelMatrix[16]);
+            /**
+             * @brief 设置 3D 光照参数
+             *
+             * 只影响 Mesh3D / Mesh3DWire 管线；2D 管线不读这些值。
+             *
+             * 参数是 Session 级持久状态，不是逐帧参数——设一次即对后续所有帧生效，
+             * 与 rxSessionSetClearColor 同一语义。相机移动只需更新
+             * Lighting3DDesc::viewPos 后重设一次，顶点缓冲无需重传。
+             *
+             * desc 为 nullptr 时关闭光照（等价于全部 enabled = 0），
+             * 此时网格以材质漫反射色平铺，用于「无光照预览」。
+             */
+            RENDER_API void rxSessionSetLighting3D(SessionHandle session, const Lighting3DDesc* desc);
 
-        /**
-         * @brief 设置 3D 光照参数
-         *
-         * 只影响 Mesh3D / Mesh3DWire 管线；2D 管线不读这些值。
-         *
-         * 参数是 Session 级持久状态，不是逐帧参数——设一次即对后续所有帧生效，
-         * 与 rxSessionSetClearColor 同一语义。相机移动只需更新
-         * Lighting3DDesc::viewPos 后重设一次，顶点缓冲无需重传。
-         *
-         * desc 为 nullptr 时关闭光照（等价于全部 enabled = 0），
-         * 此时网格以材质漫反射色平铺，用于「无光照预览」。
-         */
-        RENDER_API void rxSessionSetLighting3D(SessionHandle session, const Lighting3DDesc* desc);
+            /**
+             * @brief 开始一帧
+             *
+             * 内部完成后备缓冲获取（GL 后端在此 makeCurrent）。
+             * 返回 ErrorSurfaceOutOfDate 时调用 rxSurfaceResize 后重试。
+             */
+            RENDER_API RxResult rxSessionBeginFrame(SessionHandle session);
 
-        /**
-         * @brief 开始一帧
-         *
-         * 内部完成后备缓冲获取（GL 后端在此 makeCurrent）。
-         * 返回 ErrorSurfaceOutOfDate 时调用 rxSurfaceResize 后重试。
-         */
-        RENDER_API RxResult rxSessionBeginFrame(SessionHandle session);
+            /// 分配本帧瞬态顶点内存。仅在 BeginFrame/EndFrame 之间有效。
+            RENDER_API RxResult rxSessionAllocTransient(SessionHandle session, uint64_t sizeBytes, TransientAlloc* out);
 
-        /// 分配本帧瞬态顶点内存。仅在 BeginFrame/EndFrame 之间有效。
-        RENDER_API RxResult rxSessionAllocTransient(SessionHandle session, uint64_t sizeBytes,
-                                                    TransientAlloc* out);
+            /// 提交一批绘制命令。同一帧内可多次调用。
+            RENDER_API RxResult rxSessionSubmit(SessionHandle session, const DrawPacket* packet);
 
-        /// 提交一批绘制命令。同一帧内可多次调用。
-        RENDER_API RxResult rxSessionSubmit(SessionHandle session, const DrawPacket* packet);
+            /**
+             * @brief 提交一个保留式绘制列表（增量渲染的每帧入口）
+             *
+             * 与 rxSessionSubmit 的区别：命令由 DLL 持有，调用方不必每帧重建。
+             * DLL 内部依次做：几何仓脏区刷写 → AABB 剔除 → 按需排序 → 合批 → 绘制。
+             *
+             * @param viewBounds 世界空间 (minX, minY, maxX, maxY)。传 nullptr 关闭剔除。
+             *
+             * 同一帧内可以既提交绘制列表（常驻场景）又调 rxSessionSubmit
+             * （覆盖层、预览线等每帧都变的内容），两者的 sortKey 在各自提交内排序。
+             */
+            RENDER_API RxResult rxSessionSubmitDrawList(
+                SessionHandle session, DrawListHandle list, const float viewBounds[4]);
 
-        /**
-         * @brief 提交一个保留式绘制列表（增量渲染的每帧入口）
-         *
-         * 与 rxSessionSubmit 的区别：命令由 DLL 持有，调用方不必每帧重建。
-         * DLL 内部依次做：几何仓脏区刷写 → AABB 剔除 → 按需排序 → 合批 → 绘制。
-         *
-         * @param viewBounds 世界空间 (minX, minY, maxX, maxY)。传 nullptr 关闭剔除。
-         *
-         * 同一帧内可以既提交绘制列表（常驻场景）又调 rxSessionSubmit
-         * （覆盖层、预览线等每帧都变的内容），两者的 sortKey 在各自提交内排序。
-         */
-        RENDER_API RxResult rxSessionSubmitDrawList(SessionHandle session, DrawListHandle list,
-                                                    const float viewBounds[4]);
+            /**
+             * @brief 提交一个保留式绘制列表，按 3D 视锥剔除
+             *
+             * 与 rxSessionSubmitDrawList 的区别只有剔除判据：那边是世界空间矩形
+             * 配 2D 条目 AABB，这里是六平面视锥配 3D 条目 AABB。判据是「条目 AABB
+             * 与视锥有交集」，保守方向安全 —— 拿不准就多画，绝不漏画。
+             *
+             * @param frustum 传 nullptr 关闭剔除（与传全零视锥不同，后者会剔掉一切）。
+             *
+             * 相机与投影只在宿主侧，合并矩阵由 rxSessionSetViewMatrix 送进来，
+             * DLL 拆不出两个因子，因此视锥必须由调用方按同一对矩阵提取。
+             */
+            RENDER_API RxResult rxSessionSubmitDrawList3D(
+                SessionHandle session, DrawListHandle list, const RxFrustum* frustum);
 
-        /**
-         * @brief 提交一个保留式绘制列表，按 3D 视锥剔除
-         *
-         * 与 rxSessionSubmitDrawList 的区别只有剔除判据：那边是世界空间矩形
-         * 配 2D 条目 AABB，这里是六平面视锥配 3D 条目 AABB。判据是「条目 AABB
-         * 与视锥有交集」，保守方向安全 —— 拿不准就多画，绝不漏画。
-         *
-         * @param frustum 传 nullptr 关闭剔除（与传全零视锥不同，后者会剔掉一切）。
-         *
-         * 相机与投影只在宿主侧，合并矩阵由 rxSessionSetViewMatrix 送进来，
-         * DLL 拆不出两个因子，因此视锥必须由调用方按同一对矩阵提取。
-         */
-        RENDER_API RxResult rxSessionSubmitDrawList3D(SessionHandle session, DrawListHandle list,
-                                                      const RxFrustum* frustum);
+            /// 结束并呈现本帧（GL: swapBuffers, Metal: presentDrawable, VK: queuePresent）
+            RENDER_API RxResult rxSessionEndFrame(SessionHandle session);
 
-        /// 结束并呈现本帧（GL: swapBuffers, Metal: presentDrawable, VK: queuePresent）
-        RENDER_API RxResult rxSessionEndFrame(SessionHandle session);
+            RENDER_API RxResult rxSessionQueryVisibility(SessionHandle session,
+                const float* aabbs,
+                uint32_t aabbCount,
+                const float viewBounds[4],
+                VisibilityResult* out);
+            RENDER_API RxResult rxSessionGetStats(SessionHandle session, FrameStats* out);
 
-        RENDER_API RxResult rxSessionQueryVisibility(SessionHandle session, const float* aabbs,
-                                                     uint32_t aabbCount, const float viewBounds[4],
-                                                     VisibilityResult* out);
-        RENDER_API RxResult rxSessionGetStats(SessionHandle session, FrameStats* out);
+            /**
+             * @brief 读回当前后备缓冲的像素（视图导出/截图）
+             *
+             * 必须在 rxSessionEndFrame **之前**调用——EndFrame 之后后备缓冲已交给
+             * 呈现引擎，内容不再保证有效。
+             *
+             * 输出恒为 RGBA8、**左上原点**、逐行紧凑（rowPitch = width * 4）。
+             * 各后端的原生原点不一致（GL 是左下），翻转在 DLL 内完成，
+             * 这样调用方不需要知道当前跑的是哪个后端。
+             *
+             * @param x,y      读取区域左上角（像素，左上原点）
+             * @param outBytes 至少 width * height * 4 字节
+             * @return ErrorInvalidArgument 表示区域越界或缓冲过小
+             */
+            RENDER_API RxResult rxSessionReadPixels(SessionHandle session,
+                uint32_t x,
+                uint32_t y,
+                uint32_t width,
+                uint32_t height,
+                void* outBytes,
+                uint64_t outByteCapacity);
 
-        /**
-         * @brief 读回当前后备缓冲的像素（视图导出/截图）
-         *
-         * 必须在 rxSessionEndFrame **之前**调用——EndFrame 之后后备缓冲已交给
-         * 呈现引擎，内容不再保证有效。
-         *
-         * 输出恒为 RGBA8、**左上原点**、逐行紧凑（rowPitch = width * 4）。
-         * 各后端的原生原点不一致（GL 是左下），翻转在 DLL 内完成，
-         * 这样调用方不需要知道当前跑的是哪个后端。
-         *
-         * @param x,y      读取区域左上角（像素，左上原点）
-         * @param outBytes 至少 width * height * 4 字节
-         * @return ErrorInvalidArgument 表示区域越界或缓冲过小
-         */
-        RENDER_API RxResult rxSessionReadPixels(SessionHandle session, uint32_t x, uint32_t y,
-                                                uint32_t width, uint32_t height, void* outBytes,
-                                                uint64_t outByteCapacity);
+            /**
+             * @brief 设置 Session 的渲染目标为离屏纹理
+             *
+             * 调用后，后续的 rxSessionBeginFrame 将绑定指定的颜色/深度纹理，
+             * 而非交换链后备缓冲。纹理需由 rxTextureCreate 创建，
+             * usage 必须包含 ColorAttachment | TransferSrc。
+             *
+             * @param colorTexture 颜色附件纹理（无效句柄表示恢复到交换链）
+             * @param depthTexture 可选深度附件纹理（无效句柄表示不使用深度）
+             * @param extent       渲染目标尺寸。传 0 时使用 colorTexture 的尺寸
+             * @return ErrorInvalidArgument 表示纹理格式/用途不支持
+             */
+            RENDER_API RxResult rxSessionSetRenderTarget(SessionHandle session,
+                TextureHandle colorTexture,
+                TextureHandle depthTexture,
+                uint32_t width,
+                uint32_t height);
 
-        /**
-         * @brief 设置 Session 的渲染目标为离屏纹理
-         *
-         * 调用后，后续的 rxSessionBeginFrame 将绑定指定的颜色/深度纹理，
-         * 而非交换链后备缓冲。纹理需由 rxTextureCreate 创建，
-         * usage 必须包含 ColorAttachment | TransferSrc。
-         *
-         * @param colorTexture 颜色附件纹理（无效句柄表示恢复到交换链）
-         * @param depthTexture 可选深度附件纹理（无效句柄表示不使用深度）
-         * @param extent       渲染目标尺寸。传 0 时使用 colorTexture 的尺寸
-         * @return ErrorInvalidArgument 表示纹理格式/用途不支持
-         */
-        RENDER_API RxResult rxSessionSetRenderTarget(SessionHandle session,
-                                                     TextureHandle colorTexture,
-                                                     TextureHandle depthTexture,
-                                                     uint32_t width, uint32_t height);
+            /**
+             * @brief 从指定纹理读回像素（离屏渲染导出）
+             *
+             * 与 rxSessionReadPixels 的区别：
+             * - 不要求在 BeginFrame/EndFrame 之间调用
+             * - 直接读取指定纹理，而非当前后备缓冲
+             * - 适用于离屏渲染后的结果导出
+             *
+             * @param texture    要读取的纹理（必须包含 TransferSrc 用途）
+             * @param x,y        读取区域左上角（像素，左上原点）
+             * @param outBytes   至少 width * height * 4 字节
+             */
+            RENDER_API RxResult rxSessionReadPixelsFromTexture(SessionHandle session,
+                TextureHandle texture,
+                uint32_t x,
+                uint32_t y,
+                uint32_t width,
+                uint32_t height,
+                void* outBytes,
+                uint64_t outByteCapacity);
 
-        /**
-         * @brief 从指定纹理读回像素（离屏渲染导出）
-         *
-         * 与 rxSessionReadPixels 的区别：
-         * - 不要求在 BeginFrame/EndFrame 之间调用
-         * - 直接读取指定纹理，而非当前后备缓冲
-         * - 适用于离屏渲染后的结果导出
-         *
-         * @param texture    要读取的纹理（必须包含 TransferSrc 用途）
-         * @param x,y        读取区域左上角（像素，左上原点）
-         * @param outBytes   至少 width * height * 4 字节
-         */
-        RENDER_API RxResult rxSessionReadPixelsFromTexture(SessionHandle session,
-                                                           TextureHandle texture,
-                                                           uint32_t x, uint32_t y,
-                                                           uint32_t width, uint32_t height,
-                                                           void* outBytes,
-                                                           uint64_t outByteCapacity);
+            // ---------- 工具 ----------
 
-        // ---------- 工具 ----------
-
-        /**
-         * @brief 构造排序键
-         *
-         * 布局：layer(8) | transparent(8) | depth(16) | seq(16)，高位优先。
-         * 覆盖层约定 layer=200, transparent=1。
-         */
-        RENDER_API uint64_t rxMakeSortKey(uint8_t layer, uint8_t transparent, uint16_t depth,
-                                          uint16_t seq);
-
+            /**
+             * @brief 构造排序键
+             *
+             * 布局：layer(8) | transparent(8) | depth(16) | seq(16)，高位优先。
+             * 覆盖层约定 layer=200, transparent=1。
+             */
+            RENDER_API uint64_t rxMakeSortKey(uint8_t layer, uint8_t transparent, uint16_t depth, uint16_t seq);
         }  // extern "C"
-
     }  // namespace RT
 }  // namespace Render
 

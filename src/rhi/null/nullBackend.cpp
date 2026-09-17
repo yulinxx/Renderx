@@ -84,7 +84,10 @@ namespace Render::RHI
         class NullCommandList final : public ICommandList
         {
         public:
-            explicit NullCommandList(const RhiLogger& logger) : m_log(logger) {}
+            explicit NullCommandList(const RhiLogger& logger)
+                : m_log(logger)
+            {
+            }
 
             void beginFrame()
             {
@@ -93,7 +96,10 @@ namespace Render::RHI
                 m_boundPipeline = PipelineHandle{};
             }
 
-            bool inRenderPass() const { return m_inRenderPass; }
+            bool inRenderPass() const
+            {
+                return m_inRenderPass;
+            }
 
             RhiResult beginRenderPass(const RenderPassBeginDesc& desc) override
             {
@@ -105,7 +111,8 @@ namespace Render::RHI
                 if (desc.colorAttachmentCount > kMaxColorAttachments)
                 {
                     m_log.error("[null] beginRenderPass: colorAttachmentCount=%u exceeds limit %u",
-                                desc.colorAttachmentCount, kMaxColorAttachments);  // colorAttachmentCount 超过上限
+                        desc.colorAttachmentCount,
+                        kMaxColorAttachments);  // colorAttachmentCount 超过上限
                     return RhiResult::ErrorInvalidArgument;
                 }
                 m_inRenderPass = true;
@@ -132,16 +139,19 @@ namespace Render::RHI
             }
 
             void setViewport(const Viewport&) override {}
+
             void setScissor(const Rect2D&) override {}
 
             void bindVertexBuffer(uint32_t, BufferHandle, uint64_t) override {}
+
             void bindIndexBuffer(BufferHandle, uint64_t, IndexType) override {}
 
             void bindBindGroup(uint32_t set, BindGroupHandle) override
             {
                 if (set >= kMaxDescriptorSets)
                 {
-                    m_log.error("[null] bindBindGroup: set=%u exceeds limit %u", set, kMaxDescriptorSets);  // set 超过上限
+                    m_log.error(
+                        "[null] bindBindGroup: set=%u exceeds limit %u", set, kMaxDescriptorSets);  // set 超过上限
                     return;
                 }
                 m_stats.bindGroupSwitches += 1;
@@ -156,7 +166,9 @@ namespace Render::RHI
                 if (offsetBytes + sizeBytes > kMaxPushConstantBytes)
                 {
                     m_log.error("[null] pushConstants: offset=%u size=%u exceeds kMaxPushConstantBytes=%u",
-                                offsetBytes, sizeBytes, kMaxPushConstantBytes);  // offset size 超过 kMaxPushConstantBytes
+                        offsetBytes,
+                        sizeBytes,
+                        kMaxPushConstantBytes);  // offset size 超过 kMaxPushConstantBytes
                     return;
                 }
                 std::memcpy(m_pushConstants + offsetBytes, data, sizeBytes);
@@ -202,7 +214,8 @@ namespace Render::RHI
             {
                 if (m_inRenderPass)
                 {
-                    m_log.error("[null] dispatchCompute must be called outside RenderPass");  // dispatchCompute 必须在 RenderPass 之外调用
+                    m_log.error("[null] dispatchCompute must be called outside RenderPass");  // dispatchCompute 必须在
+                                                                                              // RenderPass 之外调用
                     return;
                 }
                 if (groupsX == 0 || groupsY == 0 || groupsZ == 0)
@@ -220,23 +233,33 @@ namespace Render::RHI
             {
                 if (m_inRenderPass)
                 {
-                    m_log.error("[null] copyTextureToBuffer must be called outside RenderPass");  // copyTextureToBuffer 必须在 RenderPass 之外调用
+                    m_log.error(
+                        "[null] copyTextureToBuffer must be called outside RenderPass");  // copyTextureToBuffer 必须在
+                                                                                          // RenderPass 之外调用
                 }
             }
 
             void pushDebugGroup(const char*) override {}
+
             void popDebugGroup() override {}
 
-            FrameStats stats() const override { return m_stats; }
+            FrameStats stats() const override
+            {
+                return m_stats;
+            }
 
-            void addVertexBytes(uint64_t bytes) { m_stats.vertexBytesUploaded += bytes; }
+            void addVertexBytes(uint64_t bytes)
+            {
+                m_stats.vertexBytesUploaded += bytes;
+            }
 
         private:
             bool requireRenderPass(const char* what)
             {
                 if (!m_inRenderPass)
                 {
-                    m_log.error("[null] %s must be called between beginRenderPass / endRenderPass", what);  // 必须在 beginRenderPass / endRenderPass 之间调用
+                    m_log.error("[null] %s must be called between beginRenderPass / endRenderPass",
+                        what);  // 必须在 beginRenderPass / endRenderPass 之间调用
                     return false;
                 }
                 return true;
@@ -264,7 +287,10 @@ namespace Render::RHI
         {
         public:
             NullSurface(NullDevice* device, const SurfaceDesc& desc, const RhiLogger& logger)
-                : m_device(device), m_desc(desc), m_extent(desc.initialExtent), m_log(logger)
+                : m_device(device)
+                , m_desc(desc)
+                , m_extent(desc.initialExtent)
+                , m_log(logger)
             {
             }
 
@@ -293,23 +319,61 @@ namespace Render::RHI
 
             RhiResult resize(Extent2D extent) override;
 
-            Extent2D extent() const override { return m_extent; }
-            Format colorFormat() const override { return m_desc.preferredColorFormat; }
-            Format depthFormat() const override { return m_desc.depthFormat; }
-            TextureHandle currentColorTexture() const override { return m_colorTexture; }
-            TextureHandle depthTexture() const override { return m_depthTexture; }
+            Extent2D extent() const override
+            {
+                return m_extent;
+            }
 
-            uint64_t presentCount() const { return m_presentCount; }
+            Format colorFormat() const override
+            {
+                return m_desc.preferredColorFormat;
+            }
+
+            Format depthFormat() const override
+            {
+                return m_desc.depthFormat;
+            }
+
+            TextureHandle currentColorTexture() const override
+            {
+                return m_colorTexture;
+            }
+
+            TextureHandle depthTexture() const override
+            {
+                return m_depthTexture;
+            }
+
+            uint64_t presentCount() const
+            {
+                return m_presentCount;
+            }
 
             void setAttachments(TextureHandle color, TextureHandle depth)
             {
                 m_colorTexture = color;
                 m_depthTexture = depth;
             }
-            TextureHandle colorAttachment() const { return m_colorTexture; }
-            TextureHandle depthAttachment() const { return m_depthTexture; }
-            const SurfaceDesc& desc() const { return m_desc; }
-            void setExtent(Extent2D e) { m_extent = e; }
+
+            TextureHandle colorAttachment() const
+            {
+                return m_colorTexture;
+            }
+
+            TextureHandle depthAttachment() const
+            {
+                return m_depthTexture;
+            }
+
+            const SurfaceDesc& desc() const
+            {
+                return m_desc;
+            }
+
+            void setExtent(Extent2D e)
+            {
+                m_extent = e;
+            }
 
         private:
             NullDevice* m_device = nullptr;
@@ -328,7 +392,8 @@ namespace Render::RHI
         {
         public:
             explicit NullDevice(const DeviceDesc& desc)
-                : m_log(desc.logCallback, desc.logUserData), m_commands(m_log)
+                : m_log(desc.logCallback, desc.logUserData)
+                , m_commands(m_log)
             {
                 m_caps.backend = BackendKind::Null;
                 m_caps.acceptedShaderLanguage = ShaderLanguage::GlslSource;
@@ -362,7 +427,8 @@ namespace Render::RHI
                     // 契约是「所有 ISurface 必须先销毁」。这里不静默清理，
                     // 因为静默清理会掩盖宿主的生命周期错误（旧实现的
                     // Runtime::destroy 双重释放就是这么被掩盖了半年）。
-                    m_log.error("[null] Device destroyed with %zu surfaces still alive", m_surfaces.size());  // 设备销毁时仍有表面未销毁
+                    m_log.error("[null] Device destroyed with %zu surfaces still alive",
+                        m_surfaces.size());  // 设备销毁时仍有表面未销毁
                     for (NullSurface* s : m_surfaces)
                     {
                         delete s;
@@ -372,22 +438,27 @@ namespace Render::RHI
                 m_log.info("[null] Device destroyed");  // 设备已销毁
             }
 
-            const Capabilities& capabilities() const override { return m_caps; }
+            const Capabilities& capabilities() const override
+            {
+                return m_caps;
+            }
 
             // ---------- 表面 ----------
 
             ISurface* createSurface(const SurfaceDesc& desc) override
             {
                 auto* surface = new NullSurface(this, desc, m_log);
-                surface->setAttachments(createSurfaceAttachment(desc.preferredColorFormat, desc.initialExtent,
-                                                                TextureUsage::ColorAttachment),
-                                        desc.depthFormat == Format::Unknown
-                                            ? TextureHandle{}
-                                            : createSurfaceAttachment(desc.depthFormat, desc.initialExtent,
-                                                                      TextureUsage::DepthStencilAttachment));
+                surface->setAttachments(
+                    createSurfaceAttachment(desc.preferredColorFormat, desc.initialExtent, TextureUsage::ColorAttachment),
+                    desc.depthFormat == Format::Unknown
+                        ? TextureHandle{}
+                        : createSurfaceAttachment(
+                              desc.depthFormat, desc.initialExtent, TextureUsage::DepthStencilAttachment));
                 m_surfaces.push_back(surface);
-                m_log.debug("[null] createSurface: %ux%u (surface count: %zu)", desc.initialExtent.width,
-                            desc.initialExtent.height, m_surfaces.size());  // 创建表面
+                m_log.debug("[null] createSurface: %ux%u (surface count: %zu)",
+                    desc.initialExtent.width,
+                    desc.initialExtent.height,
+                    m_surfaces.size());  // 创建表面
                 return surface;
             }
 
@@ -437,8 +508,8 @@ namespace Render::RHI
                 if (desc.language != m_caps.acceptedShaderLanguage)
                 {
                     m_log.error("[null] createShader: language %d does not match backend accepted %d",
-                                static_cast<int>(desc.language),
-                                static_cast<int>(m_caps.acceptedShaderLanguage));
+                        static_cast<int>(desc.language),
+                        static_cast<int>(m_caps.acceptedShaderLanguage));
                     return ShaderHandle{};
                 }
                 return m_shaders.add(NullShaderRecord{ desc.language, desc.sizeBytes });
@@ -448,7 +519,8 @@ namespace Render::RHI
             {
                 if (shader.valid() && !m_shaders.remove(shader))
                 {
-                    m_log.warn("[null] destroyShader: handle already invalid (double destroy?)");  // 句柄已失效（重复销毁？）
+                    m_log.warn(
+                        "[null] destroyShader: handle already invalid (double destroy?)");  // 句柄已失效（重复销毁？）
                 }
             }
 
@@ -458,23 +530,25 @@ namespace Render::RHI
             {
                 if (!m_shaders.get(desc.vertexShader) || !m_shaders.get(desc.fragmentShader))
                 {
-                    m_log.error("[null] createGraphicsPipeline: vertex or fragment shader handle invalid");  // 顶点或片段着色器句柄无效
+                    m_log.error(
+                        "[null] createGraphicsPipeline: vertex or fragment shader handle invalid");  // 顶点或片段着色器句柄无效
                     return PipelineHandle{};
                 }
                 if (desc.attributeCount > kMaxVertexAttributes)
                 {
                     m_log.error("[null] createGraphicsPipeline: attributeCount=%u exceeds limit %u",
-                                desc.attributeCount, kMaxVertexAttributes);  // attributeCount 超过上限
+                        desc.attributeCount,
+                        kMaxVertexAttributes);  // attributeCount 超过上限
                     return PipelineHandle{};
                 }
                 if (desc.pushConstantBytes > kMaxPushConstantBytes)
                 {
                     m_log.error("[null] createGraphicsPipeline: pushConstantBytes=%u exceeds limit %u",
-                                desc.pushConstantBytes, kMaxPushConstantBytes);  // pushConstantBytes 超过上限
+                        desc.pushConstantBytes,
+                        kMaxPushConstantBytes);  // pushConstantBytes 超过上限
                     return PipelineHandle{};
                 }
-                return m_pipelines.add(
-                    NullPipelineRecord{ false, desc.pushConstantBytes, desc.attributeCount });
+                return m_pipelines.add(NullPipelineRecord{ false, desc.pushConstantBytes, desc.attributeCount });
             }
 
             PipelineHandle createComputePipeline(const ComputePipelineDesc& desc) override
@@ -491,7 +565,8 @@ namespace Render::RHI
             {
                 if (pipeline.valid() && !m_pipelines.remove(pipeline))
                 {
-                    m_log.warn("[null] destroyPipeline: handle already invalid (double destroy?)");  // 句柄已失效（重复销毁？）
+                    m_log.warn(
+                        "[null] destroyPipeline: handle already invalid (double destroy?)");  // 句柄已失效（重复销毁？）
                 }
             }
 
@@ -514,12 +589,12 @@ namespace Render::RHI
             {
                 if (buffer.valid() && !m_buffers.remove(buffer))
                 {
-                    m_log.warn("[null] destroyBuffer: handle already invalid (double destroy?)");  // 句柄已失效（重复销毁？）
+                    m_log.warn(
+                        "[null] destroyBuffer: handle already invalid (double destroy?)");  // 句柄已失效（重复销毁？）
                 }
             }
 
-            RhiResult writeBuffer(BufferHandle buffer, uint64_t offset, const void* data,
-                                  uint64_t sizeBytes) override
+            RhiResult writeBuffer(BufferHandle buffer, uint64_t offset, const void* data, uint64_t sizeBytes) override
             {
                 auto* record = m_buffers.get(buffer);
                 if (!record || !data)
@@ -529,9 +604,9 @@ namespace Render::RHI
                 if (offset + sizeBytes > record->desc.size)
                 {
                     m_log.error("[null] writeBuffer out of bounds: offset=%llu size=%llu bufferSize=%llu",
-                                static_cast<unsigned long long>(offset),
-                                static_cast<unsigned long long>(sizeBytes),
-                                static_cast<unsigned long long>(record->desc.size));
+                        static_cast<unsigned long long>(offset),
+                        static_cast<unsigned long long>(sizeBytes),
+                        static_cast<unsigned long long>(record->desc.size));
                     return RhiResult::ErrorInvalidArgument;
                 }
                 std::memcpy(record->storage.data() + offset, data, static_cast<size_t>(sizeBytes));
@@ -596,8 +671,10 @@ namespace Render::RHI
                 }
                 if (desc.width > m_caps.maxTextureSize || desc.height > m_caps.maxTextureSize)
                 {
-                    m_log.error("[null] createTexture: %ux%u exceeds maxTextureSize=%u", desc.width, desc.height,
-                                m_caps.maxTextureSize);
+                    m_log.error("[null] createTexture: %ux%u exceeds maxTextureSize=%u",
+                        desc.width,
+                        desc.height,
+                        m_caps.maxTextureSize);
                     return TextureHandle{};
                 }
                 const uint32_t pixelSize = formatByteSize(desc.format);
@@ -617,12 +694,13 @@ namespace Render::RHI
             {
                 if (texture.valid() && !m_textures.remove(texture))
                 {
-                    m_log.warn("[null] destroyTexture: handle already invalid (double destroy?)");  // 句柄已失效（重复销毁？）
+                    m_log.warn(
+                        "[null] destroyTexture: handle already invalid (double destroy?)");  // 句柄已失效（重复销毁？）
                 }
             }
 
-            RhiResult writeTexture(TextureHandle texture, uint32_t mipLevel, const Rect2D& region,
-                                   const void* data, uint64_t sizeBytes) override
+            RhiResult writeTexture(
+                TextureHandle texture, uint32_t mipLevel, const Rect2D& region, const void* data, uint64_t sizeBytes) override
             {
                 auto* record = m_textures.get(texture);
                 if (!record || !data)
@@ -635,8 +713,7 @@ namespace Render::RHI
                     // 说明该路径需要在真实后端上验证。
                     return RhiResult::ErrorUnsupported;
                 }
-                if (region.x < 0 || region.y < 0 ||
-                    static_cast<uint32_t>(region.x) + region.width > record->desc.width ||
+                if (region.x < 0 || region.y < 0 || static_cast<uint32_t>(region.x) + region.width > record->desc.width ||
                     static_cast<uint32_t>(region.y) + region.height > record->desc.height)
                 {
                     m_log.error("[null] writeTexture: region exceeds texture bounds");  // 区域超出纹理范围
@@ -647,18 +724,18 @@ namespace Render::RHI
                 if (sizeBytes < needed)
                 {
                     m_log.error("[null] writeTexture: insufficient data, need %llu bytes, got %llu",
-                                static_cast<unsigned long long>(needed),
-                                static_cast<unsigned long long>(sizeBytes));  // 数据不足
+                        static_cast<unsigned long long>(needed),
+                        static_cast<unsigned long long>(sizeBytes));  // 数据不足
                     return RhiResult::ErrorInvalidArgument;
                 }
                 const auto* src = static_cast<const uint8_t*>(data);
                 for (uint32_t row = 0; row < region.height; ++row)
                 {
-                    uint8_t* dst = record->storage.data() +
-                                   static_cast<size_t>(region.y + row) * record->rowPitch +
-                                   static_cast<size_t>(region.x) * pixelSize;
-                    std::memcpy(dst, src + static_cast<size_t>(row) * region.width * pixelSize,
-                                static_cast<size_t>(region.width) * pixelSize);
+                    uint8_t* dst = record->storage.data() + static_cast<size_t>(region.y + row) * record->rowPitch +
+                        static_cast<size_t>(region.x) * pixelSize;
+                    std::memcpy(dst,
+                        src + static_cast<size_t>(row) * region.width * pixelSize,
+                        static_cast<size_t>(region.width) * pixelSize);
                 }
                 return RhiResult::Ok;
             }
@@ -672,7 +749,8 @@ namespace Render::RHI
             {
                 if (sampler.valid() && !m_samplers.remove(sampler))
                 {
-                    m_log.warn("[null] destroySampler: handle already invalid (double destroy?)");  // 句柄已失效（重复销毁？）
+                    m_log.warn(
+                        "[null] destroySampler: handle already invalid (double destroy?)");  // 句柄已失效（重复销毁？）
                 }
             }
 
@@ -703,7 +781,8 @@ namespace Render::RHI
             {
                 if (group.valid() && !m_bindGroups.remove(group))
                 {
-                    m_log.warn("[null] destroyBindGroup: handle already invalid (double destroy?)");  // 句柄已失效（重复销毁？）
+                    m_log.warn(
+                        "[null] destroyBindGroup: handle already invalid (double destroy?)");  // 句柄已失效（重复销毁？）
                 }
             }
 
@@ -747,16 +826,18 @@ namespace Render::RHI
 
             // ---------- 读回 ----------
 
-            RhiResult readTexture(TextureHandle texture, const Rect2D& region, void* outPixels,
-                                  uint64_t bufferSize, uint32_t* outRowPitch) override
+            RhiResult readTexture(TextureHandle texture,
+                const Rect2D& region,
+                void* outPixels,
+                uint64_t bufferSize,
+                uint32_t* outRowPitch) override
             {
                 auto* record = m_textures.get(texture);
                 if (!record || !outPixels)
                 {
                     return RhiResult::ErrorInvalidArgument;
                 }
-                if (region.x < 0 || region.y < 0 ||
-                    static_cast<uint32_t>(region.x) + region.width > record->desc.width ||
+                if (region.x < 0 || region.y < 0 || static_cast<uint32_t>(region.x) + region.width > record->desc.width ||
                     static_cast<uint32_t>(region.y) + region.height > record->desc.height)
                 {
                     return RhiResult::ErrorInvalidArgument;
@@ -773,8 +854,8 @@ namespace Render::RHI
                     // 像素原点为左上角：第 0 行就是纹理第 region.y 行，
                     // 不做任何翻转（GL 后端负责在自己那侧翻转）。
                     const uint8_t* src = record->storage.data() +
-                                         static_cast<size_t>(region.y + row) * record->rowPitch +
-                                         static_cast<size_t>(region.x) * pixelSize;
+                        static_cast<size_t>(region.y + row) * record->rowPitch +
+                        static_cast<size_t>(region.x) * pixelSize;
                     std::memcpy(dst + static_cast<size_t>(row) * rowPitch, src, rowPitch);
                 }
                 if (outRowPitch)
@@ -798,7 +879,10 @@ namespace Render::RHI
                 return total;
             }
 
-            uint64_t frameIndex() const { return m_frameIndex; }
+            uint64_t frameIndex() const
+            {
+                return m_frameIndex;
+            }
 
         private:
             RhiLogger m_log;
@@ -833,20 +917,17 @@ namespace Render::RHI
             m_device->destroyTexture(m_colorTexture);
             m_device->destroyTexture(m_depthTexture);
             m_extent = extent;
-            m_colorTexture = m_device->createSurfaceAttachment(m_desc.preferredColorFormat, extent,
-                                                               TextureUsage::ColorAttachment);
+            m_colorTexture =
+                m_device->createSurfaceAttachment(m_desc.preferredColorFormat, extent, TextureUsage::ColorAttachment);
             m_depthTexture = m_desc.depthFormat == Format::Unknown
-                                 ? TextureHandle{}
-                                 : m_device->createSurfaceAttachment(m_desc.depthFormat, extent,
-                                                                     TextureUsage::DepthStencilAttachment);
+                ? TextureHandle{}
+                : m_device->createSurfaceAttachment(m_desc.depthFormat, extent, TextureUsage::DepthStencilAttachment);
             return RhiResult::Ok;
         }
-
     }  // namespace
 
     IGpuDevice* createNullDevice(const DeviceDesc& desc)
     {
         return new NullDevice(desc);
     }
-
 }  // namespace Render::RHI

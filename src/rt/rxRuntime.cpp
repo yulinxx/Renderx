@@ -14,7 +14,6 @@
 
 namespace Render::RT::detail
 {
-
     // ==================== 日志桥 ====================
 
     void LogBridge::forward(RHI::LogLevel level, const char* message, void* userData)
@@ -27,10 +26,18 @@ namespace Render::RT::detail
         LogLevel publicLevel = LogLevel::Info;
         switch (level)
         {
-        case RHI::LogLevel::Debug: publicLevel = LogLevel::Debug; break;
-        case RHI::LogLevel::Info: publicLevel = LogLevel::Info; break;
-        case RHI::LogLevel::Warn: publicLevel = LogLevel::Warn; break;
-        case RHI::LogLevel::Error: publicLevel = LogLevel::Error; break;
+        case RHI::LogLevel::Debug:
+            publicLevel = LogLevel::Debug;
+            break;
+        case RHI::LogLevel::Info:
+            publicLevel = LogLevel::Info;
+            break;
+        case RHI::LogLevel::Warn:
+            publicLevel = LogLevel::Warn;
+            break;
+        case RHI::LogLevel::Error:
+            publicLevel = LogLevel::Error;
+            break;
         }
         bridge->callback(publicLevel, message, bridge->userData);
     }
@@ -41,11 +48,16 @@ namespace Render::RT::detail
     {
         switch (backend)
         {
-        case Backend::Null: return RHI::BackendKind::Null;
-        case Backend::OpenGL: return RHI::BackendKind::OpenGL;
-        case Backend::Metal: return RHI::BackendKind::Metal;
-        case Backend::Vulkan: return RHI::BackendKind::Vulkan;
-        case Backend::Auto: return RHI::preferredBackend();
+        case Backend::Null:
+            return RHI::BackendKind::Null;
+        case Backend::OpenGL:
+            return RHI::BackendKind::OpenGL;
+        case Backend::Metal:
+            return RHI::BackendKind::Metal;
+        case Backend::Vulkan:
+            return RHI::BackendKind::Vulkan;
+        case Backend::Auto:
+            return RHI::preferredBackend();
         }
         return RHI::BackendKind::OpenGL;
     }
@@ -54,14 +66,20 @@ namespace Render::RT::detail
     {
         switch (topology)
         {
-        case PrimitiveTopology::Points: return RHI::PrimitiveTopology::PointList;
-        case PrimitiveTopology::Lines: return RHI::PrimitiveTopology::LineList;
-        case PrimitiveTopology::LineStrip: return RHI::PrimitiveTopology::LineStrip;
+        case PrimitiveTopology::Points:
+            return RHI::PrimitiveTopology::PointList;
+        case PrimitiveTopology::Lines:
+            return RHI::PrimitiveTopology::LineList;
+        case PrimitiveTopology::LineStrip:
+            return RHI::PrimitiveTopology::LineStrip;
         // LineLoop 在 Metal/Vulkan 都没有原生对应，RHI 因此不提供它。
         // 退化为 LineStrip：调用方若需要闭合，应自己把首点补到末尾。
-        case PrimitiveTopology::LineLoop: return RHI::PrimitiveTopology::LineStrip;
-        case PrimitiveTopology::Triangles: return RHI::PrimitiveTopology::TriangleList;
-        case PrimitiveTopology::TriangleStrip: return RHI::PrimitiveTopology::TriangleStrip;
+        case PrimitiveTopology::LineLoop:
+            return RHI::PrimitiveTopology::LineStrip;
+        case PrimitiveTopology::Triangles:
+            return RHI::PrimitiveTopology::TriangleList;
+        case PrimitiveTopology::TriangleStrip:
+            return RHI::PrimitiveTopology::TriangleStrip;
         }
         return RHI::PrimitiveTopology::TriangleList;
     }
@@ -70,10 +88,14 @@ namespace Render::RT::detail
     {
         switch (factor)
         {
-        case BlendFactor::Zero: return RHI::BlendFactor::Zero;
-        case BlendFactor::One: return RHI::BlendFactor::One;
-        case BlendFactor::SrcAlpha: return RHI::BlendFactor::SrcAlpha;
-        case BlendFactor::OneMinusSrcAlpha: return RHI::BlendFactor::OneMinusSrcAlpha;
+        case BlendFactor::Zero:
+            return RHI::BlendFactor::Zero;
+        case BlendFactor::One:
+            return RHI::BlendFactor::One;
+        case BlendFactor::SrcAlpha:
+            return RHI::BlendFactor::SrcAlpha;
+        case BlendFactor::OneMinusSrcAlpha:
+            return RHI::BlendFactor::OneMinusSrcAlpha;
         }
         return RHI::BlendFactor::One;
     }
@@ -82,10 +104,14 @@ namespace Render::RT::detail
     {
         switch (func)
         {
-        case DepthFunc::Always: return RHI::CompareOp::Always;
-        case DepthFunc::Less: return RHI::CompareOp::Less;
-        case DepthFunc::LessEqual: return RHI::CompareOp::LessEqual;
-        case DepthFunc::Greater: return RHI::CompareOp::Greater;
+        case DepthFunc::Always:
+            return RHI::CompareOp::Always;
+        case DepthFunc::Less:
+            return RHI::CompareOp::Less;
+        case DepthFunc::LessEqual:
+            return RHI::CompareOp::LessEqual;
+        case DepthFunc::Greater:
+            return RHI::CompareOp::Greater;
         }
         return RHI::CompareOp::LessEqual;
     }
@@ -188,8 +214,7 @@ namespace Render::RT::detail
             {
                 // 点尺寸只能走 gl_PointSize（像素），因此点有独立的顶点着色器；
                 // 片段着色器把方形 sprite 裁成圆形。
-                return { isScreen ? "screen_point_p3c4.vert" : "world_point_p3c4.vert",
-                         "point_p3c4.frag" };
+                return { isScreen ? "screen_point_p3c4.vert" : "world_point_p3c4.vert", "point_p3c4.frag" };
             }
             return isScreen ? ShaderPair{ "screen_p3c4.vert", "screen_p3c4.frag" }
                             : ShaderPair{ "world_p3c4.vert", "world_p3c4.frag" };
@@ -201,8 +226,7 @@ namespace Render::RT::detail
             }
             if (isPoint)
             {
-                return { isScreen ? "screen_point_p3c3.vert" : "world_point_p3c3.vert",
-                         "point_p3c3.frag" };
+                return { isScreen ? "screen_point_p3c3.vert" : "world_point_p3c3.vert", "point_p3c3.frag" };
             }
             return isScreen ? ShaderPair{ "screen_p3c3.vert", "world_p3c3.frag" }
                             : ShaderPair{ "world_p3c3.vert", "world_p3c3.frag" };
@@ -239,15 +263,12 @@ namespace Render::RT::detail
     bool PipelineKey::operator==(const PipelineKey& other) const
     {
         return vertexFormat == other.vertexFormat && space == other.space && topology == other.topology &&
-               colorFormat == other.colorFormat && depthFormat == other.depthFormat &&
-               depthTest == other.depthTest && depthWrite == other.depthWrite &&
-               blendEnable == other.blendEnable && srcBlend == other.srcBlend &&
-               dstBlend == other.dstBlend && depthFunc == other.depthFunc &&
-               lineWidth == other.lineWidth && fillMode == other.fillMode &&
-               depthBiasConstant == other.depthBiasConstant &&
-               depthBiasSlope == other.depthBiasSlope &&
-               shaderName == other.shaderName &&
-               fragmentShaderName == other.fragmentShaderName;
+            colorFormat == other.colorFormat && depthFormat == other.depthFormat && depthTest == other.depthTest &&
+            depthWrite == other.depthWrite && blendEnable == other.blendEnable && srcBlend == other.srcBlend &&
+            dstBlend == other.dstBlend && depthFunc == other.depthFunc && lineWidth == other.lineWidth &&
+            fillMode == other.fillMode && depthBiasConstant == other.depthBiasConstant &&
+            depthBiasSlope == other.depthBiasSlope && shaderName == other.shaderName &&
+            fragmentShaderName == other.fragmentShaderName;
     }
 
     size_t PipelineKeyHash::operator()(const PipelineKey& key) const
@@ -276,7 +297,7 @@ namespace Render::RT::detail
         bits ^= static_cast<uint64_t>(key.depthBiasConstant * 16.0f) * 0xFF51AFD7ED558CCDull;
         bits ^= static_cast<uint64_t>(key.depthBiasSlope * 16.0f) * 0xC4CEB9FE1A85EC53ull;
         return std::hash<uint64_t>{}(bits) ^ (std::hash<std::string>{}(key.shaderName) << 1) ^
-               (std::hash<std::string>{}(key.fragmentShaderName) << 2);
+            (std::hash<std::string>{}(key.fragmentShaderName) << 2);
     }
 
     // ==================== TransientRing ====================
@@ -304,7 +325,7 @@ namespace Render::RT::detail
         if (!m_buffer.valid())
         {
             m_log.error("[rt] transient ring buffer creation failed (%llu bytes)",  // 瞬态环形缓冲创建失败
-                        static_cast<unsigned long long>(desc.size));
+                static_cast<unsigned long long>(desc.size));
             return false;
         }
         m_staging.assign(static_cast<size_t>(desc.size), 0);
@@ -397,11 +418,11 @@ namespace Render::RT::detail
 
         // 超出单帧容量：单独开一个缓冲，本帧末释放。
         // 不做回绕覆盖——覆盖已提交命令引用的数据会让画面随机缺块。
-m_log.warn("[rt] transient buffer single-frame capacity insufficient (used %llu / %llu bytes), "
-                    "allocating temporary buffer for %llu bytes this frame. Increase RuntimeDesc::transientBufferBytes",
-                    static_cast<unsigned long long>(m_cursor - m_segmentBase),
-                    static_cast<unsigned long long>(m_capacity),
-                    static_cast<unsigned long long>(sizeBytes));  // 瞬态缓冲单帧容量不足
+        m_log.warn("[rt] transient buffer single-frame capacity insufficient (used %llu / %llu bytes), "
+                   "allocating temporary buffer for %llu bytes this frame. Increase RuntimeDesc::transientBufferBytes",
+            static_cast<unsigned long long>(m_cursor - m_segmentBase),
+            static_cast<unsigned long long>(m_capacity),
+            static_cast<unsigned long long>(sizeBytes));  // 瞬态缓冲单帧容量不足
 
         Overflow overflow{};
         RHI::BufferDesc desc{};
@@ -449,8 +470,7 @@ m_log.warn("[rt] transient buffer single-frame capacity insufficient (used %llu 
         {
             if (!overflow.staging.empty())
             {
-                m_device->writeBuffer(overflow.buffer, 0, overflow.staging.data(),
-                                      overflow.staging.size());
+                m_device->writeBuffer(overflow.buffer, 0, overflow.staging.data(), overflow.staging.size());
             }
         }
     }
@@ -485,10 +505,18 @@ m_log.warn("[rt] transient buffer single-frame capacity insufficient (used %llu 
         caps = Capabilities{};
         switch (rhiCaps.backend)
         {
-        case RHI::BackendKind::Null: caps.backend = Backend::Null; break;
-        case RHI::BackendKind::OpenGL: caps.backend = Backend::OpenGL; break;
-        case RHI::BackendKind::Metal: caps.backend = Backend::Metal; break;
-        case RHI::BackendKind::Vulkan: caps.backend = Backend::Vulkan; break;
+        case RHI::BackendKind::Null:
+            caps.backend = Backend::Null;
+            break;
+        case RHI::BackendKind::OpenGL:
+            caps.backend = Backend::OpenGL;
+            break;
+        case RHI::BackendKind::Metal:
+            caps.backend = Backend::Metal;
+            break;
+        case RHI::BackendKind::Vulkan:
+            caps.backend = Backend::Vulkan;
+            break;
         }
         std::snprintf(caps.deviceName, sizeof(caps.deviceName), "%s", rhiCaps.deviceName);
         std::snprintf(caps.driverInfo, sizeof(caps.driverInfo), "%s", rhiCaps.driverInfo);
@@ -513,20 +541,19 @@ m_log.warn("[rt] transient buffer single-frame capacity insufficient (used %llu 
         // TransientAlloc::offset 是 uint32，而环形缓冲总大小是单段容量的两倍，
         // 因此单段上限为 2GB。超出会让偏移静默回绕，画面表现为随机错位。
         constexpr uint64_t kMaxTransientBytes = 0x80000000ull;
-        uint64_t transientBytes =
-            desc.transientBufferBytes != 0 ? desc.transientBufferBytes : kDefaultTransientBytes;
+        uint64_t transientBytes = desc.transientBufferBytes != 0 ? desc.transientBufferBytes : kDefaultTransientBytes;
         if (transientBytes > kMaxTransientBytes)
         {
             log.warn("[rt] transientBufferBytes=%llu exceeds per-segment limit %llu, clamped",  // 超过单段上限
-                     static_cast<unsigned long long>(transientBytes),
-                     static_cast<unsigned long long>(kMaxTransientBytes));
+                static_cast<unsigned long long>(transientBytes),
+                static_cast<unsigned long long>(kMaxTransientBytes));
             transientBytes = kMaxTransientBytes;
         }
         if (!transient.initialize(this, transientBytes))
         {
             destroy();
             return false;
-        }        // 环形缓冲本体也要有公共句柄，DrawCommand 才能引用
+        }  // 环形缓冲本体也要有公共句柄，DrawCommand 才能引用
         transient.setPublicHandle(static_cast<BufferHandle>(buffers.insert(transient.rhiBuffer())));
 
         // materials[0] 保留：DrawCommand::materialIndex == 0 表示「无材质」
@@ -538,12 +565,14 @@ m_log.warn("[rt] transient buffer single-frame capacity insufficient (used %llu 
 
         if (!ensureDefaultPipelines())
         {
-            log.warn("[rt] some built-in pipelines failed to create, related draws will be skipped");  // 部分内建管线创建失败
+            log.warn(
+                "[rt] some built-in pipelines failed to create, related draws will be skipped");  // 部分内建管线创建失败
         }
 
         log.debug("[rt] Runtime ready: backend=%s device=%s transient=%llu bytes",  // Runtime 就绪
-                 rxBackendName(caps.backend), caps.deviceName,
-                 static_cast<unsigned long long>(transientBytes));
+            rxBackendName(caps.backend),
+            caps.deviceName,
+            static_cast<unsigned long long>(transientBytes));
         return true;
     }
 
@@ -560,15 +589,19 @@ m_log.warn("[rt] transient buffer single-frame capacity insufficient (used %llu 
         }
         if (!sessions.empty())
         {
-            log.error("[rt] Runtime destroyed with %zu sessions still alive (host lifecycle error)",  // Runtime 销毁时仍有 Session 未销毁
-                      sessions.size());
+            log.error(
+                "[rt] Runtime destroyed with %zu sessions still alive (host lifecycle error)",  // Runtime 销毁时仍有
+                                                                                                // Session 未销毁
+                sessions.size());
         }
         sessions.clear();
 
         if (!surfaces.empty())
         {
-            log.error("[rt] Runtime destroyed with %zu surfaces still alive (host lifecycle error)",  // Runtime 销毁时仍有 Surface 未销毁
-                      surfaces.size());
+            log.error(
+                "[rt] Runtime destroyed with %zu surfaces still alive (host lifecycle error)",  // Runtime 销毁时仍有
+                                                                                                // Surface 未销毁
+                surfaces.size());
         }
         for (Surface* surface : surfaces)
         {
@@ -720,15 +753,15 @@ m_log.warn("[rt] transient buffer single-frame capacity insufficient (used %llu 
         }
         if (handle == transient.publicHandle())
         {
-            log.error("[rt] rxBufferDestroy: cannot destroy transient ring buffer, it is owned by Runtime");  // 不能销毁瞬态环形缓冲
+            log.error(
+                "[rt] rxBufferDestroy: cannot destroy transient ring buffer, it is owned by Runtime");  // 不能销毁瞬态环形缓冲
             return;
         }
         device->destroyBuffer(rhi);
         buffers.erase(static_cast<uint64_t>(handle));
     }
 
-    RxResult Runtime::uploadBuffer(BufferHandle handle, uint64_t offset, uint64_t sizeBytes,
-                                   const void* data)
+    RxResult Runtime::uploadBuffer(BufferHandle handle, uint64_t offset, uint64_t sizeBytes, const void* data)
     {
         const RHI::BufferHandle rhi = resolveBuffer(handle);
         if (!rhi.valid() || !data || sizeBytes == 0)
@@ -810,11 +843,14 @@ m_log.warn("[rt] transient buffer single-frame capacity insufficient (used %llu 
             return TextureHandle::Invalid;
         }
         // Must include ColorAttachment or DepthStencilAttachment
-        const bool hasColor = (static_cast<uint32_t>(desc.usage) & static_cast<uint32_t>(TextureUsageFlag::ColorAttachment)) != 0;
-        const bool hasDepth = (static_cast<uint32_t>(desc.usage) & static_cast<uint32_t>(TextureUsageFlag::DepthStencilAttachment)) != 0;
+        const bool hasColor =
+            (static_cast<uint32_t>(desc.usage) & static_cast<uint32_t>(TextureUsageFlag::ColorAttachment)) != 0;
+        const bool hasDepth =
+            (static_cast<uint32_t>(desc.usage) & static_cast<uint32_t>(TextureUsageFlag::DepthStencilAttachment)) != 0;
         if (!hasColor && !hasDepth)
         {
-            log.error("[rt] rxTextureCreateRenderTarget: must include ColorAttachment or DepthStencilAttachment usage");  // 必须包含 ColorAttachment 或 DepthStencilAttachment 用途
+            log.error(
+                "[rt] rxTextureCreateRenderTarget: must include ColorAttachment or DepthStencilAttachment usage");  // 必须包含 ColorAttachment 或 DepthStencilAttachment 用途
             return TextureHandle::Invalid;
         }
 
@@ -1024,8 +1060,8 @@ m_log.warn("[rt] transient buffer single-frame capacity insufficient (used %llu 
             {
                 return false;
             }
-            const int written = std::snprintf(out, outSize, "%.*s_%s.metallib",
-                                              static_cast<int>(dot - glslName), glslName, dot + 1);
+            const int written =
+                std::snprintf(out, outSize, "%.*s_%s.metallib", static_cast<int>(dot - glslName), glslName, dot + 1);
             return written > 0 && static_cast<size_t>(written) < outSize;
         }
 
@@ -1082,8 +1118,8 @@ m_log.warn("[rt] transient buffer single-frame capacity insufficient (used %llu 
                 // shaderLibrary 本身不打印日志（保持零业务耦合），
                 // 因此这里把可用条目数一并报出来，便于区分「名字写错」
                 // 与「shader 根本没被嵌进来」。
-                log.error("[rt] built-in Metal shader \"%s\" not found (%u entries embedded)", metalName,
-                          shader::count());
+                log.error(
+                    "[rt] built-in Metal shader \"%s\" not found (%u entries embedded)", metalName, shader::count());
                 return {};
             }
             desc.language = RHI::ShaderLanguage::MetalLib;
@@ -1096,8 +1132,7 @@ m_log.warn("[rt] transient buffer single-frame capacity insufficient (used %llu 
             const char* source = shader::glslSource(name);
             if (!source)
             {
-                log.error("[rt] built-in shader \"%s\" not found (%u entries embedded)", name,
-                          shader::count());
+                log.error("[rt] built-in shader \"%s\" not found (%u entries embedded)", name, shader::count());
                 return {};
             }
             desc.language = RHI::ShaderLanguage::GlslSource;
@@ -1134,7 +1169,8 @@ m_log.warn("[rt] transient buffer single-frame capacity insufficient (used %llu 
         {
             log.error("[rt] cannot find built-in shader for vertexFormat=%d space=%d "
                       "(no semantically correct shader for this combination, see defaultShadersFor)",
-                      static_cast<int>(key.vertexFormat), static_cast<int>(key.space));  // 无法为 vertexFormat space 找到内建 shader
+                static_cast<int>(key.vertexFormat),
+                static_cast<int>(key.space));  // 无法为 vertexFormat space 找到内建 shader
             return 0;
         }
 
@@ -1157,8 +1193,7 @@ m_log.warn("[rt] transient buffer single-frame capacity insufficient (used %llu 
         // 二者互不重叠，因此用同一个数组按顺序填。
         RHI::BindingSlot bindingSlots[2]{};
         uint32_t bindingCount = 0;
-        const bool needsTexture =
-            key.vertexFormat == VertexFormat::P2T2C4 || key.vertexFormat == VertexFormat::P3T2C4;
+        const bool needsTexture = key.vertexFormat == VertexFormat::P2T2C4 || key.vertexFormat == VertexFormat::P3T2C4;
         const bool needsLighting = key.vertexFormat == VertexFormat::P3N3;
         if (needsTexture)
         {
@@ -1191,8 +1226,7 @@ m_log.warn("[rt] transient buffer single-frame capacity insufficient (used %llu 
         desc.raster.lineWidth = key.lineWidth;
         // 线框：Metal 无原生等价，后端在 Capabilities 里声明支持性，
         // 不支持时退化为实心——比整条管线建不出来要好。
-        desc.raster.fillMode = key.fillMode == FillMode::Wireframe ? RHI::FillMode::Wireframe
-                                                                  : RHI::FillMode::Solid;
+        desc.raster.fillMode = key.fillMode == FillMode::Wireframe ? RHI::FillMode::Wireframe : RHI::FillMode::Solid;
         desc.raster.depthBiasConstant = key.depthBiasConstant;
         desc.raster.depthBiasSlope = key.depthBiasSlope;
         desc.depthStencil.depthTestEnable = key.depthTest != 0;
@@ -1236,9 +1270,12 @@ m_log.warn("[rt] transient buffer single-frame capacity insufficient (used %llu 
         // 「为什么又在建一条 Mesh3D」只看现象无法定位，这里把刚建出的键落日志
         // ——只在缓存未命中时触发，正常帧不受影响。
         log.debug("[rt] pipeline #%u created: vfmt=%d space=%d topo=%d colorFmt=%d depthFmt=%d",
-                  static_cast<unsigned>(index), static_cast<int>(key.vertexFormat),
-                  static_cast<int>(key.space), static_cast<int>(key.topology),
-                  static_cast<int>(key.colorFormat), static_cast<int>(key.depthFormat));
+            static_cast<unsigned>(index),
+            static_cast<int>(key.vertexFormat),
+            static_cast<int>(key.space),
+            static_cast<int>(key.topology),
+            static_cast<int>(key.colorFormat),
+            static_cast<int>(key.depthFormat));
         return index;
     }
 
@@ -1284,12 +1321,14 @@ m_log.warn("[rt] transient buffer single-frame capacity insufficient (used %llu 
         return RHI::Format::BGRA8Unorm;
     }
 
-    uint16_t Runtime::resolvePipeline(VertexFormat format, RenderSpace space,
-                                      PrimitiveTopology topology, RHI::Format colorFormat,
-                                      RHI::Format depthFormat,
-                                      float lineWidth,
-                                      const char* fragmentShaderOverride,
-                                      const PipelineStateHint* stateOverride)
+    uint16_t Runtime::resolvePipeline(VertexFormat format,
+        RenderSpace space,
+        PrimitiveTopology topology,
+        RHI::Format colorFormat,
+        RHI::Format depthFormat,
+        float lineWidth,
+        const char* fragmentShaderOverride,
+        const PipelineStateHint* stateOverride)
     {
         // 深度/填充默认由顶点格式决定（2D 关深度、P3N3 开深度），
         // 调用方需要别的组合时给 stateOverride——内建管线表就是这么区分
@@ -1325,8 +1364,8 @@ m_log.warn("[rt] transient buffer single-frame capacity insufficient (used %llu 
         const float maxWidth = caps.maxLineWidth > 0.0f ? caps.maxLineWidth : 1.0f;
         float clamped = lineWidth > 0.0f ? lineWidth : 1.0f;
         clamped = (std::min)(clamped, maxWidth);
-        const float quantized = (std::max)(
-            kLineWidthQuantum, std::round(clamped / kLineWidthQuantum) * kLineWidthQuantum);
+        const float quantized =
+            (std::max)(kLineWidthQuantum, std::round(clamped / kLineWidthQuantum) * kLineWidthQuantum);
         key.lineWidth = (std::min)(quantized, maxWidth);
 
         return createPipelineFromKey(key);
@@ -1341,8 +1380,7 @@ m_log.warn("[rt] transient buffer single-frame capacity insufficient (used %llu 
         return pipelines[index];
     }
 
-    uint16_t Runtime::pipelineWithFormats(uint16_t index, RHI::Format colorFormat,
-                                          RHI::Format depthFormat)
+    uint16_t Runtime::pipelineWithFormats(uint16_t index, RHI::Format colorFormat, RHI::Format depthFormat)
     {
         if (index == 0 || index >= pipelineKeys.size())
         {
@@ -1414,8 +1452,9 @@ m_log.warn("[rt] transient buffer single-frame capacity insufficient (used %llu 
             return false;
         }
 
-        log.info("[rt] 3D lighting uniforms ready: %u bytes at (set=0, binding=%u)", kFrameUniformBytes,
-                 kFrameUniformBinding);
+        log.info("[rt] 3D lighting uniforms ready: %u bytes at (set=0, binding=%u)",
+            kFrameUniformBytes,
+            kFrameUniformBinding);
         return true;
     }
 
@@ -1470,21 +1509,18 @@ m_log.warn("[rt] transient buffer single-frame capacity insufficient (used %llu 
         // 网格：开深度测试 + 写深度。面片间的遮挡靠深度缓冲，排序键无解。
         static const PipelineStateHint kMesh3DState{ 1, 1, DepthFunc::LessEqual, FillMode::Solid };
         // 线框：同上，只是填充模式不同。线框必须是独立管线，见 FillMode。
-        static const PipelineStateHint kMesh3DWireState{ 1, 1, DepthFunc::LessEqual,
-                                                         FillMode::Wireframe };
+        static const PipelineStateHint kMesh3DWireState{ 1, 1, DepthFunc::LessEqual, FillMode::Wireframe };
         // 选中高亮：LessEqual、不写深度、线框填充。
         // - LessEqual：高亮线就贴在面上，Less 会被自己遮掉
         // - 不写深度：否则后画的网格会被高亮线挡住
         // - Wireframe：顶点是三角形，靠填充模式画出每个面的三条边
-        static const PipelineStateHint kHighlight3DState{ 1, 0, DepthFunc::LessEqual,
-                                                          FillMode::Wireframe };
+        static const PipelineStateHint kHighlight3DState{ 1, 0, DepthFunc::LessEqual, FillMode::Wireframe };
         // 变换手柄（gizmo）：开深度测试、不写深度、实心 + 深度偏移 1/1。
         // - 不写深度：手柄之间不该互相遮挡，前后关系由提交顺序决定
         // - 深度偏移：手柄常常与网格表面共面，LessEqual 也压不住 z-fighting，
         //   靠 polygon offset 把手柄整体往观察者方向推一格（宿主原来就是
         //   glEnable(GL_POLYGON_OFFSET_FILL) + glPolygonOffset(1, 1)）
-        static const PipelineStateHint kGizmo3DState{ 1, 0, DepthFunc::LessEqual, FillMode::Solid,
-                                                      1.0f, 1.0f };
+        static const PipelineStateHint kGizmo3DState{ 1, 0, DepthFunc::LessEqual, FillMode::Solid, 1.0f, 1.0f };
 
         // 与 renderx.h 的 DefaultPipeline 枚举一一对应。
         // 覆盖层统一走 P3C4：缩放时与图元几何一致变换，且支持半透明。
@@ -1503,39 +1539,33 @@ m_log.warn("[rt] transient buffer single-frame capacity insufficient (used %llu 
             { DP::ScreenTri4, VF::P3C4, RS::Screen, PT::Triangles, "ScreenTri4", nullptr },
             { DP::ScreenPoint4, VF::P3C4, RS::Screen, PT::Points, "ScreenPoint4", nullptr },
             // 世界锚定 + 屏幕定尺寸（见 renderx.h RenderSpace::WorldPinned）
-            { DP::WorldPinnedLine, VF::P3O2C4, RS::WorldPinned, PT::LineStrip, "WorldPinnedLine",
-              nullptr },
-            { DP::WorldPinnedTri, VF::P3O2C4, RS::WorldPinned, PT::Triangles, "WorldPinnedTri",
-              nullptr },
+            { DP::WorldPinnedLine, VF::P3O2C4, RS::WorldPinned, PT::LineStrip, "WorldPinnedLine", nullptr },
+            { DP::WorldPinnedTri, VF::P3O2C4, RS::WorldPinned, PT::Triangles, "WorldPinnedTri", nullptr },
             // 字形：与 ScreenTextured 同格式同空间同拓扑，只有片元不同，
             // 因此必须显式指定片段着色器，否则两者会命中同一条缓存管线。
-            { DP::ScreenGlyph, VF::P2T2C4, RS::Screen, PT::Triangles, "ScreenGlyph",
-              "screen_glyph_p2t2c4.frag" },
+            { DP::ScreenGlyph, VF::P2T2C4, RS::Screen, PT::Triangles, "ScreenGlyph", "screen_glyph_p2t2c4.frag" },
             // 世界空间贴图（位图图元）：顶点是世界坐标，随视图平移/缩放变换。
             // 片元与 ScreenTextured 相同，但空间不同，因此是独立的一条。
             { DP::WorldTextured, VF::P3T2C4, RS::World, PT::Triangles, "WorldTextured", nullptr },
             // 世界空间字形（文字图元）：与 WorldTextured 同格式同空间同拓扑，
             // 只有片元不同（距离场而非 RGBA），因此同样必须显式指定片段着色器。
-            { DP::WorldGlyphSdf, VF::P3T2C4, RS::World, PT::Triangles, "WorldGlyphSdf",
-              "world_glyph_sdf_p3t2c4.frag" },
+            { DP::WorldGlyphSdf, VF::P3T2C4, RS::World, PT::Triangles, "WorldGlyphSdf", "world_glyph_sdf_p3t2c4.frag" },
             // ---- 3D ----
             // 网格图元：位置 + 法线，顶点已是世界坐标，光照在 DLL 内算
             // （mesh_3d_p3n3.frag 读 FrameUniforms 的三光源 + 材质段）。
             { DP::Mesh3D, VF::P3N3, RS::World, PT::Triangles, "Mesh3D", nullptr, &kMesh3DState },
-            { DP::Mesh3DWire, VF::P3N3, RS::World, PT::Triangles, "Mesh3DWire", nullptr,
-              &kMesh3DWireState },
+            { DP::Mesh3DWire, VF::P3N3, RS::World, PT::Triangles, "Mesh3DWire", nullptr, &kMesh3DWireState },
             // 选中高亮：复用 2D 的 P3C4 世界着色器，几何是三角形而非线段——
             // 靠 Wireframe 填充画出每个面的三条边。改用 LineStrip 会在相邻三角形
             // 之间连出多余斜线，这是宿主原 glPolygonMode(GL_LINE) 的等价迁移。
-            { DP::Highlight3D, VF::P3C4, RS::World, PT::Triangles, "Highlight3D", nullptr,
-              &kHighlight3DState },
+            { DP::Highlight3D, VF::P3C4, RS::World, PT::Triangles, "Highlight3D", nullptr, &kHighlight3DState },
             // 变换手柄：同样复用 P3C4 世界着色器，全部三角形（线段也billboard成
             // 四边形，因为 macOS 的 maxLineWidth 是 1.0）。与 Highlight3D 同格式
             // 同拓扑，靠 fillMode + 深度偏移区分成两条管线。
             { DP::Gizmo3D, VF::P3C4, RS::World, PT::Triangles, "Gizmo3D", nullptr, &kGizmo3DState },
         };
         static_assert(sizeof(kEntries) / sizeof(kEntries[0]) == static_cast<size_t>(DP::Count),
-                      "内建管线表必须覆盖 DefaultPipeline 的全部取值");
+            "内建管线表必须覆盖 DefaultPipeline 的全部取值");
 
         uint32_t ready = 0;
         for (const Entry& entry : kEntries)
@@ -1543,9 +1573,14 @@ m_log.warn("[rt] transient buffer single-frame capacity insufficient (used %llu 
             // 预热此刻还没有 Surface，深度格式按 Unknown 建：3D 管线首次画到
             // enableDepth 的表面时，Session 会经 pipelineWithFormats 补建
             // D32Float 深度变体（与离屏颜色格式变体同一条按需路径）。
-            const uint16_t index = resolvePipeline(entry.format, entry.space, entry.topology,
-                                                  defaultColorFormat(), RHI::Format::Unknown,
-                                                  1.0f, entry.fragmentShader, entry.state);
+            const uint16_t index = resolvePipeline(entry.format,
+                entry.space,
+                entry.topology,
+                defaultColorFormat(),
+                RHI::Format::Unknown,
+                1.0f,
+                entry.fragmentShader,
+                entry.state);
             defaults[static_cast<size_t>(entry.kind)] = index;
             if (index != 0)
             {
@@ -1557,8 +1592,10 @@ m_log.warn("[rt] transient buffer single-frame capacity insufficient (used %llu 
             }
         }
 
-        log.debug("[rt] Built-in pipelines ready %u/%u (embedded shaders: %u)", ready,  // 内建管线就绪
-                 static_cast<uint32_t>(DP::Count), shader::count());
+        log.debug("[rt] Built-in pipelines ready %u/%u (embedded shaders: %u)",
+            ready,  // 内建管线就绪
+            static_cast<uint32_t>(DP::Count),
+            shader::count());
         return ready == static_cast<uint32_t>(DP::Count);
     }
 
@@ -1604,9 +1641,8 @@ m_log.warn("[rt] transient buffer single-frame capacity insufficient (used %llu 
         rhiDesc.window.handleB = desc.handleB;
         rhiDesc.initialExtent = { desc.width, desc.height };
         rhiDesc.presentMode = desc.presentMode == PresentMode::Immediate
-                                  ? RHI::PresentMode::Immediate
-                                  : (desc.presentMode == PresentMode::Mailbox ? RHI::PresentMode::Mailbox
-                                                                             : RHI::PresentMode::Fifo);
+            ? RHI::PresentMode::Immediate
+            : (desc.presentMode == PresentMode::Mailbox ? RHI::PresentMode::Mailbox : RHI::PresentMode::Fifo);
         rhiDesc.depthFormat = desc.enableDepth ? RHI::Format::D32Float : RHI::Format::Unknown;
         rhiDesc.debugName = "RxSurface";
 
@@ -1643,7 +1679,9 @@ m_log.warn("[rt] transient buffer single-frame capacity insufficient (used %llu 
                 return surface;
             }
         }
-        log.error("[rt] Surface handle does not belong to this Runtime (destroyed or from another Runtime)");  // Surface 句柄不属于本 Runtime
+        log.error(
+            "[rt] Surface handle does not belong to this Runtime (destroyed or from another Runtime)");  // Surface 句柄不属于本
+                                                                                                         // Runtime
         return nullptr;
     }
 
@@ -1656,7 +1694,8 @@ m_log.warn("[rt] transient buffer single-frame capacity insufficient (used %llu 
         }
         if (surface->boundSession)
         {
-            log.error("[rt] rxSurfaceDestroy: surface still has bound sessions, destroy sessions first");  // 该表面上仍有 Session
+            log.error(
+                "[rt] rxSurfaceDestroy: surface still has bound sessions, destroy sessions first");  // 该表面上仍有 Session
             return;
         }
         device->destroySurface(surface->rhi);
@@ -1676,5 +1715,4 @@ m_log.warn("[rt] transient buffer single-frame capacity insufficient (used %llu 
         const RHI::RhiResult result = surface->rhi->resize({ width, height });
         return result == RHI::RhiResult::Ok ? RxResult::Ok : RxResult::ErrorInvalidArgument;
     }
-
 }  // namespace Render::RT::detail

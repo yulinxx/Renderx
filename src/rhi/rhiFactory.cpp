@@ -16,15 +16,18 @@
 
 namespace Render::RHI
 {
-
     const char* backendName(BackendKind backend)
     {
         switch (backend)
         {
-        case BackendKind::Null: return "Null";
-        case BackendKind::OpenGL: return "OpenGL";
-        case BackendKind::Metal: return "Metal";
-        case BackendKind::Vulkan: return "Vulkan";
+        case BackendKind::Null:
+            return "Null";
+        case BackendKind::OpenGL:
+            return "OpenGL";
+        case BackendKind::Metal:
+            return "Metal";
+        case BackendKind::Vulkan:
+            return "Vulkan";
         }
         return "?";
     }
@@ -33,17 +36,28 @@ namespace Render::RHI
     {
         switch (result)
         {
-        case RhiResult::Ok: return "Ok";
-        case RhiResult::ErrorUnknown: return "ErrorUnknown";
-        case RhiResult::ErrorInvalidArgument: return "ErrorInvalidArgument";
-        case RhiResult::ErrorOutOfMemory: return "ErrorOutOfMemory";
-        case RhiResult::ErrorDeviceLost: return "ErrorDeviceLost";
-        case RhiResult::ErrorUnsupported: return "ErrorUnsupported";
-        case RhiResult::ErrorNotInitialized: return "ErrorNotInitialized";
-        case RhiResult::ErrorSurfaceLost: return "ErrorSurfaceLost";
-        case RhiResult::ErrorSwapchainOutOfDate: return "ErrorSwapchainOutOfDate";
-        case RhiResult::ErrorShaderCompilation: return "ErrorShaderCompilation";
-        case RhiResult::ErrorResourceCreation: return "ErrorResourceCreation";
+        case RhiResult::Ok:
+            return "Ok";
+        case RhiResult::ErrorUnknown:
+            return "ErrorUnknown";
+        case RhiResult::ErrorInvalidArgument:
+            return "ErrorInvalidArgument";
+        case RhiResult::ErrorOutOfMemory:
+            return "ErrorOutOfMemory";
+        case RhiResult::ErrorDeviceLost:
+            return "ErrorDeviceLost";
+        case RhiResult::ErrorUnsupported:
+            return "ErrorUnsupported";
+        case RhiResult::ErrorNotInitialized:
+            return "ErrorNotInitialized";
+        case RhiResult::ErrorSurfaceLost:
+            return "ErrorSurfaceLost";
+        case RhiResult::ErrorSwapchainOutOfDate:
+            return "ErrorSwapchainOutOfDate";
+        case RhiResult::ErrorShaderCompilation:
+            return "ErrorShaderCompilation";
+        case RhiResult::ErrorResourceCreation:
+            return "ErrorResourceCreation";
         }
         return "?";
     }
@@ -118,8 +132,9 @@ namespace Render::RHI
             return nullptr;
 #endif
         case BackendKind::Vulkan:
-            logger.error("[rhi] Vulkan backend not yet implemented (Phase 8). "
-                         "No silent fallback: please explicitly select OpenGL, or wait for Vulkan.");  // Vulkan 后端尚未实现
+            logger.error(
+                "[rhi] Vulkan backend not yet implemented (Phase 8). "
+                "No silent fallback: please explicitly select OpenGL, or wait for Vulkan.");  // Vulkan 后端尚未实现
             return nullptr;
         }
 
@@ -132,5 +147,4 @@ namespace Render::RHI
         // 析构里会检查表面与资源是否已释放，并对泄漏记 Warn/Error。
         delete device;
     }
-
 }  // namespace Render::RHI
