@@ -153,7 +153,7 @@ set_property(TARGET RenderxTests RenderxGLTests PROPERTY FOLDER "Tests")
 # 关闭 unity build：RhiCoreTests.cpp 用 using namespace Render::RHI，
 # RxRuntimeTests.cpp 用 using namespace Render::RT，合并进同一翻译单元后
 # Capabilities / BufferDesc / SurfaceDesc / FrameStats 等同名类型全部歧义。
-# 与 Engine2DTests 的处理一致（测试目标不需要 unity 的编译加速）。
+# 需要重构代码消除类型冲突后才能启用。
 set_target_properties(RenderxGLTests PROPERTIES UNITY_BUILD OFF)
 
 if(MSVC)
