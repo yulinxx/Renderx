@@ -115,6 +115,12 @@
 #define RENDERX_ABI_VERSION_MINOR 3
 #define RENDERX_ABI_VERSION       ((RENDERX_ABI_VERSION_MAJOR << 16) | RENDERX_ABI_VERSION_MINOR)
 
+// 语义化版本串由 ABI 宏派生，避免手写字符串与宏漂移
+#define RENDERX_STRINGIFY_IMPL(x) #x
+#define RENDERX_STRINGIFY(x)      RENDERX_STRINGIFY_IMPL(x)
+#define RENDERX_VERSION_STRING \
+    RENDERX_STRINGIFY(RENDERX_ABI_VERSION_MAJOR) "." RENDERX_STRINGIFY(RENDERX_ABI_VERSION_MINOR) ".0"
+
 namespace Render
 {
     namespace RT
@@ -1099,6 +1105,8 @@ namespace Render
         {
             /// 返回 DLL 编译时的 ABI 版本，用于与 RENDERX_ABI_VERSION 比对
             RENDER_API uint32_t rxGetAbiVersion();
+            /// 返回形如 "5.3.0" 的语义化版本串（静态存储，调用方不得释放）
+            RENDER_API const char* rxGetVersionString();
             RENDER_API const char* rxResultName(RxResult result);
             RENDER_API const char* rxBackendName(Backend backend);
 
