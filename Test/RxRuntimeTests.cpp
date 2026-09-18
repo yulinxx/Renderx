@@ -1043,6 +1043,64 @@ TEST_F(RxIncrementalFixture, GeometryFreeCoalescesAdjacentHoles)
     rxGeometryStoreDestroy(runtime, store);
 }
 
+// 复刻「导入 16 万图元后删除 95%」的几何仓负载：大量小块按乱序释放。
+// 旧实现空闲表是有序 vector，中段插入要 O(N) memmove，批量释放整体 O(N^2)
+// （实测 15.9 万块 Debug 下 27.6s）。本测试锁定乱序释放后空洞全部合并、
+// 重新分配仍能走 first-fit 落回最低偏移。
+TEST_F(RxIncrementalFixture, GeometryBulkFreeStaysCoalescedAndReallocatable)
+{
+    constexpr uint32_t kCount = 20000;
+    constexpr uint64_t kBlockBytes = 256;
+    // 初始 4MB < 5MB 需求，会触发一次翻倍扩容到 8MB，顺带走过 grow 补尾区间路径
+    const GeometryStoreDesc desc = makeStoreDesc(4u << 20, 64u << 20, 256);
+    const GeometryStoreHandle store = rxGeometryStoreCreate(runtime, &desc);
+    ASSERT_TRUE(rxValid(store));
+
+    std::vector<GeometryBlock> blocks(kCount);
+    // 4MB < 5MB 需求，中途会触发一次翻倍扩容（返回 ErrorGeometryStoreGrown，
+    // 与 Ok 同为成功语义），顺带走过 grow 补尾区间路径。
+    const auto allocOk = [](RxResult result) {
+        return result == RxResult::Ok || result == RxResult::ErrorGeometryStoreGrown;
+    };
+    for (uint32_t i = 0; i < kCount; ++i)
+    {
+        ASSERT_TRUE(allocOk(rxGeometryAlloc(runtime, store, kBlockBytes, &blocks[i])));
+    }
+
+    // 交错释放（偶数、再奇数），模拟 unordered_map 遍历的哈希乱序：
+    // 每一步都可能命中空闲表中段插入以及与前/后邻合并的组合路径。
+    for (uint32_t i = 0; i < kCount; i += 2)
+    {
+        ASSERT_EQ(rxGeometryFree(runtime, store, blocks[i].id), RxResult::Ok);
+    }
+    for (uint32_t i = 1; i < kCount; i += 2)
+    {
+        ASSERT_EQ(rxGeometryFree(runtime, store, blocks[i].id), RxResult::Ok);
+    }
+
+    GeometryStoreStats stats{};
+    ASSERT_EQ(rxGeometryStoreGetStats(runtime, store, &stats), RxResult::Ok);
+    EXPECT_EQ(stats.usedBytes, 0u);
+    EXPECT_EQ(stats.blockCount, 0u);
+    // 无论释放顺序如何，相邻空洞最终必须全部合并回一个区间
+    ASSERT_EQ(stats.freeRangeCount, 1u);
+    EXPECT_EQ(stats.largestFreeBytes, stats.capacityBytes);
+
+    // 重新分配必须落回偏移 0 并严格按粒度递增：first-fit 必须吃到合并出的
+    // 大空洞，而不是把 2 万个新块追加到尾部（那样容量会无谓翻倍）。
+    for (uint32_t i = 0; i < kCount; ++i)
+    {
+        GeometryBlock again{};
+        ASSERT_EQ(rxGeometryAlloc(runtime, store, kBlockBytes, &again), RxResult::Ok);
+        EXPECT_EQ(again.offset, i * 256u);
+    }
+    ASSERT_EQ(rxGeometryStoreGetStats(runtime, store, &stats), RxResult::Ok);
+    // 尾部仍有一个空洞（8MB - 5MB）
+    EXPECT_EQ(stats.freeRangeCount, 1u);
+
+    rxGeometryStoreDestroy(runtime, store);
+}
+
 TEST_F(RxIncrementalFixture, GeometryAllocReportsGrowthAndKeepsBufferHandleStable)
 {
     // 初始只有 1024 字节：第二次分配必然触发扩容
