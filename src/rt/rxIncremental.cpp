@@ -152,10 +152,10 @@ namespace Render::RT::detail
         m_free.clear();
         m_free.emplace(0u, static_cast<uint32_t>(initial));
 
-        m_owner->log.debug("[rt] Geometry store ready: capacity %llu bytes, granularity %u, %s",  // 几何仓就绪
-            static_cast<unsigned long long>(initial),
-            m_granularity,
-            m_forIndices ? "indices" : "vertices");
+        // m_owner->log.debug("[rt] Geometry store ready: capacity %llu bytes, granularity %u, %s",  // 几何仓就绪
+        //     static_cast<unsigned long long>(initial),
+        //     m_granularity,
+        //     m_forIndices ? "indices" : "vertices");
         return true;
     }
 
@@ -273,10 +273,11 @@ namespace Render::RT::detail
         m_dirty.clear();
         markDirty(0, static_cast<uint32_t>(next));
 
-        m_owner->log.debug("[rt] Geometry store expanded: %llu -> %llu bytes (attempt %u)",  // 几何仓扩容
-            static_cast<unsigned long long>(oldCapacity),
-            static_cast<unsigned long long>(next),
-            m_growCount);
+        // m_owner->log.debug("[rt] Geometry store expanded: %llu -> %llu bytes (attempt %u)",  // 几何仓扩容
+        //     static_cast<unsigned long long>(oldCapacity),
+        //     static_cast<unsigned long long>(next),
+        //     m_growCount);
+
         return true;
     }
 
@@ -382,6 +383,7 @@ namespace Render::RT::detail
         m_owner->log.error(
             "[rt] geometry store grew but still cannot allocate %llu bytes (free table may be corrupted)",  // 几何仓扩容后仍无法分配
             static_cast<unsigned long long>(need));
+
         return RxResult::ErrorOutOfMemory;
     }
 
@@ -410,14 +412,17 @@ namespace Render::RT::detail
         {
             m_owner->log.warn("[rt] rxGeometryWrite: block %llu invalid (possibly freed)",  // 块无效
                 static_cast<unsigned long long>(blockId));
+
             return RxResult::ErrorInvalidHandle;
         }
+
         if (static_cast<uint64_t>(byteOffset) + sizeBytes > block->size)
         {
             m_owner->log.error("[rt] rxGeometryWrite: write out of bounds (block %u bytes, request %u+%u)",  // 写入越界
                 block->size,
                 byteOffset,
                 sizeBytes);
+
             return RxResult::ErrorInvalidArgument;
         }
 
@@ -433,11 +438,13 @@ namespace Render::RT::detail
         {
             return RxResult::ErrorInvalidHandle;
         }
+
         const Block* block = m_blocks.find(blockId);
         if (!block)
         {
             m_owner->log.warn("[rt] rxGeometryFree: block %llu already freed or never existed",  // 块已释放或从未存在
                 static_cast<unsigned long long>(blockId));
+
             return RxResult::ErrorInvalidHandle;
         }
 
@@ -481,7 +488,9 @@ namespace Render::RT::detail
                     range.offset,  // 几何仓上传失败
                     range.size,
                     RHI::resultName(wrote));
+
                 result = RxResult::ErrorDeviceLost;
+
                 return;
             }
             uploaded += range.size;
@@ -614,8 +623,10 @@ namespace Render::RT::detail
                                "Slots should be compactly allocated, not use the 64-bit ID of the primitive directly",
                 slot,
                 kMaxSlot);  // 槽号过大
+
             return RxResult::ErrorInvalidArgument;
         }
+        
         if (slot >= m_entries.size())
         {
             m_entries.resize(slot + 1);
