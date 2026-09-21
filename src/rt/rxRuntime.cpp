@@ -1265,17 +1265,6 @@ namespace Render::RT::detail
         pipelineKeys.push_back(key);
         const auto index = static_cast<uint16_t>(pipelines.size() - 1);
         pipelineCache.emplace(key, index);
-        // 附件格式必须与渲染目标一致，因此同一个 Runtime 里同一条逻辑管线
-        // 可能有多条变体（交换链 BGRA8 / 离屏 RGBA8 / 带深度 D32Float）。
-        // 「为什么又在建一条 Mesh3D」只看现象无法定位，这里把刚建出的键落日志
-        // ——只在缓存未命中时触发，正常帧不受影响。
-        log.debug("[rt] pipeline #%u created: vfmt=%d space=%d topo=%d colorFmt=%d depthFmt=%d",
-            static_cast<unsigned>(index),
-            static_cast<int>(key.vertexFormat),
-            static_cast<int>(key.space),
-            static_cast<int>(key.topology),
-            static_cast<int>(key.colorFormat),
-            static_cast<int>(key.depthFormat));
         return index;
     }
 
