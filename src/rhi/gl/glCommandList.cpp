@@ -411,12 +411,13 @@ namespace Render::RHI::gl
             static uint32_t s_glProbeCount = 0;
             if (s_glProbeCount < 20)
             {
-                m_device->log().info("[ColorProbe] gl attrib loc=%u comps=%u stride=%u offset=%lld buffer=%u",
-                    attr.location,
-                    static_cast<unsigned>(format.components),
-                    static_cast<unsigned>(stride),
-                    static_cast<long long>(binding.offset + attr.offset),
-                    static_cast<unsigned>(buffer->name));
+                // m_device->log().info("[ColorProbe] gl attrib loc=%u comps=%u stride=%u offset=%lld buffer=%u",
+                //     attr.location,
+                //     static_cast<unsigned>(format.components),
+                //     static_cast<unsigned>(stride),
+                //     static_cast<long long>(binding.offset + attr.offset),
+                //     static_cast<unsigned>(buffer->name));
+                
                 ++s_glProbeCount;
             }
             if (f.VertexAttribDivisor)
