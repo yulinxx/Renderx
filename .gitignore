@@ -10,11 +10,13 @@ out/
 bin/
 lib/
 cmake-build-*/
+*.dir/
 
 # ---- CMake 中间文件 ----
 CMakeFiles/
 CMakeCache.txt
 cmake_install.cmake
+*_version.rc
 CTestTestfile.cmake
 *_include.cmake
 install_manifest.txt
@@ -65,6 +67,7 @@ CMakeUserPresets.json
 .vs/
 *.suo
 *.sln
+*.slnx
 *.sdf
 *.opensdf
 *.vcxproj
