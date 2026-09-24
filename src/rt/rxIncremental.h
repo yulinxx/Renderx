@@ -328,6 +328,14 @@ namespace Render::RT::detail
         /// 清空整张网格（clear 时用，比逐条摘除快）
         void indexClear();
 
+        /**
+         * @brief 重算 2D 索引条目的包围盒并集
+         *
+         * 只在「刚刚做过一次全量遍历」之后调用（线性回退分支），此时条目还在
+         * 缓存里，边际成本近零；不要在每帧路径上无条件调用。
+         */
+        void recomputeIndexedBounds();
+
         /// 把非 2D 条目（无包围盒 / 3D 包围盒）加入「永可见」列表
         void indexAddNonIndexed(uint32_t slot);
 
@@ -346,6 +354,21 @@ namespace Render::RT::detail
         std::vector<RHI::DrawRange> m_ranges;
         /// 2D 分层网格索引（每层一个 GridLayer）
         std::vector<GridLayer> m_grid;
+        /**
+         * @brief 2D 索引条目包围盒的并集，**只增不减**
+         *
+         * 用途：resolve 前先判定「视野是否完全包含该并集」。若包含，则任何 2D
+         * 条目都不可能被剔除，网格粗筛必然以「候选超过一半 → 回退线性」收场，
+         * 那次收集是纯浪费（100 万条目实测占帧耗时约 25%），此时直接走线性。
+         *
+         * **只增不减是判定安全的前提**：它保证缓存值始终是真实并集的超集，
+         * 于是「视野 ⊇ 缓存并集」⇒「视野 ⊇ 真实并集」，捷径永远不会剔掉
+         * 本该画的东西。代价是大幅删减后并集可能偏大、捷径暂时不触发——不会
+         * 画错，只是少走一次捷径；而一旦真的走了线性回退，就会顺手重算收紧
+         * （见 recomputeIndexedBounds），因此能自愈。
+         */
+        float m_indexedBounds[4]{};
+        bool m_indexedBoundsValid = false;
         /// 非 2D 条目（无包围盒 / 3D 包围盒）的 slot，2D 视口下照常画、不裁。
         /// 无序（swap-and-pop 维护），每个 slot 的位置记录在 Entry::nonIndexedPos。
         std::vector<uint32_t> m_nonIndexed;

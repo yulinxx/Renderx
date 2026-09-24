@@ -1,13 +1,8 @@
 # 指定CMake最低版本要求
 cmake_minimum_required(VERSION 4.3)
 
-# 包含上级目录的配置文件（通常包含全局变量定义）
+# 包含上级目录的配置文件（路径、测试开关等全部由 Config.cmake 定义）
 include(${CMAKE_CURRENT_SOURCE_DIR}/../Config.cmake)
-
-# 如果定义了VCPKG_DIR环境变量且路径存在，则使用vcpkg作为包管理器
-if(DEFINED VCPKG_DIR AND EXISTS "${VCPKG_DIR}")
-    set(CMAKE_TOOLCHAIN_FILE "${VCPKG_DIR}/scripts/buildsystems/vcpkg.cmake")
-endif()
 
 # 项目配置
 project(RenderX
@@ -422,23 +417,22 @@ install(DIRECTORY include/render
 )
 
 # ==================== 测试配置 ====================
-# Config.cmake 统一 set(BUILD_RENDERX_TESTS OFF)（避免测试代码与主代码冲突），
-# 该普通变量会遮蔽下方 option()。独立构建（Renderx 为顶层项目）不受此约束，
-# 否则 Renderx 的测试永远无法运行。
-if(PROJECT_IS_TOP_LEVEL)
-    set(BUILD_RENDERX_TESTS ON)
-endif()
-
-# 与根 CMakeLists.txt 一致用 CONFIG：vcpkg 的 GTest 是 config 包，
-# 无 CONFIG 时 find_package 走 CMake 内置 FindGTest.cmake 会找不到 vcpkg 里的库。
+# 开关由根 Config.cmake 统一配置（BUILD_RENDERX_TESTS）。
+# 独立构建（Renderx 作为顶层项目）时不走集成构建的取值约束：这里以「顶层构建且
+# GTest 可用」作为是否加入 Test 子目录的**局部判据**，不改写 Config.cmake 的开关。
+#
+# 用 CONFIG 模式：vcpkg 的 GTest 是 config 包，无 CONFIG 时 find_package 会走
+# CMake 内置 FindGTest.cmake，找不到 vcpkg 里的库。
 find_package(GTest CONFIG QUIET)
-if(GTest_FOUND)
-    option(BUILD_RENDERX_TESTS "Build Renderx unit tests" ON)
-    if(BUILD_RENDERX_TESTS)
-        add_subdirectory(Test)
-    endif()
-else()
-    set(BUILD_RENDERX_TESTS OFF CACHE BOOL "Build Renderx unit tests" FORCE)
+set(_renderx_build_tests ${BUILD_RENDERX_TESTS})
+if(PROJECT_IS_TOP_LEVEL AND GTest_FOUND)
+    set(_renderx_build_tests ON)
+endif()
+if(NOT GTest_FOUND)
+    set(_renderx_build_tests OFF)
+endif()
+if(_renderx_build_tests)
+    add_subdirectory(Test)
 endif()
 
 # ==================== 状态输出 ====================
@@ -447,7 +441,7 @@ message(STATUS "[${PROJECT_NAME}]")
 message(STATUS "  Version: ${PROJECT_VERSION}")
 message(STATUS "  Platform: ${CMAKE_SYSTEM_NAME}(${CMAKE_SYSTEM_PROCESSOR})")
 message(STATUS "  Build Type: ${CMAKE_BUILD_TYPE}")
-if(BUILD_RENDERX_TESTS)
+if(_renderx_build_tests)
     message(STATUS "  Tests: ENABLED")
 else()
     message(STATUS "  Tests: DISABLED")

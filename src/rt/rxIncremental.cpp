@@ -99,6 +99,13 @@ namespace Render::RT::detail
             cyMin = static_cast<int32_t>(std::floor(bounds[1] / cellSize));
             cyMax = static_cast<int32_t>(std::floor(bounds[3] / cellSize));
         }
+
+        /// view 是否完全包含 box。两侧布局都是 (minX, minY, maxX, maxY)。
+        /// 用于判定「剔除不可能生效」，因此必须是保守方向：宁可判 false。
+        bool viewContainsBox(const float view[4], const float box[4])
+        {
+            return view[0] <= box[0] && view[1] <= box[1] && view[2] >= box[2] && view[3] >= box[3];
+        }
     }  // namespace
 
     // ======================================================================
@@ -916,6 +923,19 @@ namespace Render::RT::detail
 
     void DrawList::resolveIndexed2D(const float viewBounds[4], uint32_t& culledOut, uint32_t& mergedOut)
     {
+        // 0. 捷径：视野完全包含 2D 索引条目的包围盒并集时，剔除不可能生效。
+        //    ——此时网格粗筛的候选必然覆盖全部条目，触发下面的退化回退，
+        //    收集本身成了纯浪费（100 万条目实测约占帧耗时 25%）。
+        //    既然结论一致，就直接把「网格收集」和「逐条判交」两段一起省掉：
+        //    传 cull2D=false 表示不裁 2D 条目，而这里已经证明没有条目会被裁，
+        //    因此可见集合与走完整路径完全相同。culledOut 保持 0 也是同一道理。
+        //    正确性依据：并集只增不减，是真实并集的超集（见成员说明）。
+        if (m_indexedBoundsValid && m_indexed2DCount > 0 && viewContainsBox(viewBounds, m_indexedBounds))
+        {
+            resolveLinear(false, nullptr, false, nullptr, culledOut, mergedOut);
+            return;
+        }
+
         // 1. 网格粗筛收集候选：跨格图元用 frameStamp 去重，保证每个 slot 只进一次。
         m_visible.clear();
         ++m_stamp;
@@ -968,6 +988,10 @@ namespace Render::RT::detail
         {
             m_visible.clear();
             resolveLinear(true, viewBounds, false, nullptr, culledOut, mergedOut);
+            // 刚才已经遍历过全部条目，顺手把包围盒并集重算收紧：这一步让下一帧
+            // 能命中 resolveIndexed2D 开头的捷径，从「收集完再丢弃」变成「根本不收集」。
+            // 放在这里而不是每帧算，是因为只有本分支才刚付过一次全量遍历的成本。
+            recomputeIndexedBounds();
             return;
         }
 
@@ -1029,6 +1053,24 @@ namespace Render::RT::detail
             }
         }
         m_indexed2DCount += 1;
+
+        // 维护「2D 索引条目包围盒并集」。只扩不缩，保证它始终是真实并集的超集，
+        // 于是「视野 ⊇ 该并集」⇒「视野 ⊇ 真实并集」，剔除捷径不会误剔。
+        if (!m_indexedBoundsValid)
+        {
+            m_indexedBounds[0] = bounds[0];
+            m_indexedBounds[1] = bounds[1];
+            m_indexedBounds[2] = bounds[2];
+            m_indexedBounds[3] = bounds[3];
+            m_indexedBoundsValid = true;
+        }
+        else
+        {
+            m_indexedBounds[0] = (std::min)(m_indexedBounds[0], bounds[0]);
+            m_indexedBounds[1] = (std::min)(m_indexedBounds[1], bounds[1]);
+            m_indexedBounds[2] = (std::max)(m_indexedBounds[2], bounds[2]);
+            m_indexedBounds[3] = (std::max)(m_indexedBounds[3], bounds[3]);
+        }
     }
 
     void DrawList::indexRemove(uint32_t slot)
@@ -1074,6 +1116,47 @@ namespace Render::RT::detail
             layer.cells.clear();
         }
         m_indexed2DCount = 0;
+        // 索引已空，包围盒并集必须一并作废；否则残留的旧并集会让剔除捷径
+        // 在新一轮建表时基于过期范围做判断。
+        m_indexedBoundsValid = false;
+    }
+
+    void DrawList::recomputeIndexedBounds()
+    {
+        bool any = false;
+        float minX = 0.0f;
+        float minY = 0.0f;
+        float maxX = 0.0f;
+        float maxY = 0.0f;
+
+        // 按 slot 顺序扫 m_entries（顺序访问），不扫 m_order——后者是排序序，
+        // 在这里没有意义且会把顺序访问变成随机访问。
+        for (const Entry& entry : m_entries)
+        {
+            if (entry.alive == 0 || entry.boundsKind != BoundsAabb2 || entry.gridLevel == kInvalidGridLevel)
+            {
+                continue;
+            }
+            if (!any)
+            {
+                minX = entry.bounds[0];
+                minY = entry.bounds[1];
+                maxX = entry.bounds[2];
+                maxY = entry.bounds[3];
+                any = true;
+                continue;
+            }
+            minX = (std::min)(minX, entry.bounds[0]);
+            minY = (std::min)(minY, entry.bounds[1]);
+            maxX = (std::max)(maxX, entry.bounds[2]);
+            maxY = (std::max)(maxY, entry.bounds[3]);
+        }
+
+        m_indexedBounds[0] = minX;
+        m_indexedBounds[1] = minY;
+        m_indexedBounds[2] = maxX;
+        m_indexedBounds[3] = maxY;
+        m_indexedBoundsValid = any;
     }
 
     void DrawList::indexAddNonIndexed(uint32_t slot)

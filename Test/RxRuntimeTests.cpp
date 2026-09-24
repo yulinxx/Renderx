@@ -2750,3 +2750,112 @@ TEST_F(RxIncrementalFixture, ZoomOutBreakdownNeither)
     EXPECT_EQ(measured.drawCalls, kZoomOutCount);
 }
 
+// ======================================================================
+// 剔除正确性的黄金标准：空间索引路径的可见集必须等于「逐条判交」的暴力结果
+// ======================================================================
+//
+// 设计文档（《百万级矢量剔除：DrawList 空间索引设计》§8）把这条列为
+// 「防止漏剔/误剔的核心护栏」，但此前只写在文档里、没有用例。这里补上，并把
+// 三种形态都覆盖到：
+//   - 视野完全包含全部条目 —— 命中「索引包围盒并集」捷径，整段跳过收集与判交；
+//   - 视野部分重叠 —— 走网格粗筛 + 精确判交；
+//   - 视野完全不相交 —— 应当全部剔除。
+// 另混入无包围盒条目（永可见，任何判据下都不裁），它们的语义在三条路径上必须一致。
+//
+// 口径说明：公开 ABI 只暴露数量与 draw 数、看不到可见 slot 集合，因此这里比对
+// 「数量口径」；slot 集合的逐个正确性由 DrawList 内部契约用例覆盖。
+TEST_F(RxIncrementalFixture, CullingVisibleCountMatchesBruteForce)
+{
+    const BufferHandle buffer = makeVertexBuffer(runtime, 65536);
+    ASSERT_TRUE(rxValid(buffer));
+
+    constexpr uint32_t kBoxCount = 500;
+    constexpr uint32_t kNoBoundsCount = 20;
+
+    std::vector<float> boxes(static_cast<size_t>(kBoxCount) * 4, 0.0f);
+    std::mt19937 rng(20260924u);
+    std::uniform_real_distribution<float> coord(-500.0f, 500.0f);
+    std::uniform_real_distribution<float> extent(0.5f, 60.0f);
+    for (uint32_t i = 0; i < kBoxCount; ++i)
+    {
+        const float x = coord(rng);
+        const float y = coord(rng);
+        boxes[i * 4 + 0] = x;
+        boxes[i * 4 + 1] = y;
+        boxes[i * 4 + 2] = x + extent(rng);
+        boxes[i * 4 + 3] = y + extent(rng);
+    }
+
+    DrawListDesc listDesc{};
+    listDesc.initialCapacity = kBoxCount + kNoBoundsCount;
+    listDesc.enableMerging = 1;
+    listDesc.enableCulling = 1;
+
+    const DrawListHandle list = rxDrawListCreate(runtime, &listDesc);
+    ASSERT_TRUE(rxValid(list));
+
+    for (uint32_t i = 0; i < kBoxCount; ++i)
+    {
+        const DrawCommand command = makeListCommand(buffer, i * 2, 2, i + 1, PrimitiveTopology::Lines);
+        ASSERT_EQ(rxDrawListUpsert(runtime, list, i, &command, &boxes[i * 4]), RxResult::Ok);
+    }
+    for (uint32_t i = 0; i < kNoBoundsCount; ++i)
+    {
+        const uint32_t slot = kBoxCount + i;
+        const DrawCommand command = makeListCommand(buffer, slot * 2, 2, slot + 1, PrimitiveTopology::Lines);
+        ASSERT_EQ(rxDrawListUpsert(runtime, list, slot, &command, nullptr), RxResult::Ok);
+    }
+
+    auto measuredVisible = [&](const float view[4]) -> uint32_t {
+        EXPECT_EQ(rxSessionBeginFrame(session), RxResult::Ok);
+        EXPECT_EQ(rxSessionSubmitDrawList(session, list, view), RxResult::Ok);
+        DrawListStats stats{};
+        EXPECT_EQ(rxDrawListGetStats(runtime, list, &stats), RxResult::Ok);
+        EXPECT_EQ(rxSessionEndFrame(session), RxResult::Ok);
+        return stats.visibleCount;
+    };
+
+    // 期望值：与 DrawList 完全相同的判据，在测试侧暴力算一遍
+    auto bruteForceVisible = [&](const float view[4]) -> uint32_t {
+        uint32_t count = kNoBoundsCount;  // 无包围盒条目永可见
+        for (uint32_t i = 0; i < kBoxCount; ++i)
+        {
+            const float* b = &boxes[static_cast<size_t>(i) * 4];
+            const bool disjoint = b[2] < view[0] || b[0] > view[2] || b[3] < view[1] || b[1] > view[3];
+            if (!disjoint)
+            {
+                ++count;
+            }
+        }
+        return count;
+    };
+
+    const float typicalViews[4][4] = {
+        { -600.0f, -600.0f, 600.0f, 600.0f },      // 全覆盖：命中并集捷径
+        { -100.0f, -100.0f, 100.0f, 100.0f },       // 局部重叠：网格粗筛 + 精确判交
+        { 2000.0f, 2000.0f, 3000.0f, 3000.0f },     // 完全不相交：全部剔除
+        { -600.0f, -600.0f, 0.0f, 0.0f },           // 只覆盖左下半区
+    };
+    for (const auto& view : typicalViews)
+    {
+        EXPECT_EQ(measuredVisible(view), bruteForceVisible(view))
+            << "view=(" << view[0] << "," << view[1] << "," << view[2] << "," << view[3] << ")";
+    }
+
+    // 随机视野批量比对：覆盖跨格、多层、半包含等边界
+    std::uniform_real_distribution<float> viewCoord(-900.0f, 900.0f);
+    std::uniform_real_distribution<float> viewSize(1.0f, 700.0f);
+    for (int iteration = 0; iteration < 60; ++iteration)
+    {
+        const float x = viewCoord(rng);
+        const float y = viewCoord(rng);
+        const float view[4] = { x, y, x + viewSize(rng), y + viewSize(rng) };
+        EXPECT_EQ(measuredVisible(view), bruteForceVisible(view))
+            << "iteration=" << iteration << " view=(" << view[0] << "," << view[1] << ","
+            << view[2] << "," << view[3] << ")";
+    }
+
+    rxDrawListDestroy(runtime, list);
+    rxBufferDestroy(runtime, buffer);
+}
+
