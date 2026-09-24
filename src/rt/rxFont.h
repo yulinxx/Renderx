@@ -40,6 +40,7 @@
 #include <stb_truetype.h>
 
 #include <cstdint>
+#include <memory>
 #include <unordered_map>
 #include <vector>
 
@@ -50,8 +51,15 @@ namespace Render::RT::detail
     {
         Runtime* runtime = nullptr;
 
-        /// 字体字节副本（见文件头：stbtt_fontinfo 持有指针）
-        std::vector<uint8_t> data;
+        /**
+         * 字体字节（见文件头：stbtt_fontinfo 持有指针）。
+         *
+         * 用 shared_ptr 是因为同一 TTF 常被多个 FontHandle 用（不同 pixelHeight /
+         * 覆盖率 vs SDF）。Runtime 按 (源指针, size) 做 weak_ptr 缓存，
+         * 第二个 FontHandle 直接复用第一份拷贝 —— 16MB 的思源黑体不再乘份数。
+         * 宿主需在销毁相关 FontHandle 之前保持源字节存活（地址复用安全）。
+         */
+        std::shared_ptr<const std::vector<uint8_t>> data;
         stbtt_fontinfo info{};
         /// 字体单位 → 像素的比例，stbtt_ScaleForPixelHeight 的结果
         float scale = 1.0f;

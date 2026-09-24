@@ -55,14 +55,33 @@ namespace Render::RT::detail
             return RxResult::ErrorInvalidArgument;
         }
 
+        // 同一 TTF 多次 createFont（不同字号 / 覆盖率 vs SDF）只拷一份：
+        // 按宿主传入的 (data, size) 查 blob 缓存，命中则共享 weak_ptr 锁住的字节。
+        const FontBlobKey blobKey{ desc.data, desc.dataBytes };
+        std::shared_ptr<const std::vector<uint8_t>> blob;
+        if (auto it = fontBlobCache.find(blobKey); it != fontBlobCache.end())
+        {
+            blob = it->second.lock();
+            if (!blob)
+            {
+                // 上一批 Font 已全部销毁，源指针可能已被宿主复用
+                fontBlobCache.erase(it);
+            }
+        }
+        if (!blob)
+        {
+            blob = std::make_shared<const std::vector<uint8_t>>(
+                static_cast<const uint8_t*>(desc.data), static_cast<const uint8_t*>(desc.data) + desc.dataBytes);
+            fontBlobCache[blobKey] = blob;
+        }
+
         auto font = new Font();
         font->runtime = this;
-        font->data.assign(
-            static_cast<const uint8_t*>(desc.data), static_cast<const uint8_t*>(desc.data) + desc.dataBytes);
+        font->data = std::move(blob);
 
         // offset 取 0 号字体：ttc 集合里的其余字体需要调用方自己拆，
         // DLL 不做字体集合解析（那属于字体管理，不是渲染）。
-        if (stbtt_InitFont(&font->info, font->data.data(), 0) == 0)
+        if (stbtt_InitFont(&font->info, font->data->data(), 0) == 0)
         {
             log.error("[rt] rxFontCreate: font data cannot be parsed (not TTF/OTF?)");  // 字体数据无法解析
             delete font;
@@ -159,6 +178,8 @@ namespace Render::RT::detail
             delete font;
         }
         fonts.clear();
+        // 字体全灭后 blob 缓存不应再持有任何强引用（weak_ptr 本身已过期）
+        fontBlobCache.clear();
     }
 }  // namespace Render::RT::detail
 

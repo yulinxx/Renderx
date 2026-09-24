@@ -33,6 +33,7 @@
 #include "rt/rxIncremental.h"
 
 #include <cstddef>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -326,6 +327,33 @@ namespace Render::RT::detail
     /// 字形图集。定义在 rxFont.h：只有它需要 stb_truetype 的类型。
     struct Font;
 
+    /**
+     * 字体字节 blob 缓存键：宿主传入的 (data 指针, size)。
+     *
+     * 同一 TTF 会按不同 pixelHeight / SDF 建多个 FontHandle；这里让第二个
+     * 及以后的 createFont 复用第一份内部拷贝，而不是再读一遍 16MB。
+     * 宿主须在销毁这些 FontHandle 之前保持源字节存活（地址不被复用）。
+     */
+    struct FontBlobKey
+    {
+        const void* data = nullptr;
+        uint64_t size = 0;
+
+        bool operator==(const FontBlobKey& other) const noexcept
+        {
+            return data == other.data && size == other.size;
+        }
+    };
+
+    struct FontBlobKeyHash
+    {
+        size_t operator()(const FontBlobKey& key) const noexcept
+        {
+            const auto p = reinterpret_cast<uintptr_t>(key.data);
+            return static_cast<size_t>(p ^ (key.size + 0x9e3779b97f4a7c15ULL + (p << 6) + (p >> 2)));
+        }
+    };
+
 
     struct Runtime
     {
@@ -411,6 +439,15 @@ namespace Render::RT::detail
          * 而地址会被 rxFontGlyph 的调用序列短期持有。
          */
         SlotMap<uint64_t, Font*> fonts;
+
+        /**
+         * 字体字节 blob 缓存：宿主 (data, size) → 内部拷贝的 weak_ptr。
+         *
+         * 同一 TTF 按不同 pixelHeight / 覆盖率 vs SDF 会 createFont 多次；
+         * 第二次起 lock 成功即复用第一份拷贝。weak_ptr 让最后一个引用它的
+         * Font 销毁后缓存自然过期，不会钉死 16MB 字节。
+         */
+        std::unordered_map<FontBlobKey, std::weak_ptr<const std::vector<uint8_t>>, FontBlobKeyHash> fontBlobCache;
 
         /**
          * 当前处于 BeginFrame/EndFrame 之间的 Session 数量。

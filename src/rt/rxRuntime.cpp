@@ -537,7 +537,7 @@ namespace Render::RT::detail
         samplerDesc.debugName = "RxDefaultSampler";
         defaultSampler = device->createSampler(samplerDesc);
 
-        constexpr uint64_t kDefaultTransientBytes = 64ull * 1024ull * 1024ull;
+        constexpr uint64_t kDefaultTransientBytes = 32ull * 1024ull * 1024ull;
         // TransientAlloc::offset 是 uint32，而环形缓冲总大小是单段容量的两倍，
         // 因此单段上限为 2GB。超出会让偏移静默回绕，画面表现为随机错位。
         constexpr uint64_t kMaxTransientBytes = 0x80000000ull;
