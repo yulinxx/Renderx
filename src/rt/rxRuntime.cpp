@@ -1265,6 +1265,7 @@ namespace Render::RT::detail
         pipelineKeys.push_back(key);
         const auto index = static_cast<uint16_t>(pipelines.size() - 1);
         pipelineCache.emplace(key, index);
+        log.debug("[rt] pipeline created idx=%u colorFmt=%d depthFmt=%d", index, static_cast<int>(key.colorFormat), static_cast<int>(key.depthFormat));
         return index;
     }
 
