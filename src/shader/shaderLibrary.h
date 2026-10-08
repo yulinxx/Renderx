@@ -13,7 +13,7 @@
  * 2. 不再有运行时文件 IO。
  *    旧方案在 shader::initialize(shaderDir) 中用 std::ifstream 逐个读
  *    .vert/.frag，目录由 renderCreateDevice 用 std::filesystem 从可执行文件
- *    路径推导。这带来两个已记录在案的实际故障（见 Docs/Mac渲染.md §4）：
+ *    路径推导。这带来两个实际故障：
  *    macOS .app bundle 下路径推导失败导致视口全黑；shader 文件不是构建依赖，
  *    改了不重新复制，调试时跑的是旧 shader。
  *

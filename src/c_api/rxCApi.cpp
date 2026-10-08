@@ -104,9 +104,19 @@ namespace Render
                 return RENDERX_ABI_VERSION;
             }
 
+            uint32_t rxGetVersion()
+            {
+                return RENDERX_VERSION;
+            }
+
             const char* rxGetVersionString()
             {
                 return RENDERX_VERSION_STRING;
+            }
+
+            const char* rxStatusText(int32_t status)
+            {
+                return rxResultName(static_cast<RxResult>(status));
             }
 
             const char* rxResultName(RxResult result)

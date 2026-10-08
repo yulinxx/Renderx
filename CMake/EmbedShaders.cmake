@@ -5,12 +5,11 @@
 # 内容为字节数组 + 索引表。构建后 shader 存在于 DLL 二进制内部，
 # 运行时不再需要任何文件 IO。
 #
-# 为什么必须这么做（旧方案的三个实际故障）：
-#   1. shader 是运行时从「可执行文件所在目录」读取的文本
-#      （见 Docs/Mac渲染.md §4「全黑视口」）。DLL 因此依赖运行目录布局，
+# 为什么必须这么做（运行期读文本的三个实际故障）：
+#   1. shader 若在运行时从「可执行文件所在目录」读取，DLL 即依赖运行目录布局，
 #      在 macOS .app bundle / iOS 下极易失效，症状是整个视口全黑。
 #   2. .vert/.frag 不是构建依赖，修改后不触发重新构建也不重新复制，
-#      调试 shader 时跑的是旧 shader（Docs/Mac渲染.md §4 明确警告过这点）。
+#      调试 shader 时可能跑的是旧 shader。
 #   3. Vulkan 需要 SPIR-V、Metal 需要 metallib，运行时读文本无法覆盖，
 #      这也是旧 Vulkan 后端 m_shaderStages 永远为空的间接原因。
 #

@@ -349,7 +349,7 @@ Shader 在构建期转成字节数组编入 DLL，运行期没有任何文件 IO
 - 新增 shader 只需把文件加进 `CMakeLists.txt` 的 `RENDERX_SHADER_SOURCES` 列表，无需改任何 C++ 代码
 
 替换了旧的 `shaders.h` / `shaders.cpp` 方案。旧方案有三个实际故障：macOS `.app` bundle 下
-从可执行文件路径推导 shader 目录失败导致视口全黑（见 `Docs/Mac渲染.md` §4）；shader 文件不是
+从可执行文件路径推导 shader 目录失败导致视口全黑；shader 文件不是
 构建依赖，调试时跑的是旧 shader；文本加载无法承载 Vulkan/Metal 需要的 SPIR-V 与 metallib。
 
 ## 依赖库
@@ -1009,7 +1009,7 @@ pushConstant 块（`uView` / `uViewport` / `uPointSize` / `uSdfScale`）。
 > 顶点属性配合 divisor 进来，届时连 RHI 一起补。
 
 > 所有 shader 都显式标注 `layout(location = N)`：Apple 的 GLSL 编译器在缺省时会乱序分配
-> attribute slot，导致颜色/坐标错位（见 `Docs/Mac渲染.md` §9）。
+> attribute slot，导致颜色/坐标错位。
 
 ## 3D 渲染（ABI 5.0）
 

@@ -11,7 +11,7 @@
 // 会随缩放错位。见 Docs/03-渲染主链/新渲染架构.md §15。
 //
 // layout(location) 必须显式标注：Apple 的 GLSL 编译器在缺省时会乱序
-// 分配 attribute slot（见 Docs/Mac渲染.md §9）。
+// 分配 attribute slot。
 #version 330 core
 
 #include "rx_push_constants.glsl"
