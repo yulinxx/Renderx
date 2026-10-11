@@ -48,7 +48,7 @@ target_link_libraries(RenderxTests PRIVATE
     RenderxShaders
 )
 
-gtest_discover_tests(RenderxTests)
+gtest_discover_tests(RenderxTests DISCOVERY_TIMEOUT 120)
 
 # ============================================================
 # Target 2: RenderxGLTests (完整 RHI + RT；测试本身跑 Null 后端)
@@ -142,7 +142,7 @@ target_link_libraries(RenderxGLTests PRIVATE
     RenderxShaders
 )
 
-gtest_discover_tests(RenderxGLTests)
+gtest_discover_tests(RenderxGLTests DISCOVERY_TIMEOUT 120)
 
 # ============================================================
 # 通用设置
@@ -221,5 +221,5 @@ if(APPLE)
 
     set_target_properties(RenderxMetalTests PROPERTIES UNITY_BUILD OFF)
     set_property(TARGET RenderxMetalTests PROPERTY FOLDER "Tests")
-    gtest_discover_tests(RenderxMetalTests)
+    gtest_discover_tests(RenderxMetalTests DISCOVERY_TIMEOUT 120)
 endif()
