@@ -31,6 +31,55 @@
 
 namespace Render::RHI::gl
 {
+    using ::Render::RHI::BufferHandle;
+    using ::Render::RHI::FrameStats;
+    using ::Render::RHI::PipelineHandle;
+    using ::Render::RHI::RenderPassBeginDesc;
+    using ::Render::RHI::Rect2D;
+    using ::Render::RHI::TextureHandle;
+    using ::Render::RHI::Viewport;
+    using ::Render::RHI::DrawRange;
+    using ::Render::RHI::BarrierScope;
+    using ::Render::RHI::BindGroupHandle;
+    using ::Render::RHI::SamplerHandle;
+    using ::Render::RHI::ShaderHandle;
+    using ::Render::RHI::ShaderDesc;
+    using ::Render::RHI::BufferDesc;
+    using ::Render::RHI::BufferUsage;
+    using ::Render::RHI::MemoryAccess;
+    using ::Render::RHI::TextureDesc;
+    using ::Render::RHI::TextureUsage;
+    using ::Render::RHI::SamplerDesc;
+    using ::Render::RHI::FilterMode;
+    using ::Render::RHI::AddressMode;
+    using ::Render::RHI::CompareOp;
+    using ::Render::RHI::BlendFactor;
+    using ::Render::RHI::BlendOp;
+    using ::Render::RHI::PrimitiveTopology;
+    using ::Render::RHI::VertexAttribType;
+    using ::Render::RHI::VertexAttribute;
+    using ::Render::RHI::VertexBufferLayout;
+    using ::Render::RHI::ColorAttachment;
+    using ::Render::RHI::DepthAttachment;
+    using ::Render::RHI::GraphicsPipelineDesc;
+    using ::Render::RHI::ComputePipelineDesc;
+    using ::Render::RHI::BindGroupDesc;
+    using ::Render::RHI::Extent2D;
+    using ::Render::RHI::Format;
+    using ::Render::RHI::PresentMode;
+    using ::Render::RHI::SurfaceDesc;
+    using ::Render::RHI::DeviceDesc;
+    using ::Render::RHI::Capabilities;
+    using ::Render::RHI::RhiLogger;
+    using ::Render::RHI::RhiResult;
+    using ::Render::RHI::MappedRange;
+    using ::Render::RHI::NativeWindow;
+    using ::Render::RHI::kMaxVertexBufferSlots;
+    using ::Render::RHI::kMaxColorAttachments;
+    using ::Render::RHI::kMaxPushConstantBytes;
+    using ::Render::RHI::kMaxDescriptorSets;
+    using ::Render::RHI::kMaxVertexAttributes;
+    using ::Render::RHI::kMaxBindingsPerSet;
     GlCommandList::GlCommandList(GlDevice* device)
         : m_device(device)
     {
@@ -39,17 +88,17 @@ namespace Render::RHI::gl
     void GlCommandList::beginFrame(GlSurface* surface)
     {
         m_surface = surface;
-        m_stats = FrameStats{};
+        m_stats = ::Render::RHI::FrameStats{};
         m_inRenderPass = false;
-        m_pipelineHandle = PipelineHandle{};
+        m_pipelineHandle = ::Render::RHI::PipelineHandle{};
         for (auto& binding : m_vertexBindings)
         {
             binding = VertexBinding{};
         }
         m_vertexBindingsDirty = false;
-        m_indexBuffer = BufferHandle{};
+        m_indexBuffer = ::Render::RHI::BufferHandle{};
         m_indexOffset = 0;
-        m_indexType = IndexType::Uint32;
+        m_indexType = ::Render::RHI::IndexType::Uint32;
         // pushConstant 内容不跨帧保留：上层每帧写入 view 矩阵等，
         // 保留旧值会掩盖「忘记写」的错误。
         std::memset(m_pushConstants, 0, sizeof(m_pushConstants));
@@ -57,7 +106,7 @@ namespace Render::RHI::gl
         m_pushConstantsDirty = false;
     }
 
-    GLuint GlCommandList::resolveFramebuffer(const RenderPassBeginDesc& desc)
+    GLuint GlCommandList::resolveFramebuffer(const ::Render::RHI::RenderPassBeginDesc& desc)
     {
         const bool hasExplicitTarget = (desc.colorAttachmentCount > 0 && desc.colorAttachments[0].texture.valid()) ||
             desc.depthAttachment.texture.valid();
@@ -70,19 +119,19 @@ namespace Render::RHI::gl
         return m_device->framebufferFor(desc);
     }
 
-    RhiResult GlCommandList::beginRenderPass(const RenderPassBeginDesc& desc)
+    ::Render::RHI::RhiResult GlCommandList::beginRenderPass(const ::Render::RHI::RenderPassBeginDesc& desc)
     {
         if (m_inRenderPass)
         {
             m_device->log().error("[gl] beginRenderPass: previous RenderPass not ended");  // 上一个 RenderPass 未结束
-            return RhiResult::ErrorInvalidArgument;
+            return ::Render::RHI::RhiResult::ErrorInvalidArgument;
         }
         if (desc.colorAttachmentCount > kMaxColorAttachments)
         {
             m_device->log().error("[gl] beginRenderPass: colorAttachmentCount=%u exceeds limit %u",
                 desc.colorAttachmentCount,
                 kMaxColorAttachments);  // colorAttachmentCount 超过上限
-            return RhiResult::ErrorInvalidArgument;
+            return ::Render::RHI::RhiResult::ErrorInvalidArgument;
         }
 
         const GLFuncs& f = m_device->gl();
@@ -109,9 +158,9 @@ namespace Render::RHI::gl
         }
 
         GLbitfield clearMask = 0;
-        if (desc.colorAttachmentCount > 0 && desc.colorAttachments[0].loadOp == LoadOp::Clear)
+        if (desc.colorAttachmentCount > 0 && desc.colorAttachments[0].loadOp == ::Render::RHI::LoadOp::Clear)
         {
-            const ColorRgba& c = desc.colorAttachments[0].clearValue;
+            const ::Render::RHI::ColorRgba& c = desc.colorAttachments[0].clearValue;
             if (f.ClearColor)
             {
                 f.ClearColor(c.r, c.g, c.b, c.a);
@@ -120,7 +169,7 @@ namespace Render::RHI::gl
         }
         const bool surfaceHasDepth = m_surface && m_surface->depthFormat() != Format::Unknown;
         const bool clearDepth =
-            desc.depthAttachment.loadOp == LoadOp::Clear && (desc.hasDepthAttachment || surfaceHasDepth);
+            desc.depthAttachment.loadOp == ::Render::RHI::LoadOp::Clear && (desc.hasDepthAttachment || surfaceHasDepth);
         if (clearDepth)
         {
             // GL 要求深度写开启才能清深度。管线可能把 depthWrite 关了，
@@ -139,8 +188,8 @@ namespace Render::RHI::gl
         m_inRenderPass = true;
         // 管线状态与 Pass 无关，但目标切换后需要重新下发一次，
         // 否则新目标沿用旧目标的 viewport/深度设置。
-        m_pipelineHandle = PipelineHandle{};
-        return RhiResult::Ok;
+        m_pipelineHandle = ::Render::RHI::PipelineHandle{};
+        return ::Render::RHI::RhiResult::Ok;
     }
 
     void GlCommandList::endRenderPass()
@@ -209,22 +258,22 @@ namespace Render::RHI::gl
         }
 
         // ---- 光栅化 ----
-        if (pipeline.raster.cullMode == CullMode::None || !f.CullFace)
+        if (pipeline.raster.cullMode == ::Render::RHI::CullMode::None || !f.CullFace)
         {
             f.Disable(GL_CULL_FACE);
         }
         else
         {
             f.Enable(GL_CULL_FACE);
-            f.CullFace(pipeline.raster.cullMode == CullMode::Front ? GL_FRONT : GL_BACK);
+            f.CullFace(pipeline.raster.cullMode == ::Render::RHI::CullMode::Front ? GL_FRONT : GL_BACK);
         }
         if (f.FrontFace)
         {
-            f.FrontFace(pipeline.raster.frontFace == FrontFace::CounterClockwise ? GL_CCW : GL_CW);
+            f.FrontFace(pipeline.raster.frontFace == ::Render::RHI::FrontFace::CounterClockwise ? GL_CCW : GL_CW);
         }
         if (f.PolygonMode)
         {
-            f.PolygonMode(GL_FRONT_AND_BACK, pipeline.raster.fillMode == FillMode::Wireframe ? GL_LINE : GL_FILL);
+            f.PolygonMode(GL_FRONT_AND_BACK, pipeline.raster.fillMode == ::Render::RHI::FillMode::Wireframe ? GL_LINE : GL_FILL);
         }
         if (f.LineWidth)
         {
@@ -343,7 +392,7 @@ namespace Render::RHI::gl
         m_vertexBindingsDirty = true;
     }
 
-    void GlCommandList::bindIndexBuffer(BufferHandle buffer, uint64_t offsetBytes, IndexType type)
+    void GlCommandList::bindIndexBuffer(::Render::RHI::BufferHandle buffer, uint64_t offsetBytes, ::Render::RHI::IndexType type)
     {
         m_indexBuffer = buffer;
         m_indexOffset = offsetBytes;
@@ -470,7 +519,7 @@ namespace Render::RHI::gl
 
         const GLFuncs& f = m_device->gl();
 
-        auto findSlot = [this, set](uint32_t binding, uint32_t* outSlot, BindingType* outType) -> bool {
+        auto findSlot = [this, set](uint32_t binding, uint32_t* outSlot, ::Render::RHI::BindingType* outType) -> bool {
             for (const GlBindingMapping& mapping : boundPipeline()->bindings)
             {
                 if (mapping.set == set && mapping.binding == binding)
@@ -483,10 +532,10 @@ namespace Render::RHI::gl
             return false;
         };
 
-        for (const BufferBinding& entry : record->buffers)
+        for (const ::Render::RHI::BufferBinding& entry : record->buffers)
         {
             uint32_t slot = 0;
-            BindingType type = BindingType::UniformBuffer;
+            ::Render::RHI::BindingType type = ::Render::RHI::BindingType::UniformBuffer;
             if (!findSlot(entry.binding, &slot, &type))
             {
                 m_device->log().warn("[gl] bindBindGroup: pipeline does not declare set=%u binding=%u, skipping",
@@ -499,16 +548,16 @@ namespace Render::RHI::gl
             {
                 continue;
             }
-            const GLenum target = type == BindingType::StorageBuffer ? GL_SHADER_STORAGE_BUFFER : GL_UNIFORM_BUFFER;
+            const GLenum target = type == ::Render::RHI::BindingType::StorageBuffer ? GL_SHADER_STORAGE_BUFFER : GL_UNIFORM_BUFFER;
             const uint64_t size = entry.size == 0 ? buffer->desc.size - entry.offset : entry.size;
             f.BindBufferRange(
                 target, slot, buffer->name, static_cast<GLintptr>(entry.offset), static_cast<GLsizeiptr>(size));
         }
 
-        for (const TextureBinding& entry : record->textures)
+        for (const ::Render::RHI::TextureBinding& entry : record->textures)
         {
             uint32_t unit = 0;
-            BindingType type = BindingType::SampledTexture;
+            ::Render::RHI::BindingType type = ::Render::RHI::BindingType::SampledTexture;
             if (!findSlot(entry.binding, &unit, &type))
             {
                 m_device->log().warn(
@@ -707,8 +756,8 @@ namespace Render::RHI::gl
             return;
         }
 
-        const GLenum type = m_indexType == IndexType::Uint16 ? GL_UNSIGNED_SHORT : GL_UNSIGNED_INT;
-        const uint32_t indexSize = m_indexType == IndexType::Uint16 ? 2u : 4u;
+        const GLenum type = m_indexType == ::Render::RHI::IndexType::Uint16 ? GL_UNSIGNED_SHORT : GL_UNSIGNED_INT;
+        const uint32_t indexSize = m_indexType == ::Render::RHI::IndexType::Uint16 ? 2u : 4u;
         const auto offset = reinterpret_cast<const void*>(
             static_cast<uintptr_t>(m_indexOffset + static_cast<uint64_t>(firstIndex) * indexSize));
 
@@ -792,7 +841,7 @@ namespace Render::RHI::gl
             m_device->log().error("[gl] drawIndexedIndirect unavailable");  // drawIndexedIndirect 不可用
             return;
         }
-        const GLenum type = m_indexType == IndexType::Uint16 ? GL_UNSIGNED_SHORT : GL_UNSIGNED_INT;
+        const GLenum type = m_indexType == ::Render::RHI::IndexType::Uint16 ? GL_UNSIGNED_SHORT : GL_UNSIGNED_INT;
         f.BindBuffer(GL_DRAW_INDIRECT_BUFFER, args->name);
         const auto indirect = reinterpret_cast<const void*>(static_cast<uintptr_t>(offsetBytes));
         if (drawCount > 1 && f.MultiDrawElementsIndirect)
@@ -915,7 +964,7 @@ namespace Render::RHI::gl
         RenderPassBeginDesc desc{};
         desc.colorAttachmentCount = 1;
         desc.colorAttachments[0].texture = src;
-        desc.colorAttachments[0].loadOp = LoadOp::Load;
+        desc.colorAttachments[0].loadOp = ::Render::RHI::LoadOp::Load;
         const GLuint fbo = m_device->framebufferFor(desc);
         if (!fbo)
         {

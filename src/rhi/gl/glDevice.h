@@ -48,23 +48,23 @@ namespace Render::RHI::gl
      * 两条都没人完整测过的路径。宿主自建上下文是本项目实际使用的方式，
      * 其余 Kind 一律在 createSurface 明确报 ErrorUnsupported，不做半实现。
      */
-    class GlSurface final : public ISurface
+    class GlSurface final : public ::Render::RHI::ISurface
     {
     public:
-        GlSurface(GlDevice* device, const SurfaceDesc& desc, const RhiLogger& logger);
+        GlSurface(GlDevice* device, const ::Render::RHI::SurfaceDesc& desc, const ::Render::RHI::RhiLogger& logger);
 
-        RhiResult acquireNextImage() override;
-        RhiResult present() override;
-        RhiResult resize(Extent2D extent) override;
+        ::Render::RHI::RhiResult acquireNextImage() override;
+        ::Render::RHI::RhiResult present() override;
+        ::Render::RHI::RhiResult resize(::Render::RHI::Extent2D extent) override;
 
-        Extent2D extent() const override { return m_extent; }
-        Format colorFormat() const override { return m_colorFormat; }
-        Format depthFormat() const override { return m_depthFormat; }
+        ::Render::RHI::Extent2D extent() const override { return m_extent; }
+        ::Render::RHI::Format colorFormat() const override { return m_colorFormat; }
+        ::Render::RHI::Format depthFormat() const override { return m_depthFormat; }
 
         /// GL 默认帧缓冲没有对应的纹理对象，返回无效句柄。
         /// RenderPassBeginDesc 的附件留空即表示「画到表面」。
-        TextureHandle currentColorTexture() const override { return TextureHandle{}; }
-        TextureHandle depthTexture() const override { return TextureHandle{}; }
+        ::Render::RHI::TextureHandle currentColorTexture() const override { return ::Render::RHI::TextureHandle{}; }
+        ::Render::RHI::TextureHandle depthTexture() const override { return ::Render::RHI::TextureHandle{}; }
 
         /// acquireNextImage 时捕获的当前帧缓冲。QOpenGLWidget 渲染到自己的
         /// FBO 而非 0 号帧缓冲，因此不能写死 0。
@@ -72,19 +72,19 @@ namespace Render::RHI::gl
         uint64_t presentCount() const { return m_presentCount; }
         /// 请求的呈现模式。ForeignGlContext 下实际 vsync 由宿主设置
         /// （Qt: QSurfaceFormat::setSwapInterval），此值仅供诊断。
-        PresentMode presentMode() const { return m_presentMode; }
+        ::Render::RHI::PresentMode presentMode() const { return m_presentMode; }
 
     private:
         GlDevice* m_device = nullptr;
-        NativeWindow m_window{};
-        Extent2D m_extent{};
-        Format m_colorFormat = Format::RGBA8Unorm;
-        Format m_depthFormat = Format::Unknown;
-        PresentMode m_presentMode = PresentMode::Fifo;
+        ::Render::RHI::NativeWindow m_window{};
+        ::Render::RHI::Extent2D m_extent{};
+        ::Render::RHI::Format m_colorFormat = ::Render::RHI::Format::RGBA8Unorm;
+        ::Render::RHI::Format m_depthFormat = ::Render::RHI::Format::Unknown;
+        ::Render::RHI::PresentMode m_presentMode = ::Render::RHI::PresentMode::Fifo;
         GLuint m_defaultFramebuffer = 0;
         bool m_acquired = false;
         uint64_t m_presentCount = 0;
-        RhiLogger m_log;
+        ::Render::RHI::RhiLogger m_log;
     };
 
     /**
@@ -93,7 +93,7 @@ namespace Render::RHI::gl
      * GL 没有真正的命令缓冲，所有调用即时下发；本类的职责是把
      * 「记录模型」的语义映射到即时 API 上，并在此集中处理状态冗余消除。
      */
-    class GlCommandList final : public ICommandList
+    class GlCommandList final : public ::Render::RHI::ICommandList
     {
     public:
         explicit GlCommandList(GlDevice* device);
@@ -102,34 +102,34 @@ namespace Render::RHI::gl
         void beginFrame(GlSurface* surface);
         bool inRenderPass() const { return m_inRenderPass; }
 
-        RhiResult beginRenderPass(const RenderPassBeginDesc& desc) override;
+        ::Render::RHI::RhiResult beginRenderPass(const ::Render::RHI::RenderPassBeginDesc& desc) override;
         void endRenderPass() override;
-        void bindPipeline(PipelineHandle pipeline) override;
-        void setViewport(const Viewport& viewport) override;
-        void setScissor(const Rect2D& rect) override;
-        void bindVertexBuffer(uint32_t slot, BufferHandle buffer, uint64_t offsetBytes) override;
-        void bindIndexBuffer(BufferHandle buffer, uint64_t offsetBytes, IndexType type) override;
-        void bindBindGroup(uint32_t set, BindGroupHandle group) override;
+        void bindPipeline(::Render::RHI::PipelineHandle pipeline) override;
+        void setViewport(const ::Render::RHI::Viewport& viewport) override;
+        void setScissor(const ::Render::RHI::Rect2D& rect) override;
+        void bindVertexBuffer(uint32_t slot, ::Render::RHI::BufferHandle buffer, uint64_t offsetBytes) override;
+        void bindIndexBuffer(::Render::RHI::BufferHandle buffer, uint64_t offsetBytes, ::Render::RHI::IndexType type) override;
+        void bindBindGroup(uint32_t set, ::Render::RHI::BindGroupHandle group) override;
         void pushConstants(uint32_t offsetBytes, uint32_t sizeBytes, const void* data) override;
         void draw(uint32_t vertexCount, uint32_t instanceCount, uint32_t firstVertex,
                   uint32_t firstInstance) override;
-        void drawMulti(const DrawRange* ranges, uint32_t rangeCount, uint32_t instanceCount,
+        void drawMulti(const ::Render::RHI::DrawRange* ranges, uint32_t rangeCount, uint32_t instanceCount,
                        uint32_t firstInstance) override;
         void drawIndexed(uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex,
                          int32_t vertexOffset, uint32_t firstInstance) override;
-        void drawIndirect(BufferHandle argsBuffer, uint64_t offsetBytes, uint32_t drawCount,
+        void drawIndirect(::Render::RHI::BufferHandle argsBuffer, uint64_t offsetBytes, uint32_t drawCount,
                           uint32_t strideBytes) override;
-        void drawIndexedIndirect(BufferHandle argsBuffer, uint64_t offsetBytes, uint32_t drawCount,
+        void drawIndexedIndirect(::Render::RHI::BufferHandle argsBuffer, uint64_t offsetBytes, uint32_t drawCount,
                                  uint32_t strideBytes) override;
         void dispatchCompute(uint32_t groupsX, uint32_t groupsY, uint32_t groupsZ) override;
-        void barrier(BarrierScope before, BarrierScope after) override;
-        void copyBuffer(BufferHandle src, uint64_t srcOffset, BufferHandle dst, uint64_t dstOffset,
+        void barrier(::Render::RHI::BarrierScope before, ::Render::RHI::BarrierScope after) override;
+        void copyBuffer(::Render::RHI::BufferHandle src, uint64_t srcOffset, ::Render::RHI::BufferHandle dst, uint64_t dstOffset,
                         uint64_t sizeBytes) override;
-        void copyTextureToBuffer(TextureHandle src, BufferHandle dst, uint64_t dstOffset,
-                                 const Rect2D& region) override;
+        void copyTextureToBuffer(::Render::RHI::TextureHandle src, ::Render::RHI::BufferHandle dst, uint64_t dstOffset,
+                                 const ::Render::RHI::Rect2D& region) override;
         void pushDebugGroup(const char* name) override;
         void popDebugGroup() override;
-        FrameStats stats() const override { return m_stats; }
+        ::Render::RHI::FrameStats stats() const override { return m_stats; }
 
     private:
         /// 绘制前的公共准备：校验状态、刷新顶点绑定与 pushConstant
@@ -141,34 +141,34 @@ namespace Render::RHI::gl
         void flushVertexBindings();
         void flushPushConstants();
         /// 解析本次 RenderPass 的目标帧缓冲；附件为空时返回表面的默认帧缓冲
-        GLuint resolveFramebuffer(const RenderPassBeginDesc& desc);
+        GLuint resolveFramebuffer(const ::Render::RHI::RenderPassBeginDesc& desc);
 
         struct VertexBinding
         {
-            BufferHandle buffer{};
+            ::Render::RHI::BufferHandle buffer{};
             uint64_t offset = 0;
         };
 
         GlDevice* m_device = nullptr;
         GlSurface* m_surface = nullptr;
-        FrameStats m_stats{};
+        ::Render::RHI::FrameStats m_stats{};
         bool m_inRenderPass = false;
         /// 当前 RenderPass 目标尺寸：视口/裁剪的 y 翻转需要它
-        Extent2D m_passExtent{};
+        ::Render::RHI::Extent2D m_passExtent{};
 
-        PipelineHandle m_pipelineHandle{};
+        ::Render::RHI::PipelineHandle m_pipelineHandle{};
 
-        VertexBinding m_vertexBindings[kMaxVertexBufferSlots]{};
+        VertexBinding m_vertexBindings[::Render::RHI::kMaxVertexBufferSlots]{};
         bool m_vertexBindingsDirty = false;
 
         // 索引缓冲是否已绑定，以 m_indexBuffer.valid() 判定：
         // IndexType 只有 Uint16/Uint32 两个取值，没有「未绑定」态，
         // 这是刻意的——后端不该用枚举默认值兼作「无」的哨兵。
-        BufferHandle m_indexBuffer{};
+        ::Render::RHI::BufferHandle m_indexBuffer{};
         uint64_t m_indexOffset = 0;
-        IndexType m_indexType = IndexType::Uint32;
+        ::Render::RHI::IndexType m_indexType = ::Render::RHI::IndexType::Uint32;
 
-        uint8_t m_pushConstants[kMaxPushConstantBytes]{};
+        uint8_t m_pushConstants[::Render::RHI::kMaxPushConstantBytes]{};
         uint32_t m_pushConstantHighWater = 0;
         bool m_pushConstantsDirty = false;
 
@@ -185,67 +185,67 @@ namespace Render::RHI::gl
      * 宿主应共享同一个上下文（Qt 侧用同一个 QOpenGLContext 或设置共享），
      * 并为每个窗口创建一个 GlSurface。
      */
-    class GlDevice final : public IGpuDevice
+    class GlDevice final : public ::Render::RHI::IGpuDevice
     {
     public:
-        GlDevice(const DeviceDesc& desc, const GLFuncs& functions);
+        GlDevice(const ::Render::RHI::DeviceDesc& desc, const GLFuncs& functions);
         ~GlDevice() override;
 
-        const Capabilities& capabilities() const override { return m_caps; }
+        const ::Render::RHI::Capabilities& capabilities() const override { return m_caps; }
 
-        ISurface* createSurface(const SurfaceDesc& desc) override;
-        void destroySurface(ISurface* surface) override;
+        ::Render::RHI::ISurface* createSurface(const ::Render::RHI::SurfaceDesc& desc) override;
+        void destroySurface(::Render::RHI::ISurface* surface) override;
 
-        ShaderHandle createShader(const ShaderDesc& desc) override;
-        void destroyShader(ShaderHandle shader) override;
+        ::Render::RHI::ShaderHandle createShader(const ::Render::RHI::ShaderDesc& desc) override;
+        void destroyShader(::Render::RHI::ShaderHandle shader) override;
 
-        PipelineHandle createGraphicsPipeline(const GraphicsPipelineDesc& desc) override;
-        PipelineHandle createComputePipeline(const ComputePipelineDesc& desc) override;
-        void destroyPipeline(PipelineHandle pipeline) override;
+        ::Render::RHI::PipelineHandle createGraphicsPipeline(const ::Render::RHI::GraphicsPipelineDesc& desc) override;
+        ::Render::RHI::PipelineHandle createComputePipeline(const ::Render::RHI::ComputePipelineDesc& desc) override;
+        void destroyPipeline(::Render::RHI::PipelineHandle pipeline) override;
 
-        BufferHandle createBuffer(const BufferDesc& desc) override;
-        void destroyBuffer(BufferHandle buffer) override;
-        RhiResult writeBuffer(BufferHandle buffer, uint64_t offset, const void* data,
+        ::Render::RHI::BufferHandle createBuffer(const ::Render::RHI::BufferDesc& desc) override;
+        void destroyBuffer(::Render::RHI::BufferHandle buffer) override;
+        ::Render::RHI::RhiResult writeBuffer(::Render::RHI::BufferHandle buffer, uint64_t offset, const void* data,
                               uint64_t sizeBytes) override;
-        MappedRange mapBuffer(BufferHandle buffer, uint64_t offset, uint64_t sizeBytes) override;
-        void unmapBuffer(BufferHandle buffer) override;
-        void flushMappedRange(BufferHandle buffer, uint64_t offset, uint64_t sizeBytes) override;
+        ::Render::RHI::MappedRange mapBuffer(::Render::RHI::BufferHandle buffer, uint64_t offset, uint64_t sizeBytes) override;
+        void unmapBuffer(::Render::RHI::BufferHandle buffer) override;
+        void flushMappedRange(::Render::RHI::BufferHandle buffer, uint64_t offset, uint64_t sizeBytes) override;
 
-        TextureHandle createTexture(const TextureDesc& desc) override;
-        void destroyTexture(TextureHandle texture) override;
-        RhiResult writeTexture(TextureHandle texture, uint32_t mipLevel, const Rect2D& region,
+        ::Render::RHI::TextureHandle createTexture(const ::Render::RHI::TextureDesc& desc) override;
+        void destroyTexture(::Render::RHI::TextureHandle texture) override;
+        ::Render::RHI::RhiResult writeTexture(::Render::RHI::TextureHandle texture, uint32_t mipLevel, const ::Render::RHI::Rect2D& region,
                                const void* data, uint64_t sizeBytes) override;
 
-        SamplerHandle createSampler(const SamplerDesc& desc) override;
-        void destroySampler(SamplerHandle sampler) override;
+        ::Render::RHI::SamplerHandle createSampler(const ::Render::RHI::SamplerDesc& desc) override;
+        void destroySampler(::Render::RHI::SamplerHandle sampler) override;
 
-        BindGroupHandle createBindGroup(const BindGroupDesc& desc) override;
-        void destroyBindGroup(BindGroupHandle group) override;
+        ::Render::RHI::BindGroupHandle createBindGroup(const ::Render::RHI::BindGroupDesc& desc) override;
+        void destroyBindGroup(::Render::RHI::BindGroupHandle group) override;
 
-        ICommandList* beginFrame(ISurface* surface) override;
-        RhiResult submitFrame() override;
+        ::Render::RHI::ICommandList* beginFrame(::Render::RHI::ISurface* surface) override;
+        ::Render::RHI::RhiResult submitFrame() override;
         void waitIdle() override;
 
-        RhiResult readTexture(TextureHandle texture, const Rect2D& region, void* outPixels,
+        ::Render::RHI::RhiResult readTexture(::Render::RHI::TextureHandle texture, const ::Render::RHI::Rect2D& region, void* outPixels,
                               uint64_t bufferSize, uint32_t* outRowPitch) override;
         uint64_t gpuMemoryUsageBytes() const override;
 
         // ---------- 供 GlSurface / GlCommandList 使用的内部接口 ----------
 
         const GLFuncs& gl() const { return m_gl; }
-        const RhiLogger& log() const { return m_log; }
+        const ::Render::RHI::RhiLogger& log() const { return m_log; }
 
-        GlBufferRecord* bufferRecord(BufferHandle h) { return m_buffers.get(h); }
-        GlTextureRecord* textureRecord(TextureHandle h) { return m_textures.get(h); }
-        GlSamplerRecord* samplerRecord(SamplerHandle h) { return m_samplers.get(h); }
-        GlPipelineRecord* pipelineRecord(PipelineHandle h) { return m_pipelines.get(h); }
-        GlBindGroupRecord* bindGroupRecord(BindGroupHandle h) { return m_bindGroups.get(h); }
+        GlBufferRecord* bufferRecord(::Render::RHI::BufferHandle h) { return m_buffers.get(h); }
+        GlTextureRecord* textureRecord(::Render::RHI::TextureHandle h) { return m_textures.get(h); }
+        GlSamplerRecord* samplerRecord(::Render::RHI::SamplerHandle h) { return m_samplers.get(h); }
+        GlPipelineRecord* pipelineRecord(::Render::RHI::PipelineHandle h) { return m_pipelines.get(h); }
+        GlBindGroupRecord* bindGroupRecord(::Render::RHI::BindGroupHandle h) { return m_bindGroups.get(h); }
 
         /// pushConstants 在 GL 上落地为一个 UBO，绑定到 kPushConstantBinding
         GLuint pushConstantUbo() const { return m_pushConstantUbo; }
 
         /// 为一组附件取得（并缓存）FBO；附件组合首次出现时创建
-        GLuint framebufferFor(const RenderPassBeginDesc& desc);
+        GLuint framebufferFor(const ::Render::RHI::RenderPassBeginDesc& desc);
 
         /// pushConstant 块固定占用 0 号 UBO binding point，
         /// 用户声明的 UniformBuffer 从 1 开始顺序分配
@@ -259,25 +259,25 @@ namespace Render::RHI::gl
         void deleteAllResources();
 
         GLFuncs m_gl{};
-        RhiLogger m_log;
-        Capabilities m_caps{};
+        ::Render::RHI::RhiLogger m_log;
+        ::Render::RHI::Capabilities m_caps{};
         /// 上下文是否为前向兼容（forward-compatible）：其中宽线已被移除，
         /// glLineWidth 只接受精确的 1.0，且 GL_ALIASED_LINE_WIDTH_RANGE 仍会谎报 [1,10]
         bool m_forwardCompatible = false;
         GlCommandList m_commands;
 
         std::vector<GlSurface*> m_surfaces;
-        ResourcePool<BufferHandle, GlBufferRecord> m_buffers;
-        ResourcePool<TextureHandle, GlTextureRecord> m_textures;
-        ResourcePool<SamplerHandle, GlSamplerRecord> m_samplers;
-        ResourcePool<ShaderHandle, GlShaderRecord> m_shaders;
-        ResourcePool<PipelineHandle, GlPipelineRecord> m_pipelines;
-        ResourcePool<BindGroupHandle, GlBindGroupRecord> m_bindGroups;
+        ResourcePool<::Render::RHI::BufferHandle, GlBufferRecord> m_buffers;
+        ResourcePool<::Render::RHI::TextureHandle, GlTextureRecord> m_textures;
+        ResourcePool<::Render::RHI::SamplerHandle, GlSamplerRecord> m_samplers;
+        ResourcePool<::Render::RHI::ShaderHandle, GlShaderRecord> m_shaders;
+        ResourcePool<::Render::RHI::PipelineHandle, GlPipelineRecord> m_pipelines;
+        ResourcePool<::Render::RHI::BindGroupHandle, GlBindGroupRecord> m_bindGroups;
 
         /// 附件组合 → FBO 缓存。key 由附件的 GL 名字拼成。
         struct FramebufferCacheEntry
         {
-            GLuint colorNames[kMaxColorAttachments]{};
+            GLuint colorNames[::Render::RHI::kMaxColorAttachments]{};
             uint32_t colorCount = 0;
             GLuint depthName = 0;
             GLuint fbo = 0;

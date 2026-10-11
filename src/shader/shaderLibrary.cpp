@@ -7,6 +7,7 @@
  * 且查表只发生在管线创建时（非绘制热路径），不需要哈希表。
  */
 #include "shader/shaderLibrary.h"
+#include "shader/RawShaderBlob.h"
 
 #include <cstring>
 

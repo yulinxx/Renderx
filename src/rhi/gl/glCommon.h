@@ -179,142 +179,141 @@
 
 namespace Render::RHI::gl
 {
-
     // ==================== 枚举映射 ====================
 
-    inline GLenum toGlTopology(PrimitiveTopology topology)
+    inline GLenum toGlTopology(::Render::RHI::PrimitiveTopology topology)
     {
         switch (topology)
         {
-        case PrimitiveTopology::PointList: return GL_POINTS;
-        case PrimitiveTopology::LineList: return GL_LINES;
-        case PrimitiveTopology::LineStrip: return GL_LINE_STRIP;
-        case PrimitiveTopology::TriangleList: return GL_TRIANGLES;
-        case PrimitiveTopology::TriangleStrip: return GL_TRIANGLE_STRIP;
+        case ::Render::RHI::PrimitiveTopology::PointList: return GL_POINTS;
+        case ::Render::RHI::PrimitiveTopology::LineList: return GL_LINES;
+        case ::Render::RHI::PrimitiveTopology::LineStrip: return GL_LINE_STRIP;
+        case ::Render::RHI::PrimitiveTopology::TriangleList: return GL_TRIANGLES;
+        case ::Render::RHI::PrimitiveTopology::TriangleStrip: return GL_TRIANGLE_STRIP;
         }
         return GL_TRIANGLES;
     }
 
-    inline GLenum toGlCompareOp(CompareOp op)
+    inline GLenum toGlCompareOp(::Render::RHI::CompareOp op)
     {
         switch (op)
         {
-        case CompareOp::Never: return GL_NEVER;
-        case CompareOp::Less: return GL_LESS;
-        case CompareOp::Equal: return GL_EQUAL;
-        case CompareOp::LessEqual: return GL_LEQUAL;
-        case CompareOp::Greater: return GL_GREATER;
-        case CompareOp::NotEqual: return GL_NOTEQUAL;
-        case CompareOp::GreaterEqual: return GL_GEQUAL;
-        case CompareOp::Always: return GL_ALWAYS;
+        case ::Render::RHI::CompareOp::Never: return GL_NEVER;
+        case ::Render::RHI::CompareOp::Less: return GL_LESS;
+        case ::Render::RHI::CompareOp::Equal: return GL_EQUAL;
+        case ::Render::RHI::CompareOp::LessEqual: return GL_LEQUAL;
+        case ::Render::RHI::CompareOp::Greater: return GL_GREATER;
+        case ::Render::RHI::CompareOp::NotEqual: return GL_NOTEQUAL;
+        case ::Render::RHI::CompareOp::GreaterEqual: return GL_GEQUAL;
+        case ::Render::RHI::CompareOp::Always: return GL_ALWAYS;
         }
         return GL_LEQUAL;
     }
 
-    inline GLenum toGlBlendFactor(BlendFactor factor)
+    inline GLenum toGlBlendFactor(::Render::RHI::BlendFactor factor)
     {
         switch (factor)
         {
-        case BlendFactor::Zero: return GL_ZERO;
-        case BlendFactor::One: return GL_ONE;
-        case BlendFactor::SrcColor: return GL_SRC_COLOR;
-        case BlendFactor::OneMinusSrcColor: return GL_ONE_MINUS_SRC_COLOR;
-        case BlendFactor::SrcAlpha: return GL_SRC_ALPHA;
-        case BlendFactor::OneMinusSrcAlpha: return GL_ONE_MINUS_SRC_ALPHA;
-        case BlendFactor::DstAlpha: return GL_DST_ALPHA;
-        case BlendFactor::OneMinusDstAlpha: return GL_ONE_MINUS_DST_ALPHA;
+        case ::Render::RHI::BlendFactor::Zero: return GL_ZERO;
+        case ::Render::RHI::BlendFactor::One: return GL_ONE;
+        case ::Render::RHI::BlendFactor::SrcColor: return GL_SRC_COLOR;
+        case ::Render::RHI::BlendFactor::OneMinusSrcColor: return GL_ONE_MINUS_SRC_COLOR;
+        case ::Render::RHI::BlendFactor::SrcAlpha: return GL_SRC_ALPHA;
+        case ::Render::RHI::BlendFactor::OneMinusSrcAlpha: return GL_ONE_MINUS_SRC_ALPHA;
+        case ::Render::RHI::BlendFactor::DstAlpha: return GL_DST_ALPHA;
+        case ::Render::RHI::BlendFactor::OneMinusDstAlpha: return GL_ONE_MINUS_DST_ALPHA;
         }
         return GL_ONE;
     }
 
-    inline GLenum toGlBlendOp(BlendOp op)
+    inline GLenum toGlBlendOp(::Render::RHI::BlendOp op)
     {
         switch (op)
         {
-        case BlendOp::Add: return GL_FUNC_ADD;
-        case BlendOp::Subtract: return GL_FUNC_SUBTRACT;
-        case BlendOp::ReverseSubtract: return GL_FUNC_REVERSE_SUBTRACT;
-        case BlendOp::Min: return GL_MIN;
-        case BlendOp::Max: return GL_MAX;
+        case ::Render::RHI::BlendOp::Add: return GL_FUNC_ADD;
+        case ::Render::RHI::BlendOp::Subtract: return GL_FUNC_SUBTRACT;
+        case ::Render::RHI::BlendOp::ReverseSubtract: return GL_FUNC_REVERSE_SUBTRACT;
+        case ::Render::RHI::BlendOp::Min: return GL_MIN;
+        case ::Render::RHI::BlendOp::Max: return GL_MAX;
         }
         return GL_FUNC_ADD;
     }
 
     /// 纹理内部格式（sized internal format，GL 3.3 core 要求显式给定）
-    inline GLenum toGlInternalFormat(Format format)
+    inline GLenum toGlInternalFormat(::Render::RHI::Format format)
     {
         switch (format)
         {
-        case Format::R8Unorm: return GL_R8;
-        case Format::RG8Unorm: return GL_RG8;
-        case Format::RGBA8Unorm:
+        case ::Render::RHI::Format::R8Unorm: return GL_R8;
+        case ::Render::RHI::Format::RG8Unorm: return GL_RG8;
+        case ::Render::RHI::Format::RGBA8Unorm:
         // GL 没有 BGRA 内部格式：BGRA 只是上传时的通道顺序，
         // 内部一律存 RGBA8。交换链格式选 BGRA8 时在此归一。
-        case Format::BGRA8Unorm: return GL_RGBA8;
-        case Format::RGBA8Srgb:
-        case Format::BGRA8Srgb: return GL_SRGB8_ALPHA8;
-        case Format::R16Float: return GL_R16F;
-        case Format::RG16Float: return GL_RG16F;
-        case Format::RGBA16Float: return GL_RGBA16F;
-        case Format::R32Float: return GL_R32F;
-        case Format::RG32Float: return GL_RG32F;
-        case Format::RGBA32Float: return GL_RGBA32F;
-        case Format::R32Uint: return GL_R32UI;
-        case Format::D32Float: return GL_DEPTH_COMPONENT32F;
-        case Format::D24UnormS8Uint: return GL_DEPTH24_STENCIL8;
-        case Format::D32FloatS8Uint: return GL_DEPTH32F_STENCIL8;
-        case Format::Unknown: return 0;
+        case ::Render::RHI::Format::BGRA8Unorm: return GL_RGBA8;
+        case ::Render::RHI::Format::RGBA8Srgb:
+        case ::Render::RHI::Format::BGRA8Srgb: return GL_SRGB8_ALPHA8;
+        case ::Render::RHI::Format::R16Float: return GL_R16F;
+        case ::Render::RHI::Format::RG16Float: return GL_RG16F;
+        case ::Render::RHI::Format::RGBA16Float: return GL_RGBA16F;
+        case ::Render::RHI::Format::R32Float: return GL_R32F;
+        case ::Render::RHI::Format::RG32Float: return GL_RG32F;
+        case ::Render::RHI::Format::RGBA32Float: return GL_RGBA32F;
+        case ::Render::RHI::Format::R32Uint: return GL_R32UI;
+        case ::Render::RHI::Format::D32Float: return GL_DEPTH_COMPONENT32F;
+        case ::Render::RHI::Format::D24UnormS8Uint: return GL_DEPTH24_STENCIL8;
+        case ::Render::RHI::Format::D32FloatS8Uint: return GL_DEPTH32F_STENCIL8;
+        case ::Render::RHI::Format::Unknown: return 0;
         }
         return 0;
     }
 
     /// 上传/读回时的通道顺序
-    inline GLenum toGlBaseFormat(Format format)
+    inline GLenum toGlBaseFormat(::Render::RHI::Format format)
     {
         switch (format)
         {
-        case Format::R8Unorm:
-        case Format::R16Float:
-        case Format::R32Float: return GL_RED;
-        case Format::R32Uint: return GL_RED_INTEGER;
-        case Format::RG8Unorm:
-        case Format::RG16Float:
-        case Format::RG32Float: return GL_RG;
-        case Format::RGBA8Unorm:
-        case Format::RGBA8Srgb:
-        case Format::RGBA16Float:
-        case Format::RGBA32Float: return GL_RGBA;
-        case Format::BGRA8Unorm:
-        case Format::BGRA8Srgb: return GL_BGRA;
-        case Format::D32Float: return GL_DEPTH_COMPONENT;
-        case Format::D24UnormS8Uint:
-        case Format::D32FloatS8Uint: return GL_DEPTH_STENCIL;
-        case Format::Unknown: return 0;
+        case ::Render::RHI::Format::R8Unorm:
+        case ::Render::RHI::Format::R16Float:
+        case ::Render::RHI::Format::R32Float: return GL_RED;
+        case ::Render::RHI::Format::R32Uint: return GL_RED_INTEGER;
+        case ::Render::RHI::Format::RG8Unorm:
+        case ::Render::RHI::Format::RG16Float:
+        case ::Render::RHI::Format::RG32Float: return GL_RG;
+        case ::Render::RHI::Format::RGBA8Unorm:
+        case ::Render::RHI::Format::RGBA8Srgb:
+        case ::Render::RHI::Format::RGBA16Float:
+        case ::Render::RHI::Format::RGBA32Float: return GL_RGBA;
+        case ::Render::RHI::Format::BGRA8Unorm:
+        case ::Render::RHI::Format::BGRA8Srgb: return GL_BGRA;
+        case ::Render::RHI::Format::D32Float: return GL_DEPTH_COMPONENT;
+        case ::Render::RHI::Format::D24UnormS8Uint:
+        case ::Render::RHI::Format::D32FloatS8Uint: return GL_DEPTH_STENCIL;
+        case ::Render::RHI::Format::Unknown: return 0;
         }
         return 0;
     }
 
-    inline GLenum toGlPixelType(Format format)
+    inline GLenum toGlPixelType(::Render::RHI::Format format)
     {
         switch (format)
         {
-        case Format::R8Unorm:
-        case Format::RG8Unorm:
-        case Format::RGBA8Unorm:
-        case Format::RGBA8Srgb:
-        case Format::BGRA8Unorm:
-        case Format::BGRA8Srgb: return GL_UNSIGNED_BYTE;
-        case Format::R16Float:
-        case Format::RG16Float:
-        case Format::RGBA16Float: return GL_HALF_FLOAT;
-        case Format::R32Float:
-        case Format::RG32Float:
-        case Format::RGBA32Float:
-        case Format::D32Float: return GL_FLOAT;
-        case Format::R32Uint: return GL_UNSIGNED_INT;
-        case Format::D24UnormS8Uint: return GL_UNSIGNED_INT_24_8;
-        case Format::D32FloatS8Uint: return GL_FLOAT_32_UNSIGNED_INT_24_8_REV;
-        case Format::Unknown: return 0;
+        case ::Render::RHI::Format::R8Unorm:
+        case ::Render::RHI::Format::RG8Unorm:
+        case ::Render::RHI::Format::RGBA8Unorm:
+        case ::Render::RHI::Format::RGBA8Srgb:
+        case ::Render::RHI::Format::BGRA8Unorm:
+        case ::Render::RHI::Format::BGRA8Srgb: return GL_UNSIGNED_BYTE;
+        case ::Render::RHI::Format::R16Float:
+        case ::Render::RHI::Format::RG16Float:
+        case ::Render::RHI::Format::RGBA16Float: return GL_HALF_FLOAT;
+        case ::Render::RHI::Format::R32Float:
+        case ::Render::RHI::Format::RG32Float:
+        case ::Render::RHI::Format::RGBA32Float:
+        case ::Render::RHI::Format::D32Float: return GL_FLOAT;
+        case ::Render::RHI::Format::R32Uint: return GL_UNSIGNED_INT;
+        case ::Render::RHI::Format::D24UnormS8Uint: return GL_UNSIGNED_INT_24_8;
+        case ::Render::RHI::Format::D32FloatS8Uint: return GL_FLOAT_32_UNSIGNED_INT_24_8_REV;
+        case ::Render::RHI::Format::Unknown: return 0;
         }
         return GL_UNSIGNED_BYTE;
     }
@@ -328,16 +327,16 @@ namespace Render::RHI::gl
         bool isInteger = false;
     };
 
-    inline GlVertexAttribFormat toGlVertexAttrib(VertexAttribType type)
+    inline GlVertexAttribFormat toGlVertexAttrib(::Render::RHI::VertexAttribType type)
     {
         switch (type)
         {
-        case VertexAttribType::Float1: return { GL_FLOAT, 1, GL_FALSE, false };
-        case VertexAttribType::Float2: return { GL_FLOAT, 2, GL_FALSE, false };
-        case VertexAttribType::Float3: return { GL_FLOAT, 3, GL_FALSE, false };
-        case VertexAttribType::Float4: return { GL_FLOAT, 4, GL_FALSE, false };
-        case VertexAttribType::Uint8x4Norm: return { GL_UNSIGNED_BYTE, 4, GL_TRUE, false };
-        case VertexAttribType::Uint32x1: return { GL_UNSIGNED_INT, 1, GL_FALSE, true };
+        case ::Render::RHI::VertexAttribType::Float1: return { GL_FLOAT, 1, GL_FALSE, false };
+        case ::Render::RHI::VertexAttribType::Float2: return { GL_FLOAT, 2, GL_FALSE, false };
+        case ::Render::RHI::VertexAttribType::Float3: return { GL_FLOAT, 3, GL_FALSE, false };
+        case ::Render::RHI::VertexAttribType::Float4: return { GL_FLOAT, 4, GL_FALSE, false };
+        case ::Render::RHI::VertexAttribType::Uint8x4Norm: return { GL_UNSIGNED_BYTE, 4, GL_TRUE, false };
+        case ::Render::RHI::VertexAttribType::Uint32x1: return { GL_UNSIGNED_INT, 1, GL_FALSE, true };
         }
         return { GL_FLOAT, 3, GL_FALSE, false };
     }
@@ -347,24 +346,24 @@ namespace Render::RHI::gl
      *
      * GL 的 target 只影响绑定点，不影响存储，因此取第一个匹配用途即可。
      */
-    inline GLenum toGlBufferTarget(BufferUsage usage)
+    inline GLenum toGlBufferTarget(::Render::RHI::BufferUsage usage)
     {
-        if (hasFlag(usage, BufferUsage::Index)) { return GL_ELEMENT_ARRAY_BUFFER; }
-        if (hasFlag(usage, BufferUsage::Vertex)) { return GL_ARRAY_BUFFER; }
-        if (hasFlag(usage, BufferUsage::Uniform)) { return GL_UNIFORM_BUFFER; }
-        if (hasFlag(usage, BufferUsage::Storage)) { return GL_SHADER_STORAGE_BUFFER; }
-        if (hasFlag(usage, BufferUsage::Indirect)) { return GL_DRAW_INDIRECT_BUFFER; }
+        if (hasFlag(usage, ::Render::RHI::BufferUsage::Index)) { return GL_ELEMENT_ARRAY_BUFFER; }
+        if (hasFlag(usage, ::Render::RHI::BufferUsage::Vertex)) { return GL_ARRAY_BUFFER; }
+        if (hasFlag(usage, ::Render::RHI::BufferUsage::Uniform)) { return GL_UNIFORM_BUFFER; }
+        if (hasFlag(usage, ::Render::RHI::BufferUsage::Storage)) { return GL_SHADER_STORAGE_BUFFER; }
+        if (hasFlag(usage, ::Render::RHI::BufferUsage::Indirect)) { return GL_DRAW_INDIRECT_BUFFER; }
         return GL_ARRAY_BUFFER;
     }
 
-    inline GLenum toGlBufferUsageHint(MemoryAccess access)
+    inline GLenum toGlBufferUsageHint(::Render::RHI::MemoryAccess access)
     {
         switch (access)
         {
-        case MemoryAccess::GpuOnly: return GL_STATIC_DRAW;
-        case MemoryAccess::CpuToGpu:
-        case MemoryAccess::CpuToGpuCoherent: return GL_STREAM_DRAW;
-        case MemoryAccess::GpuToCpu: return GL_DYNAMIC_DRAW;
+        case ::Render::RHI::MemoryAccess::GpuOnly: return GL_STATIC_DRAW;
+        case ::Render::RHI::MemoryAccess::CpuToGpu:
+        case ::Render::RHI::MemoryAccess::CpuToGpuCoherent: return GL_STREAM_DRAW;
+        case ::Render::RHI::MemoryAccess::GpuToCpu: return GL_DYNAMIC_DRAW;
         }
         return GL_STATIC_DRAW;
     }
@@ -375,38 +374,38 @@ namespace Render::RHI::gl
      * 旧版 BarrierFlag 直接把 GL 的位值写进 RHI 公共枚举，
      * 于是 Vulkan/Metal 必须反向翻译 GL 语义。现在翻译只发生在这里。
      */
-    inline GLbitfield toGlBarrierBits(BarrierScope scope)
+    inline GLbitfield toGlBarrierBits(::Render::RHI::BarrierScope scope)
     {
-        if (scope == BarrierScope::All)
+        if (scope == ::Render::RHI::BarrierScope::All)
         {
             return GL_ALL_BARRIER_BITS;
         }
         GLbitfield bits = 0;
-        if (hasFlag(scope, BarrierScope::VertexInput)) { bits |= GL_VERTEX_ATTRIB_ARRAY_BARRIER_BIT; }
-        if (hasFlag(scope, BarrierScope::IndexInput)) { bits |= GL_ELEMENT_ARRAY_BARRIER_BIT; }
-        if (hasFlag(scope, BarrierScope::UniformRead)) { bits |= GL_UNIFORM_BARRIER_BIT; }
-        if (hasFlag(scope, BarrierScope::TextureRead)) { bits |= GL_TEXTURE_FETCH_BARRIER_BIT; }
-        if (hasFlag(scope, BarrierScope::StorageReadWrite)) { bits |= GL_SHADER_STORAGE_BARRIER_BIT; }
-        if (hasFlag(scope, BarrierScope::IndirectCommandRead)) { bits |= GL_COMMAND_BARRIER_BIT; }
-        if (hasFlag(scope, BarrierScope::RenderTargetWrite)) { bits |= GL_FRAMEBUFFER_BARRIER_BIT; }
-        if (hasFlag(scope, BarrierScope::TransferReadWrite)) { bits |= GL_BUFFER_UPDATE_BARRIER_BIT; }
-        if (hasFlag(scope, BarrierScope::HostRead)) { bits |= GL_BUFFER_UPDATE_BARRIER_BIT; }
+        if (hasFlag(scope, ::Render::RHI::BarrierScope::VertexInput)) { bits |= GL_VERTEX_ATTRIB_ARRAY_BARRIER_BIT; }
+        if (hasFlag(scope, ::Render::RHI::BarrierScope::IndexInput)) { bits |= GL_ELEMENT_ARRAY_BARRIER_BIT; }
+        if (hasFlag(scope, ::Render::RHI::BarrierScope::UniformRead)) { bits |= GL_UNIFORM_BARRIER_BIT; }
+        if (hasFlag(scope, ::Render::RHI::BarrierScope::TextureRead)) { bits |= GL_TEXTURE_FETCH_BARRIER_BIT; }
+        if (hasFlag(scope, ::Render::RHI::BarrierScope::StorageReadWrite)) { bits |= GL_SHADER_STORAGE_BARRIER_BIT; }
+        if (hasFlag(scope, ::Render::RHI::BarrierScope::IndirectCommandRead)) { bits |= GL_COMMAND_BARRIER_BIT; }
+        if (hasFlag(scope, ::Render::RHI::BarrierScope::RenderTargetWrite)) { bits |= GL_FRAMEBUFFER_BARRIER_BIT; }
+        if (hasFlag(scope, ::Render::RHI::BarrierScope::TransferReadWrite)) { bits |= GL_BUFFER_UPDATE_BARRIER_BIT; }
+        if (hasFlag(scope, ::Render::RHI::BarrierScope::HostRead)) { bits |= GL_BUFFER_UPDATE_BARRIER_BIT; }
         return bits;
     }
 
-    inline GLenum toGlFilter(FilterMode filter)
+    inline GLenum toGlFilter(::Render::RHI::FilterMode filter)
     {
-        return filter == FilterMode::Nearest ? GL_NEAREST : GL_LINEAR;
+        return filter == ::Render::RHI::FilterMode::Nearest ? GL_NEAREST : GL_LINEAR;
     }
 
-    inline GLenum toGlAddressMode(AddressMode mode)
+    inline GLenum toGlAddressMode(::Render::RHI::AddressMode mode)
     {
         switch (mode)
         {
-        case AddressMode::Repeat: return GL_REPEAT;
-        case AddressMode::MirrorRepeat: return GL_MIRRORED_REPEAT;
-        case AddressMode::ClampToEdge: return GL_CLAMP_TO_EDGE;
-        case AddressMode::ClampToBorder: return GL_CLAMP_TO_BORDER;
+        case ::Render::RHI::AddressMode::Repeat: return GL_REPEAT;
+        case ::Render::RHI::AddressMode::MirrorRepeat: return GL_MIRRORED_REPEAT;
+        case ::Render::RHI::AddressMode::ClampToEdge: return GL_CLAMP_TO_EDGE;
+        case ::Render::RHI::AddressMode::ClampToBorder: return GL_CLAMP_TO_BORDER;
         }
         return GL_CLAMP_TO_EDGE;
     }
@@ -416,7 +415,7 @@ namespace Render::RHI::gl
     struct GlBufferRecord
     {
         GLuint name = 0;
-        BufferDesc desc{};
+        ::Render::RHI::BufferDesc desc{};
         GLenum target = GL_ARRAY_BUFFER;
         void* mappedPtr = nullptr;
     };
@@ -424,12 +423,12 @@ namespace Render::RHI::gl
     struct GlTextureRecord
     {
         GLuint name = 0;
-        TextureDesc desc{};
+        ::Render::RHI::TextureDesc desc{};
     };
 
     struct GlSamplerRecord
     {
-        SamplerDesc desc{};
+        ::Render::RHI::SamplerDesc desc{};
     };
 
     /**
@@ -443,7 +442,7 @@ namespace Render::RHI::gl
      */
     struct GlShaderRecord
     {
-        ShaderLanguage language = ShaderLanguage::GlslSource;
+        ::Render::RHI::ShaderLanguage language = ::Render::RHI::ShaderLanguage::GlslSource;
         std::vector<char> source;  ///< NUL 结尾
     };
 
@@ -452,7 +451,7 @@ namespace Render::RHI::gl
     {
         uint32_t set = 0;
         uint32_t binding = 0;
-        BindingType type = BindingType::UniformBuffer;
+        ::Render::RHI::BindingType type = ::Render::RHI::BindingType::UniformBuffer;
         /// UniformBuffer/StorageBuffer：UBO/SSBO binding point
         /// SampledTexture/StorageTexture：纹理单元编号
         uint32_t glSlot = 0;
@@ -465,14 +464,14 @@ namespace Render::RHI::gl
         bool isCompute = false;
 
         GLenum topology = GL_TRIANGLES;
-        VertexAttribute attributes[kMaxVertexAttributes]{};
+        ::Render::RHI::VertexAttribute attributes[::Render::RHI::kMaxVertexAttributes]{};
         uint32_t attributeCount = 0;
-        VertexBufferLayout bufferLayouts[kMaxVertexBufferSlots]{};
+        ::Render::RHI::VertexBufferLayout bufferLayouts[::Render::RHI::kMaxVertexBufferSlots]{};
         uint32_t bufferLayoutCount = 0;
 
-        RasterState raster{};
-        DepthStencilState depthStencil{};
-        ColorBlendState blend{};
+        ::Render::RHI::RasterState raster{};
+        ::Render::RHI::DepthStencilState depthStencil{};
+        ::Render::RHI::ColorBlendState blend{};
 
         uint32_t pushConstantBytes = 0;
         std::vector<GlBindingMapping> bindings;
@@ -480,8 +479,8 @@ namespace Render::RHI::gl
 
     struct GlBindGroupRecord
     {
-        std::vector<BufferBinding> buffers;
-        std::vector<TextureBinding> textures;
+        std::vector<::Render::RHI::BufferBinding> buffers;
+        std::vector<::Render::RHI::TextureBinding> textures;
     };
 
 }  // namespace Render::RHI::gl

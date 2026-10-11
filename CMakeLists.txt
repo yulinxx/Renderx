@@ -325,11 +325,11 @@ sanyi_add_shared_library(${PROJECT_NAME}
     COMPILE_OPTIONS
         $<$<CXX_COMPILER_ID:MSVC>:/W4>
         $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wno-conversion;-Wno-float-conversion>
-        LINK_LIBRARIES
-            PRIVATE
-                ${OPENGL_LIBRARIES}
-                RenderxShaders
-                ${RENDER_LINK_LIBS}
+    LINK_LIBRARIES
+        PRIVATE
+            ${OPENGL_LIBRARIES}
+            RenderxShaders
+            ${RENDER_LINK_LIBS}
 )
 
 # ==================== 符号可见性 ====================

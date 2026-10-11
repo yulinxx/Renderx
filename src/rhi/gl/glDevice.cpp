@@ -70,7 +70,7 @@ namespace Render::RHI::gl
 {
     // ==================== GlSurface ====================
 
-    GlSurface::GlSurface(GlDevice* device, const SurfaceDesc& desc, const RhiLogger& logger)
+    GlSurface::GlSurface(GlDevice* device, const ::Render::RHI::SurfaceDesc& desc, const ::Render::RHI::RhiLogger& logger)
         : m_device(device)
         , m_window(desc.window)
         , m_extent(desc.initialExtent)
@@ -81,12 +81,12 @@ namespace Render::RHI::gl
     {
     }
 
-    RhiResult GlSurface::acquireNextImage()
+    ::Render::RHI::RhiResult GlSurface::acquireNextImage()
     {
         if (m_extent.width == 0 || m_extent.height == 0)
         {
             // 窗口最小化：不是错误，但本帧不该渲染。调用方据此跳过。
-            return RhiResult::ErrorSwapchainOutOfDate;
+            return ::Render::RHI::RhiResult::ErrorSwapchainOutOfDate;
         }
 
         // 关键：宿主（QOpenGLWidget）渲染到自己的 FBO，而不是 0 号帧缓冲。
@@ -101,15 +101,15 @@ namespace Render::RHI::gl
         }
 
         m_acquired = true;
-        return RhiResult::Ok;
+        return ::Render::RHI::RhiResult::Ok;
     }
 
-    RhiResult GlSurface::present()
+    ::Render::RHI::RhiResult GlSurface::present()
     {
         if (!m_acquired)
         {
             m_log.error("[gl] present: must call acquireNextImage first");  // 未先调用 acquireNextImage
-            return RhiResult::ErrorInvalidArgument;
+            return ::Render::RHI::RhiResult::ErrorInvalidArgument;
         }
         m_acquired = false;
         m_presentCount += 1;
@@ -121,15 +121,15 @@ namespace Render::RHI::gl
         {
             f.Flush();
         }
-        return RhiResult::Ok;
+        return ::Render::RHI::RhiResult::Ok;
     }
 
-    RhiResult GlSurface::resize(Extent2D extent)
+    ::Render::RHI::RhiResult GlSurface::resize(::Render::RHI::Extent2D extent)
     {
         m_extent = extent;
         // GL 默认帧缓冲的尺寸由窗口系统/宿主管理，这里只记录，
         // 供 beginRenderPass 设置默认视口。
-        return RhiResult::Ok;
+        return ::Render::RHI::RhiResult::Ok;
     }
 
     // ==================== GlDevice：构造与能力 ====================
@@ -152,7 +152,7 @@ namespace Render::RHI::gl
         {
             (void)source;
             (void)length;
-            const RhiLogger* log = static_cast<const RhiLogger*>(userParam);
+            const ::Render::RHI::RhiLogger* log = static_cast<const ::Render::RHI::RhiLogger*>(userParam);
             if (!log || !message)
             {
                 return;
@@ -175,7 +175,7 @@ namespace Render::RHI::gl
         }
     }  // namespace
 
-    GlDevice::GlDevice(const DeviceDesc& desc, const GLFuncs& functions)
+    GlDevice::GlDevice(const ::Render::RHI::DeviceDesc& desc, const GLFuncs& functions)
         : m_gl(functions)
         , m_log(desc.logCallback, desc.logUserData)
         , m_commands(this)
@@ -263,9 +263,9 @@ namespace Render::RHI::gl
 
     void GlDevice::queryCapabilities()
     {
-        m_caps = Capabilities{};
-        m_caps.backend = BackendKind::OpenGL;
-        m_caps.acceptedShaderLanguage = ShaderLanguage::GlslSource;
+        m_caps = ::Render::RHI::Capabilities{};
+        m_caps.backend = ::Render::RHI::BackendKind::OpenGL;
+        m_caps.acceptedShaderLanguage = ::Render::RHI::ShaderLanguage::GlslSource;
 
         if (m_gl.GetString)
         {
@@ -346,9 +346,9 @@ namespace Render::RHI::gl
 
     // ==================== 表面 ====================
 
-    ISurface* GlDevice::createSurface(const SurfaceDesc& desc)
+    ISurface* GlDevice::createSurface(const ::Render::RHI::SurfaceDesc& desc)
     {
-        if (desc.window.kind != NativeWindow::Kind::ForeignGlContext)
+        if (desc.window.kind != ::Render::RHI::NativeWindow::Kind::ForeignGlContext)
         {
             m_log.error("[gl] createSurface: only ForeignGlContext (host-owned context) is supported, got kind=%d. "
                         "Host-owned WGL/GLX/NSOpenGL contexts are not in this backend's scope.",
@@ -365,7 +365,7 @@ namespace Render::RHI::gl
         return surface;
     }
 
-    void GlDevice::destroySurface(ISurface* surface)
+    void GlDevice::destroySurface(::Render::RHI::ISurface* surface)
     {
         if (!surface)
         {
@@ -400,7 +400,7 @@ namespace Render::RHI::gl
             m_log.error("[gl] createShader: empty source");  // 空源码
             return ShaderHandle{};
         }
-        if (desc.language != ShaderLanguage::GlslSource)
+        if (desc.language != ::Render::RHI::ShaderLanguage::GlslSource)
         {
             m_log.error(
                 "[gl] createShader: this backend only accepts GlslSource, got language=%d",  // 本后端只接受 GlslSource
@@ -782,7 +782,8 @@ namespace Render::RHI::gl
         m_gl.BindBuffer(record.target, record.name);
 
         const bool wantPersistent = m_caps.persistentMapping &&
-            (desc.access == MemoryAccess::CpuToGpu || desc.access == MemoryAccess::CpuToGpuCoherent);
+            (desc.access == ::Render::RHI::MemoryAccess::CpuToGpu ||
+             desc.access == ::Render::RHI::MemoryAccess::CpuToGpuCoherent);
         if (wantPersistent)
         {
             // glBufferStorage 的 flags 只接受**存储位**：DYNAMIC_STORAGE / MAP_READ /
@@ -795,7 +796,7 @@ namespace Render::RHI::gl
             // 「Invalid offset and/or size」，而绘制会从一块无存储的缓冲取顶点 ——
             // NVIDIA 上直接崩在驱动里，llvmpipe 上却能跑，极难定位。
             GLbitfield flags = GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_DYNAMIC_STORAGE_BIT;
-            if (desc.access == MemoryAccess::CpuToGpuCoherent)
+            if (desc.access == ::Render::RHI::MemoryAccess::CpuToGpuCoherent)
             {
                 flags |= GL_MAP_COHERENT_BIT;
             }
@@ -836,12 +837,12 @@ namespace Render::RHI::gl
         m_buffers.remove(buffer);
     }
 
-    RhiResult GlDevice::writeBuffer(BufferHandle buffer, uint64_t offset, const void* data, uint64_t sizeBytes)
+    ::Render::RHI::RhiResult GlDevice::writeBuffer(::Render::RHI::BufferHandle buffer, uint64_t offset, const void* data, uint64_t sizeBytes)
     {
         GlBufferRecord* record = m_buffers.get(buffer);
         if (!record || !data || sizeBytes == 0)
         {
-            return RhiResult::ErrorInvalidArgument;
+            return ::Render::RHI::RhiResult::ErrorInvalidArgument;
         }
         if (offset + sizeBytes > record->desc.size)
         {
@@ -849,48 +850,48 @@ namespace Render::RHI::gl
                 static_cast<unsigned long long>(offset),
                 static_cast<unsigned long long>(sizeBytes),
                 static_cast<unsigned long long>(record->desc.size));
-            return RhiResult::ErrorInvalidArgument;
+            return ::Render::RHI::RhiResult::ErrorInvalidArgument;
         }
         m_gl.BindBuffer(record->target, record->name);
         m_gl.BufferSubData(record->target, static_cast<GLintptr>(offset), static_cast<GLsizeiptr>(sizeBytes), data);
         m_gl.BindBuffer(record->target, 0);
-        return RhiResult::Ok;
+        return ::Render::RHI::RhiResult::Ok;
     }
 
-    MappedRange GlDevice::mapBuffer(BufferHandle buffer, uint64_t offset, uint64_t sizeBytes)
+    ::Render::RHI::MappedRange GlDevice::mapBuffer(::Render::RHI::BufferHandle buffer, uint64_t offset, uint64_t sizeBytes)
     {
         GlBufferRecord* record = m_buffers.get(buffer);
         if (!record || !m_gl.MapBufferRange)
         {
-            return MappedRange{};
+            return ::Render::RHI::MappedRange{};
         }
-        if (record->desc.access == MemoryAccess::GpuOnly)
+        if (record->desc.access == ::Render::RHI::MemoryAccess::GpuOnly)
         {
             m_log.error("[gl] mapBuffer: GpuOnly buffer cannot be mapped");  // GpuOnly 缓冲不可映射
-            return MappedRange{};
+            return ::Render::RHI::MappedRange{};
         }
         if (record->mappedPtr)
         {
             m_log.error("[gl] mapBuffer: buffer is already mapped");  // 该缓冲已处于映射状态
-            return MappedRange{};
+            return ::Render::RHI::MappedRange{};
         }
         const uint64_t size = sizeBytes == 0 ? record->desc.size - offset : sizeBytes;
         if (offset + size > record->desc.size)
         {
             m_log.error("[gl] mapBuffer: out of bounds");  // mapBuffer 越界
-            return MappedRange{};
+            return ::Render::RHI::MappedRange{};
         }
 
         GLbitfield access = GL_MAP_WRITE_BIT;
-        if (record->desc.access == MemoryAccess::GpuToCpu)
+        if (record->desc.access == ::Render::RHI::MemoryAccess::GpuToCpu)
         {
             access = GL_MAP_READ_BIT;
         }
         else if (m_caps.persistentMapping)
         {
             access |= GL_MAP_PERSISTENT_BIT;
-            access |= (record->desc.access == MemoryAccess::CpuToGpuCoherent) ? GL_MAP_COHERENT_BIT
-                                                                              : GL_MAP_FLUSH_EXPLICIT_BIT;
+            access |= (record->desc.access == ::Render::RHI::MemoryAccess::CpuToGpuCoherent) ? GL_MAP_COHERENT_BIT
+                                                                                       : GL_MAP_FLUSH_EXPLICIT_BIT;
         }
         else
         {
@@ -906,13 +907,13 @@ namespace Render::RHI::gl
         if (!ptr)
         {
             m_log.error("[gl] mapBuffer failed (GL returned null pointer)");  // mapBuffer 失败（GL 返回空指针）
-            return MappedRange{};
+            return ::Render::RHI::MappedRange{};
         }
         record->mappedPtr = ptr;
-        return MappedRange{ ptr, offset, size };
+        return ::Render::RHI::MappedRange{ ptr, offset, size };
     }
 
-    void GlDevice::unmapBuffer(BufferHandle buffer)
+    void GlDevice::unmapBuffer(::Render::RHI::BufferHandle buffer)
     {
         GlBufferRecord* record = m_buffers.get(buffer);
         if (!record || !record->mappedPtr || !m_gl.UnmapBuffer)
@@ -1003,23 +1004,23 @@ namespace Render::RHI::gl
         m_textures.remove(texture);
     }
 
-    RhiResult GlDevice::writeTexture(
-        TextureHandle texture, uint32_t mipLevel, const Rect2D& region, const void* data, uint64_t sizeBytes)
+    ::Render::RHI::RhiResult GlDevice::writeTexture(
+        ::Render::RHI::TextureHandle texture, uint32_t mipLevel, const ::Render::RHI::Rect2D& region, const void* data, uint64_t sizeBytes)
     {
         GlTextureRecord* record = m_textures.get(texture);
         if (!record || !data)
         {
-            return RhiResult::ErrorInvalidArgument;
+            return ::Render::RHI::RhiResult::ErrorInvalidArgument;
         }
         const uint32_t pixelSize = formatByteSize(record->desc.format);
         if (pixelSize == 0)
         {
-            return RhiResult::ErrorUnsupported;
+            return ::Render::RHI::RhiResult::ErrorUnsupported;
         }
         if (sizeBytes < static_cast<uint64_t>(region.width) * region.height * pixelSize)
         {
             m_log.error("[gl] writeTexture: insufficient data");  // 数据不足
-            return RhiResult::ErrorInvalidArgument;
+            return ::Render::RHI::RhiResult::ErrorInvalidArgument;
         }
 
         m_gl.BindTexture(GL_TEXTURE_2D, record->name);
@@ -1039,7 +1040,7 @@ namespace Render::RHI::gl
             toGlPixelType(record->desc.format),
             data);
         m_gl.BindTexture(GL_TEXTURE_2D, 0);
-        return RhiResult::Ok;
+        return ::Render::RHI::RhiResult::Ok;
     }
 
     SamplerHandle GlDevice::createSampler(const SamplerDesc& desc)
@@ -1094,7 +1095,7 @@ namespace Render::RHI::gl
 
     // ==================== 帧 ====================
 
-    ICommandList* GlDevice::beginFrame(ISurface* surface)
+    ICommandList* GlDevice::beginFrame(::Render::RHI::ISurface* surface)
     {
         if (!surface)
         {
@@ -1125,17 +1126,17 @@ namespace Render::RHI::gl
         return &m_commands;
     }
 
-    RhiResult GlDevice::submitFrame()
+    ::Render::RHI::RhiResult GlDevice::submitFrame()
     {
         if (!m_inFrame)
         {
             m_log.error("[gl] submitFrame: no beginFrame called");  // 未先调用 beginFrame
-            return RhiResult::ErrorInvalidArgument;
+            return ::Render::RHI::RhiResult::ErrorInvalidArgument;
         }
         if (m_commands.inRenderPass())
         {
             m_log.error("[gl] submitFrame: RenderPass not ended");  // RenderPass 未结束
-            return RhiResult::ErrorInvalidArgument;
+            return ::Render::RHI::RhiResult::ErrorInvalidArgument;
         }
 
         // GL 的提交是隐式的：命令在调用时就进了驱动队列。
@@ -1153,7 +1154,7 @@ namespace Render::RHI::gl
         m_inFrame = false;
         m_frameSurface = nullptr;
         m_frameIndex += 1;
-        return RhiResult::Ok;
+        return ::Render::RHI::RhiResult::Ok;
     }
 
     void GlDevice::waitIdle()
@@ -1255,23 +1256,23 @@ namespace Render::RHI::gl
         return entry.fbo;
     }
 
-    RhiResult GlDevice::readTexture(
-        TextureHandle texture, const Rect2D& region, void* outPixels, uint64_t bufferSize, uint32_t* outRowPitch)
+    ::Render::RHI::RhiResult GlDevice::readTexture(
+        ::Render::RHI::TextureHandle texture, const ::Render::RHI::Rect2D& region, void* outPixels, uint64_t bufferSize, uint32_t* outRowPitch)
     {
         GlTextureRecord* record = m_textures.get(texture);
         if (!record || !outPixels || region.width == 0 || region.height == 0)
         {
-            return RhiResult::ErrorInvalidArgument;
+            return ::Render::RHI::RhiResult::ErrorInvalidArgument;
         }
         if (!m_gl.GenFramebuffers || !m_gl.ReadPixels)
         {
-            return RhiResult::ErrorUnsupported;
+            return ::Render::RHI::RhiResult::ErrorUnsupported;
         }
         const uint32_t pixelSize = formatByteSize(record->desc.format);
         const uint32_t rowPitch = region.width * pixelSize;
         if (bufferSize < static_cast<uint64_t>(rowPitch) * region.height)
         {
-            return RhiResult::ErrorInvalidArgument;
+            return ::Render::RHI::RhiResult::ErrorInvalidArgument;
         }
 
         if (!m_readbackFbo)
@@ -1315,7 +1316,7 @@ namespace Render::RHI::gl
         {
             *outRowPitch = rowPitch;
         }
-        return RhiResult::Ok;
+        return ::Render::RHI::RhiResult::Ok;
     }
 
     uint64_t GlDevice::gpuMemoryUsageBytes() const
@@ -1387,9 +1388,9 @@ namespace Render::RHI::gl
 
 namespace Render::RHI
 {
-    IGpuDevice* createGlDevice(const DeviceDesc& desc)
+    IGpuDevice* createGlDevice(const ::Render::RHI::DeviceDesc& desc)
     {
-        RhiLogger logger(desc.logCallback, desc.logUserData);
+        ::Render::RHI::RhiLogger logger(desc.logCallback, desc.logUserData);
 
         // GL 后端要求调用时已有当前上下文：函数指针必须在上下文内解析。
         // 这是 ForeignGlContext 集成方式的硬约束，宿主应在 initializeGL 内调用。

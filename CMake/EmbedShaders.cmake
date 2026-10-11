@@ -159,21 +159,14 @@ set(_generated
 // （shader 文件已声明为构建依赖）。
 // ==========================================================================
 
+#include \"shader/RawShaderBlob.h\"
+
 namespace Render
 {
     namespace shader
     {
         namespace generated
         {
-
-            struct RawShaderBlob
-            {
-                const char* name;
-                const char* language;
-                const unsigned char* data;
-                unsigned long long sizeBytes;
-            };
-
 ${_body}            extern const RawShaderBlob kShaderBlobs[] = {
 ${_table}            };
 
