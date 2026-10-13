@@ -19,6 +19,7 @@
 #include <cctype>
 #include <chrono>
 #include <cstddef>
+#include <cstring>
 #include <fstream>
 #include <iostream>
 #include <iterator>

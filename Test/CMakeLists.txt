@@ -118,8 +118,10 @@ elseif(DEFINED VCPKG_DIR)
     target_include_directories(RenderxGLTests PRIVATE ${_vcpkg_stb_incs})
 endif()
 
-if(WIN32)
-    target_link_libraries(RenderxGLTests PRIVATE opengl32)
+# Windows 直接是 opengl32，Linux 的 glXGetProcAddress 在 libGL（OpenGL::GL）；
+# macOS 走 dlsym 不需要 GL 库（OPENGL_LIBRARIES 由父级 CMakeLists 配置）。
+if(NOT APPLE)
+    target_link_libraries(RenderxGLTests PRIVATE ${OPENGL_LIBRARIES})
 endif()
 
 # Apple 平台测试目标也要链接 Metal 框架：它编译了 metalDevice.mm
