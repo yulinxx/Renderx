@@ -244,8 +244,17 @@ namespace Render::RHI::gl
         /// pushConstants 在 GL 上落地为一个 UBO，绑定到 kPushConstantBinding
         GLuint pushConstantUbo() const { return m_pushConstantUbo; }
 
-        /// 为一组附件取得（并缓存）FBO；附件组合首次出现时创建
+        /// 为一组附件取得（并缓存）FBO；附件组合首次出现时创建。
+        /// 任一**有效句柄**的附件记录已销毁（过期句柄）时记 error 并返回 0，
+        /// 绝不把 0 当成功交给上层去画默认帧缓冲。
         GLuint framebufferFor(const ::Render::RHI::RenderPassBeginDesc& desc);
+
+        /// 测试观测：当前缓存的 FBO 条目数（容量上限 kMaxCachedFramebuffers）
+        size_t framebufferCacheSize() const { return m_framebufferCache.size(); }
+
+        /// FBO 缓存容量上限：超出后淘汰最旧一条。
+        /// 截图/导出会对同一组附件反复 begin/end，没有上限就单调增长。
+        static constexpr size_t kMaxCachedFramebuffers = 8;
 
         /// pushConstant 块固定占用 0 号 UBO binding point，
         /// 用户声明的 UniformBuffer 从 1 开始顺序分配
@@ -257,6 +266,10 @@ namespace Render::RHI::gl
         /// 编译单个阶段；失败时把 InfoLog 完整记进日志（旧实现只记前 512 字节）
         GLuint compileStage(GLenum stage, const GlShaderRecord& record, const char* debugName);
         void deleteAllResources();
+        /// 删除引用指定 GL 纹理名的全部 FBO 缓存项（连带删除 FBO 对象）。
+        /// GL 名字会被驱动复用，destroyTexture 必须同步清缓存，否则新纹理
+        /// 会命中旧附件组合的 FBO —— 黑图/花屏的经典根因。
+        void purgeFramebufferCacheForTexture(GLuint textureName);
 
         GLFuncs m_gl{};
         ::Render::RHI::RhiLogger m_log;

@@ -135,7 +135,18 @@ namespace Render::RHI::gl
         }
 
         const GLFuncs& f = m_device->gl();
+        // 显式附件 + FBO 解析失败（过期句柄/附件不完整）时绝不能落到默认帧缓冲：
+        // 那会把本 pass 的清屏与绘制画到窗口/上一个目标上 —— 静默画错比崩溃难查得多。
+        const bool hasExplicitTarget = (desc.colorAttachmentCount > 0 && desc.colorAttachments[0].texture.valid()) ||
+            desc.depthAttachment.texture.valid();
         const GLuint fbo = resolveFramebuffer(desc);
+        if (hasExplicitTarget && fbo == 0)
+        {
+            m_device->log().error("[gl] beginRenderPass: explicit attachments failed to resolve an FBO "
+                                  "(destroyed texture handle or incomplete framebuffer); refusing to draw "
+                                  "into the default framebuffer");
+            return ::Render::RHI::RhiResult::ErrorInvalidArgument;
+        }
         f.BindFramebuffer(GL_FRAMEBUFFER, fbo);
 
         m_passExtent = desc.extent;

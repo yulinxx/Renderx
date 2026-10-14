@@ -57,6 +57,8 @@ gtest_discover_tests(RenderxTests DISCOVERY_TIMEOUT 120)
 set(RENDERX_GL_TEST_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/RhiCoreTests.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/RxRuntimeTests.cpp"
+    # GlDevice FBO 缓存（打桩 GLFuncs，无 GPU 上下文可测）
+    "${CMAKE_CURRENT_SOURCE_DIR}/GlFboCacheTests.cpp"
 )
 
 set(RENDERX_GL_INTERNAL_SOURCES

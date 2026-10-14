@@ -986,6 +986,35 @@ namespace Render::RHI::gl
         return m_textures.add(std::move(record));
     }
 
+    void GlDevice::purgeFramebufferCacheForTexture(GLuint textureName)
+    {
+        if (textureName == 0)
+        {
+            return;
+        }
+        for (size_t i = 0; i < m_framebufferCache.size();)
+        {
+            FramebufferCacheEntry& entry = m_framebufferCache[i];
+            bool references = entry.depthName == textureName;
+            for (uint32_t c = 0; !references && c < entry.colorCount; ++c)
+            {
+                references = entry.colorNames[c] == textureName;
+            }
+            if (references)
+            {
+                if (entry.fbo && m_gl.DeleteFramebuffers)
+                {
+                    m_gl.DeleteFramebuffers(1, &entry.fbo);
+                }
+                m_framebufferCache.erase(m_framebufferCache.begin() + static_cast<long>(i));
+            }
+            else
+            {
+                ++i;
+            }
+        }
+    }
+
     void GlDevice::destroyTexture(TextureHandle texture)
     {
         GlTextureRecord* record = m_textures.get(texture);
@@ -1000,6 +1029,9 @@ namespace Render::RHI::gl
         if (record->name && m_gl.DeleteTextures)
         {
             m_gl.DeleteTextures(1, &record->name);
+            // GL 名字会被驱动复用：删纹理时必须同时删掉引用它的 FBO 缓存项，
+            // 否则新纹理拿到同一数字名后会命中旧 FBO —— 画出来是旧附件/黑图。
+            purgeFramebufferCacheForTexture(record->name);
         }
         m_textures.remove(texture);
     }
@@ -1185,36 +1217,81 @@ namespace Render::RHI::gl
         uint32_t colorCount = 0;
         for (uint32_t i = 0; i < desc.colorAttachmentCount && i < kMaxColorAttachments; ++i)
         {
-            GlTextureRecord* record = m_textures.get(desc.colorAttachments[i].texture);
+            const auto& att = desc.colorAttachments[i];
+            GlTextureRecord* record = m_textures.get(att.texture);
+            // 句柄有效但记录已销毁 = 上层拿着过期句柄来画。
+            // 绝不回落成 name=0 悄悄建一个空附件 FBO —— 那会静默画错。
+            if (att.texture.valid() && !record)
+            {
+                m_log.error("[gl] framebufferFor: color attachment %u references a destroyed texture", i);
+                return 0;
+            }
             colorNames[colorCount++] = record ? record->name : 0;
         }
         GLuint depthName = 0;
         if (desc.depthAttachment.texture.valid())
         {
             GlTextureRecord* record = m_textures.get(desc.depthAttachment.texture);
-            depthName = record ? record->name : 0;
+            if (!record)
+            {
+                m_log.error("[gl] framebufferFor: depth attachment references a destroyed texture");
+                return 0;
+            }
+            depthName = record->name;
         }
 
-        for (const auto& entry : m_framebufferCache)
+        // 缓存命中：GL 名字会被驱动复用，命中后必须复查完整性 ——
+        // 附件纹理可能已被删除重建，旧 FBO 绑着已回收的名字。
+        for (size_t i = 0; i < m_framebufferCache.size();)
         {
-            if (entry.colorCount != colorCount || entry.depthName != depthName)
+            FramebufferCacheEntry& entry = m_framebufferCache[i];
+            const bool sameCount = entry.colorCount == colorCount && entry.depthName == depthName;
+            bool same = sameCount;
+            for (uint32_t c = 0; same && c < colorCount; ++c)
             {
+                same = entry.colorNames[c] == colorNames[c];
+            }
+            if (!same)
+            {
+                ++i;
                 continue;
             }
-            bool same = true;
-            for (uint32_t i = 0; i < colorCount; ++i)
-            {
-                same = same && entry.colorNames[i] == colorNames[i];
-            }
-            if (same)
+            if (!m_gl.CheckFramebufferStatus)
             {
                 return entry.fbo;
             }
+            m_gl.BindFramebuffer(GL_FRAMEBUFFER, entry.fbo);
+            const GLenum status = m_gl.CheckFramebufferStatus(GL_FRAMEBUFFER);
+            m_gl.BindFramebuffer(GL_FRAMEBUFFER, 0);
+            if (status == GL_FRAMEBUFFER_COMPLETE)
+            {
+                return entry.fbo;
+            }
+            m_log.warn("[gl] cached FBO %u incomplete on reuse (status=0x%04X), dropping and recreating",
+                entry.fbo,
+                status);  // 缓存的 FBO 复用时不再完整，丢弃重建
+            if (entry.fbo && m_gl.DeleteFramebuffers)
+            {
+                m_gl.DeleteFramebuffers(1, &entry.fbo);
+            }
+            m_framebufferCache.erase(m_framebufferCache.begin() + static_cast<long>(i));
+            break;  // 落到下方创建路径
         }
 
         if (!m_gl.GenFramebuffers)
         {
             return 0;
+        }
+
+        // 容量上限：淘汰最旧一条（push_back 追加，front 即最旧）。
+        while (m_framebufferCache.size() >= kMaxCachedFramebuffers)
+        {
+            FramebufferCacheEntry& oldest = m_framebufferCache.front();
+            if (oldest.fbo && m_gl.DeleteFramebuffers)
+            {
+                m_gl.DeleteFramebuffers(1, &oldest.fbo);
+            }
+            m_framebufferCache.erase(m_framebufferCache.begin());
         }
 
         FramebufferCacheEntry entry{};
