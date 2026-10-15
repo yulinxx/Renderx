@@ -302,7 +302,7 @@ namespace Render::RT::detail
 
     // ==================== TransientRing ====================
 
-    bool TransientRing::initialize(Runtime* owner, uint64_t capacityBytes)
+    bool TransientRing::initialize(Runtime* owner, uint64_t capacityBytes, uint32_t segmentCount)
     {
         m_owner = owner;
         m_device = owner ? owner->device : nullptr;
@@ -314,9 +314,15 @@ namespace Render::RT::detail
             return false;
         }
 
+        // 段数必须覆盖后端允许的 frames-in-flight：CPU 最多领先 GPU
+        // maxFramesInFlight 帧，段数不足时第 N 帧会覆写仍在被 GPU 读取的段
+        //（症状是画面随机缺块，且无任何报错——与 §4.7 同一根因）。
+        const uint32_t flight = (std::max)(kMinSegmentCount, m_device->capabilities().maxFramesInFlight);
+        m_segmentCount = (std::max)(segmentCount, flight);
+
         RHI::BufferDesc desc{};
-        // 两段轮转：总大小是单段容量的两倍
-        desc.size = m_capacity * kSegmentCount;
+        // 多段轮转：总大小是单段容量 × 段数
+        desc.size = m_capacity * m_segmentCount;
         desc.usage = RHI::BufferUsage::Vertex | RHI::BufferUsage::Index;
         desc.access = RHI::MemoryAccess::CpuToGpu;
         desc.debugName = "RxTransientRing";
@@ -383,7 +389,7 @@ namespace Render::RT::detail
     {
         releaseOverflowBuffers();
 
-        m_segment = (m_segment + 1) % kSegmentCount;
+        m_segment = (m_segment + 1) % m_segmentCount;
         m_segmentBase = m_capacity * m_segment;
         m_cursor = m_segmentBase;
         m_flushed = m_cursor;
@@ -538,7 +544,7 @@ namespace Render::RT::detail
         defaultSampler = device->createSampler(samplerDesc);
 
         constexpr uint64_t kDefaultTransientBytes = 32ull * 1024ull * 1024ull;
-        // TransientAlloc::offset 是 uint32，而环形缓冲总大小是单段容量的两倍，
+        // TransientAlloc::offset 是 uint32，而环形缓冲总大小是单段容量 × 段数，
         // 因此单段上限为 2GB。超出会让偏移静默回绕，画面表现为随机错位。
         constexpr uint64_t kMaxTransientBytes = 0x80000000ull;
         uint64_t transientBytes = desc.transientBufferBytes != 0 ? desc.transientBufferBytes : kDefaultTransientBytes;
@@ -936,6 +942,20 @@ namespace Render::RT::detail
             return RxResult::ErrorInvalidArgument;
         }
         materials[index] = desc;
+        return RxResult::Ok;
+    }
+
+    RxResult Runtime::removeMaterial(uint16_t index)
+    {
+        if (index == 0 || index >= materials.size())
+        {
+            return RxResult::ErrorInvalidArgument;
+        }
+        // 内容清零（不是从 vector 里抹掉）：materialIndex 是绘制命令里的
+        // 下标，抹掉会让后面所有材质整体前移，已提交命令的引用全部错位。
+        // 空闲槽位由 addMaterial 复用，见那里的空闲链表。
+        materials[index] = MaterialDesc{};
+        m_freeMaterials.push_back(index);
         return RxResult::Ok;
     }
 

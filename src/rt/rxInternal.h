@@ -160,8 +160,10 @@ namespace Render::RT::detail
      * 每帧顶点流的分配器。实现要点：
      * - CPU 侧影子内存 + 帧末上传，不依赖持久映射，因此 Null 后端与
      *   不支持 GL_MAP_PERSISTENT_BIT 的驱动上行为一致。
-     * - 双段轮转（frames-in-flight = 2）：本帧写 A 段时 GPU 可能还在读
-     *   上一帧的 B 段。旧实现单段复用，靠「希望 GPU 已经读完」。
+     * - 多段轮转（段数 ≥ 后端 maxFramesInFlight，下限 2）：本帧写第 N 段时
+     *   GPU 可能还在读之前某帧的段。段数必须覆盖 CPU 领先 GPU 的最大帧数，
+     *   否则覆写仍被读取的段会让画面随机缺块。旧实现固定两段，而 Metal
+     *   声明 3 帧 in flight——第 N 帧会与 N-2 帧撞段。
      * - 容量不足时为该次分配单独开一个缓冲，帧末释放，而不是回绕覆盖
      *   已提交的命令（回绕覆盖的表现是「画面随机少一部分」，极难定位）。
      */
@@ -169,7 +171,9 @@ namespace Render::RT::detail
     {
     public:
         /// owner 提供设备与日志出口；溢出缓冲也要在 owner 的句柄表里登记
-        bool initialize(Runtime* owner, uint64_t capacityBytes);
+        /// segmentCount：环的段数，必须 ≥ 后端 maxFramesInFlight（CPU 最多领先
+        /// GPU 的帧数），否则第 N 帧会覆写 GPU 仍在读取的段——画面随机缺块。
+        bool initialize(Runtime* owner, uint64_t capacityBytes, uint32_t segmentCount = 2);
         void shutdown();
 
         /// 切换到下一段并重置游标，释放上一帧的溢出缓冲
@@ -203,7 +207,9 @@ namespace Render::RT::detail
         /// 历史峰值用量（跨帧）。容量该给多大是个需要实测回答的问题，
         /// 因此这里留一个可读的峰值，而不是只在溢出时才后知后觉。
         uint64_t m_highWater = 0;
-        static constexpr uint32_t kSegmentCount = 2;
+        /// 段数在 initialize 时按后端 maxFramesInFlight 对齐（下限 2）
+        uint32_t m_segmentCount = 2;
+        static constexpr uint32_t kMinSegmentCount = 2;
 
         /// 容量不足时的溢出缓冲，帧末统一释放
         struct Overflow
@@ -478,6 +484,12 @@ namespace Render::RT::detail
 
         uint16_t addMaterial(const MaterialDesc& desc);
         RxResult updateMaterial(uint16_t index, const MaterialDesc& desc);
+        /// 释放材质槽位，供后续 addMaterial 复用。
+        ///
+        /// 槽位本身不移除（materialIndex 是绘制命令里的下标，重排会让所有
+        /// 已提交命令的引用全部错位），只把它标成空闲并清空内容。
+        /// 调用方负责在此之前先把引用该索引的命令改写为 0（无材质）。
+        RxResult removeMaterial(uint16_t index);
 
         // ---- 增量渲染 ----
         GeometryStoreHandle createGeometryStore(const GeometryStoreDesc& desc);
