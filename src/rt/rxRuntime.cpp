@@ -1265,9 +1265,10 @@ namespace Render::RT::detail
         pipelineKeys.push_back(key);
         const auto index = static_cast<uint16_t>(pipelines.size() - 1);
         pipelineCache.emplace(key, index);
-        #if defined(RHI_LOG_PIPELINE_CREATION)
+        // 深度格式进缓存键的取证日志（Test/RenderxMetalTests.mm 的
+        // Mesh3DPipelineVariantIsKeyedByDepthFormat 依赖这行）。管线按键缓存、
+        // 每个键只建一次，debug 级别不会造成日志洪水，无需宏开关。
         log.debug("[rt] pipeline created idx=%u colorFmt=%d depthFmt=%d", index, static_cast<int>(key.colorFormat), static_cast<int>(key.depthFormat));
-#endif
         return index;
     }
 

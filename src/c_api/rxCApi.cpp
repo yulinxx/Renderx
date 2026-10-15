@@ -1219,10 +1219,12 @@ namespace Render
 
             uint64_t rxMakeSortKey(uint8_t layer, uint8_t transparent, uint16_t depth, uint16_t seq)
             {
-                // layer(8) | transparent(8) | depth(16) | seq(16)，高位优先。
-                // 高 16 位留空，便于将来扩展视口/渲染目标维度而不改变已有排序语义。
-                return (static_cast<uint64_t>(layer) << 40) | (static_cast<uint64_t>(transparent) << 32) |
-                    (static_cast<uint64_t>(depth) << 16) | static_cast<uint64_t>(seq);
+                return rxAbiGuard<uint64_t>([layer, transparent, depth, seq] {
+                    // layer(8) | transparent(8) | depth(16) | seq(16)，高位优先。
+                    // 高 16 位留空，便于将来扩展视口/渲染目标维度而不改变已有排序语义。
+                    return (static_cast<uint64_t>(layer) << 40) | (static_cast<uint64_t>(transparent) << 32) |
+                        (static_cast<uint64_t>(depth) << 16) | static_cast<uint64_t>(seq);
+                });
             }
         }  // extern "C"
     }  // namespace RT
