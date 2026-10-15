@@ -165,6 +165,17 @@ namespace Render::RHI
         /// 阻塞直到 GPU 完成全部已提交工作。仅用于关闭与资源销毁前。
         virtual void waitIdle() = 0;
 
+        /**
+         * @brief 把本帧已录制的命令提交到 GPU 并等待完成（不结束帧、不呈现）
+         *
+         * 读回（readTexture）前必须调用：帧内命令在部分后端（Metal）只是
+         * CPU 侧编码，submitFrame/present 才真正 commit。若读回前不落盘，
+         * blit 与未提交的绘制无任何先后保证——读到的是上一帧内容
+         * （§4.11：截图/读回随机拿到旧画面）。GL 的命令流是隐式同步的，
+         * 默认实现为空操作即可。
+         */
+        virtual void flushFrameCommands() { (void)this; }
+
         // ---------- 读回 ----------
 
         /**

@@ -1212,6 +1212,44 @@ namespace Render::RHI::metal
         [commandBuffer waitUntilCompleted];
     }
 
+    void MetalDevice::flushFrameCommands()
+    {
+        // 帧内读回的前置同步（§4.11）：本帧绘制此刻只是 CPU 侧编码，
+        // commit 发生在 present/submitFrame。不落盘就读，blit 与未提交
+        // 的绘制没有先后保证——读到的是上一帧内容。
+        //
+        // 这里把帧命令缓冲提前 commit 并等待完成，再给命令列表换一个
+        // 新缓冲：帧仍未结束（m_inFrame 保持），后续录制/呈现照常走
+        // 原路径。新增的 drawable present 语义不受影响——present 只
+        // 关心「当前帧最后一次 commit 时 drawable 已挂上」。
+        if (!m_inFrame)
+        {
+            return;
+        }
+        id<MTLCommandBuffer> commandBuffer = m_commands.commandBuffer();
+        if (commandBuffer == nil || commandBuffer.status != MTLCommandBufferStatusScheduled)
+        {
+            // 状态不是 Scheduled 时缓冲已被提交或为空帧：无需重复落盘
+            return;
+        }
+        if (m_commands.inRenderPass())
+        {
+            m_commands.endRenderPass();
+        }
+        m_commands.endComputePass();
+        [commandBuffer commit];
+        [commandBuffer waitUntilCompleted];
+
+        // 换新缓冲让帧继续录制。beginFrame 会重置绑定状态，但帧内读回
+        // 重开 RenderPass 的路径（rxSessionReadPixelsImpl）本来就会重新
+        // 绑定管线与顶点流，重置是安全的。
+        id<MTLCommandBuffer> next = [m_queue commandBuffer];
+        if (next != nil)
+        {
+            m_commands.beginFrame(m_frameSurface, next);
+        }
+    }
+
     RhiResult MetalDevice::readTexture(TextureHandle texture, const Rect2D& region, void* outPixels,
                                        uint64_t bufferSize, uint32_t* outRowPitch)
     {

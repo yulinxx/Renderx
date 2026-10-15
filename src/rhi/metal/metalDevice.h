@@ -286,6 +286,7 @@ namespace Render::RHI::metal
         ICommandList* beginFrame(ISurface* surface) override;
         RhiResult submitFrame() override;
         void waitIdle() override;
+        void flushFrameCommands() override;
 
         RhiResult readTexture(TextureHandle texture, const Rect2D& region, void* outPixels,
                               uint64_t bufferSize, uint32_t* outRowPitch) override;

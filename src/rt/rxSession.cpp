@@ -955,6 +955,11 @@ namespace Render::RT::detail
         {
             cmd->endRenderPass();
         }
+        // Metal 的帧命令在 present 前只是 CPU 侧编码，waitIdle 只等「已提交」
+        // 的缓冲——不清帧就读，blit 会与未提交的绘制重排，读到上一帧内容
+        // （§4.11）。flushFrameCommands 把帧命令提前 commit 并等待完成；
+        // GL 后端命令流隐式同步，默认实现为空操作。
+        runtime->device->flushFrameCommands();
         runtime->device->waitIdle();
 
         RHI::Rect2D region{};
