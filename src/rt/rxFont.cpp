@@ -430,10 +430,16 @@ namespace Render::RT::detail
 
         const RHI::RhiResult result =
             runtime.device->writeTexture(*rhiTexture, 0, region, font.pixels.data() + offset, bytes);
-        // 无论成功与否都清脏区：失败是后端问题，反复重传同一批字节只会把
-        // 每帧都变成一次失败的全量上传。
-        font.dirtyY0 = 0;
-        font.dirtyY1 = 0;
-        return result == RHI::RhiResult::Ok ? RxResult::Ok : RxResult::ErrorUnknown;
+        // 只在成功时清脏区：上传失败时字形数据从未到达 GPU，清掉脏区
+        // 会让这块字形在图集里永远是未定义内容——表现为随机乱码/缺字，
+        // 且下一次 flush 因 hasDirty()==false 直接跳过，永不自愈。
+        // 脏区只有一行（按行累计，高度通常很小），失败重传的成本可忽略。
+        if (result == RHI::RhiResult::Ok)
+        {
+            font.dirtyY0 = 0;
+            font.dirtyY1 = 0;
+            return RxResult::Ok;
+        }
+        return RxResult::ErrorUnknown;
     }
 }  // namespace Render::RT::detail
