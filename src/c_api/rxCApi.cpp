@@ -522,6 +522,18 @@ namespace Render
                 });
             }
 
+            RxResult rxMaterialRemove(RuntimeHandle handle, uint16_t index)
+            {
+                return rxAbiGuard<RxResult>([handle, index] {
+                    Runtime* runtime = checkedRuntime(handle);
+                    if (!runtime)
+                    {
+                        return RxResult::ErrorInvalidHandle;
+                    }
+                    return runtime->removeMaterial(index);
+                });
+            }
+
             // ==================== 字体 ====================
             //
             // DLL 只出字形度量与图集，排版在调用方，理由见 rxFont.h 文件头。

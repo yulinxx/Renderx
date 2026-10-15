@@ -104,20 +104,22 @@
 //      它只用到 x/y，等于把相机当成正交俯视，用在 3D 斜视角下会误裁。
 //      新增接口为纯追加，结构体尺寸未变，故只抬 minor。
 //
-// 5.3：拖拽预览的模型矩阵。新增 rxSessionSetModelMatrix：把模型变换与视图矩阵
-//      相乘后写进同一个 push constant 的 uView，顶点、着色器与三个后端都不必变。
-//      与 5.2 同样为纯追加（未动任何结构体尺寸），故只抬 minor。
+// 5.4：材质槽位释放。新增 rxMaterialRemove：宿主按图元创建的材质此前无处释放，
+//      每次重建渲染器都会把整张材质表留在 Runtime 上（Metal 的 Runtime 是
+//      进程级共享的，泄漏随之跨视口累积）。槽位不复用前 table 无上限，
+//      现改为「清零 + 进空闲链表，rxMaterialAdd 优先复用」。
+//      与 5.2/5.3 同样为纯追加（未动任何结构体尺寸），故只抬 minor。
 //
 // 4.0：字体接口从「递字符串、DLL 内部排版」改为「DLL 只出字形度量与图集，
 //      宿主自己拼四边形」。rxFontLoad 被 rxFontCreate 系列取代，签名不兼容，
 //      故抬 major。旧接口恒返回 ErrorUnsupportedBackend，无可用调用方。
 #define RENDERX_ABI_VERSION_MAJOR 5
-#define RENDERX_ABI_VERSION_MINOR 3
+#define RENDERX_ABI_VERSION_MINOR 4
 #define RENDERX_ABI_VERSION       ((RENDERX_ABI_VERSION_MAJOR << 16) | RENDERX_ABI_VERSION_MINOR)
 
 // packed 语义版本 (major<<16)|(minor<<8)|patch
 #define RENDERX_VERSION_MAJOR 5
-#define RENDERX_VERSION_MINOR 3
+#define RENDERX_VERSION_MINOR 4
 #define RENDERX_VERSION_PATCH 0
 #define RENDERX_VERSION \
     ((RENDERX_VERSION_MAJOR << 16) | (RENDERX_VERSION_MINOR << 8) | RENDERX_VERSION_PATCH)
@@ -1167,6 +1169,18 @@ namespace Render
 
             RENDER_API uint16_t rxMaterialAdd(RuntimeHandle runtime, const MaterialDesc* desc);
             RENDER_API RxResult rxMaterialUpdate(RuntimeHandle runtime, uint16_t index, const MaterialDesc* desc);
+
+            /**
+             * @brief 释放材质槽位，供后续 rxMaterialAdd 复用
+             *
+             * 槽位不从表里抹掉：materialIndex 是绘制命令里的下标，抹掉会让
+             * 后续材质整体前移、已提交命令的引用全部错位。这里只把内容清零
+             * 并标记为可复用，因此 rxMaterialAdd 之后可能返回同一个索引。
+             *
+             * 调用方负责**在此之前**把引用该索引的绘制命令改写为 0（无材质）：
+             * 命令是按值存进绘制列表的，事后改这里影响不到已提交的那一份。
+             */
+            RENDER_API RxResult rxMaterialRemove(RuntimeHandle runtime, uint16_t index);
 
             /**
              * @brief 创建字体（光栅化器 + 专属字形图集）
