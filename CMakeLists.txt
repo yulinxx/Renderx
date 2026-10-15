@@ -1,5 +1,19 @@
-# 指定CMake最低版本要求
 cmake_minimum_required(VERSION 4.3)
+
+# ============================================================================
+# Renderx —— 单层结构（库本体 + 独立构建入口同一文件）
+# ============================================================================
+# 与 Log / FileIO 等双层模块不同，Renderx 保持单文件兼两角：
+#   集成构建：根 CMakeLists.txt → add_subdirectory(Renderx)（本文件）。
+#   独立构建：cmake -S Renderx -B Renderx/build（本文件提供 project()）。
+# 本文件内部自带 project()，两种构建方式走同一份逻辑；状态输出格式与其它
+# 模块的独立入口保持一致（见文件末尾摘要方框）。
+#
+# 用法：
+#   cmake -S Renderx -B Renderx/build
+#   cmake --build Renderx/build --config Release
+#   ctest --test-dir Renderx/build -C Release
+# ============================================================================
 
 # 包含上级目录的配置文件（路径、测试开关等全部由 Config.cmake 定义）
 include(${CMAKE_CURRENT_SOURCE_DIR}/../Config.cmake)
@@ -437,16 +451,15 @@ endif()
 
 # ==================== 状态输出 ====================
 
-message(STATUS "[${PROJECT_NAME}]")
-message(STATUS "  Version: ${PROJECT_VERSION}")
-message(STATUS "  Platform: ${CMAKE_SYSTEM_NAME}(${CMAKE_SYSTEM_PROCESSOR})")
-message(STATUS "  Build Type: ${CMAKE_BUILD_TYPE}")
-if(_renderx_build_tests)
-    message(STATUS "  Tests: ENABLED")
-else()
-    message(STATUS "  Tests: DISABLED")
-endif()
-message(STATUS "----------------------------------------")
+message(STATUS "")
+message(STATUS "========================================")
+message(STATUS "  [Single-layer: ${PROJECT_NAME}]")
+message(STATUS "========================================")
+message(STATUS "  Version:     ${PROJECT_VERSION}")
+message(STATUS "  Build Tests: ${_renderx_build_tests}")
+message(STATUS "  Output:      ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
+message(STATUS "========================================")
+message(STATUS "")
 
 sanyi_export_imported_target(${PROJECT_NAME}
     LIB_NAME "${PROJECT_NAME}"
