@@ -287,16 +287,28 @@ namespace Render::RHI::metal
             m_log.error("[metal] acquireNextImage: surface is not initialized correctly");
             return RhiResult::ErrorSurfaceLost;
         }
-        // 尺寸为 0（窗口最小化）时安全跳过：此时既没有 drawable 也不必渲染
+        // 尺寸为 0（窗口最小化）时安全跳过：此时既没有 drawable 也不必渲染。
+        // 若上一帧遗留了一个从未提交的获取（错误路径），它的信号量槽位在这里归还。
         if (m_extent.width == 0 || m_extent.height == 0)
         {
-            releaseDrawable();
+            if (m_acquired)
+            {
+                releaseDrawable();
+                dispatch_semaphore_signal(m_inFlight);
+            }
             return RhiResult::Ok;
         }
         if (m_acquired)
         {
-            m_log.error("[metal] acquireNextImage: a drawable was already acquired this frame");
-            return RhiResult::ErrorUnknown;
+            // 上一帧在 acquire 之后、commit 之前出错（如 device->beginFrame 失败、
+            // 宿主收到 ErrorDeviceLost 后不再 endFrame）：drawable 未 present，
+            // completed handler 永远不会触发，槽位悬空。这类失败每次泄漏一格，
+            // 累积 3 次后 dispatch_semaphore_wait 永久阻塞——渲染整体卡死。
+            // present 正常结束时会 releaseDrawable，因此 m_acquired == true
+            // 严格意味着「从未提交」：在这里归还槽位并重建，让错误帧可恢复。
+            m_log.warn("[metal] acquireNextImage: recovering a stale drawable left by a failed frame");
+            releaseDrawable();
+            dispatch_semaphore_signal(m_inFlight);
         }
 
         // 3 帧 in flight：等待最老的一帧完成，避免 CPU 无界地领先 GPU
