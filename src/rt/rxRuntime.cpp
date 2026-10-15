@@ -926,6 +926,15 @@ namespace Render::RT::detail
 
     uint16_t Runtime::addMaterial(const MaterialDesc& desc)
     {
+        // 优先复用 removeMaterial 释放的槽位：否则「建 10 万个材质 → 删掉 →
+        // 再建」会让 materials 无限增长，而空闲槽位的内容本就已经清零。
+        if (!m_freeMaterials.empty())
+        {
+            const uint16_t index = m_freeMaterials.back();
+            m_freeMaterials.pop_back();
+            materials[index] = desc;
+            return index;
+        }
         if (materials.size() >= 0xFFFF)
         {
             log.error("[rt] rxMaterialAdd: material count reached uint16 limit");  // 材质数量已达 uint16 上限
@@ -1434,7 +1443,10 @@ namespace Render::RT::detail
         if (!lightingUbo.valid())
         {
             RHI::BufferDesc bufferDesc{};
-            bufferDesc.size = kFrameUniformBytes;
+            // 帧轮转：槽位 × 帧数。本帧写第 N 槽时 GPU 可能还在读
+            // 之前的槽——单缓冲直写在 Metal 的 3 帧 in flight 下
+            // 会踩到 GPU 正在读的内存（§4.10）。
+            bufferDesc.size = static_cast<uint64_t>(kFrameUniformStride) * kFrameUniformMaxFrames;
             bufferDesc.usage = RHI::BufferUsage::Uniform | RHI::BufferUsage::TransferDst;
             // 每帧最多写一次 160 字节，用 writeBuffer 即可，不需要持久映射
             bufferDesc.access = RHI::MemoryAccess::GpuOnly;
@@ -1442,7 +1454,8 @@ namespace Render::RT::detail
             lightingUbo = device->createBuffer(bufferDesc);
             if (!lightingUbo.valid())
             {
-                log.error("[rt] 3D lighting UBO creation failed (%u bytes)", kFrameUniformBytes);
+                log.error("[rt] 3D lighting UBO creation failed (%u bytes)",
+                    kFrameUniformStride * kFrameUniformMaxFrames);
                 return false;
             }
         }
@@ -1451,8 +1464,9 @@ namespace Render::RT::detail
         binding.set = 0;
         binding.binding = kFrameUniformBinding;
         binding.buffer = lightingUbo;
+        // 绑定整个轮转缓冲；每帧经 bindBindGroup 的动态 offset 定位本帧槽
         binding.offset = 0;
-        binding.size = kFrameUniformBytes;
+        binding.size = static_cast<uint64_t>(kFrameUniformStride) * kFrameUniformMaxFrames;
 
         RHI::BindGroupDesc groupDesc{};
         groupDesc.buffers = &binding;
@@ -1477,12 +1491,43 @@ namespace Render::RT::detail
         {
             return;
         }
+        // 帧槽轮转：本帧写第 N 槽，GPU 可能还在读之前的槽——这正是
+        // 轮转的目的（§4.10 单缓冲直写会踩 GPU 正在读的内存）。
+        // 槽推进以 Runtime 的帧为粒度（sessionsInFrame==0 → 新 RHI 帧）。
+        lightingFrameSlot = (lightingFrameSlot + 1) % kFrameUniformMaxFrames;
+        const uint64_t slotOffset = static_cast<uint64_t>(lightingFrameSlot) * kFrameUniformStride;
         // 失败只记日志：丢一帧光照参数导致的是「画面偏暗」，
         // 而中断整帧提交会让窗口闪黑，后者更糟。
-        if (device->writeBuffer(lightingUbo, 0, &uniforms, kFrameUniformBytes) != RHI::RhiResult::Ok)
+        if (device->writeBuffer(lightingUbo, slotOffset, &uniforms, kFrameUniformBytes) != RHI::RhiResult::Ok)
         {
             log.warn("[rt] 3D lighting upload failed, keeping previous frame values");
+            return;
         }
+        // 绑定组带动态偏移重建：ICommandList::bindBindGroup 不收 offset 参数，
+        // 而 bind group 只是绑定的轻量记录（后端在 bindBindGroup 编码期同步
+        // 解析成 buffer+offset），本帧编码结束后旧组不再被引用，逐帧重建是安全的。
+        RHI::BufferBinding binding{};
+        binding.set = 0;
+        binding.binding = kFrameUniformBinding;
+        binding.buffer = lightingUbo;
+        binding.offset = slotOffset;
+        binding.size = kFrameUniformBytes;
+
+        RHI::BindGroupDesc groupDesc{};
+        groupDesc.buffers = &binding;
+        groupDesc.bufferCount = 1;
+        groupDesc.debugName = "RxLighting3DBindGroup";
+        RHI::BindGroupHandle rotated = device->createBindGroup(groupDesc);
+        if (!rotated.valid())
+        {
+            log.warn("[rt] 3D lighting bind group rotation failed, keeping previous slot");
+            return;
+        }
+        if (lightingBindGroup.valid())
+        {
+            device->destroyBindGroup(lightingBindGroup);
+        }
+        lightingBindGroup = rotated;
     }
 
     uint16_t Runtime::defaultPipeline(DefaultPipeline kind) const

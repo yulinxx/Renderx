@@ -117,6 +117,14 @@ namespace Render::RT::detail
      */
     constexpr uint32_t kFrameUniformBinding = 1;
     constexpr const char* kFrameUniformBlockName = "FrameUniforms";
+    /// 光照 UBO 的帧轮转深度：与后端 maxFramesInFlight 对齐（下限 2）。
+    /// 单缓冲时，Metal 3 帧 in flight 下本帧的 CPU 直写会踩到 GPU 仍在
+    /// 读取的上一/上上帧数据（§4.10：随机错光/闪烁，无报错）。
+    constexpr uint32_t kFrameUniformMaxFrames = 4;
+    /// 单帧 UBO 的对齐步长：Metal 的 uniformBufferOffsetAlignment 上限是 256，
+    /// 取最大对齐可以覆盖全部后端（GL/Null 按 256 对齐同样合法）。
+    constexpr uint32_t kFrameUniformStride = 256;
+    static_assert(kFrameUniformBytes <= kFrameUniformStride, "FrameUniforms 超出单帧 UBO 步长");
 
     /// 顶点格式对应的属性布局，供建管线时展开
     struct VertexLayout
@@ -407,14 +415,24 @@ namespace Render::RT::detail
          * 挂在 Runtime 而非 Session：Session 只持有 CPU 侧的 FrameUniforms 值，
          * GPU 资源按设备共享一份，帧内由当前 Session 在 EndFrame 写入。
          * 多窗口下两个 Session 不会同时处于「写 UBO → 提交」之间
-         * （sessionsInFrame 之外还有 RHI 帧的串行约束），因此一份足够。
+         * （sessionsInFrame 之外还有 RHI 帧的串行约束）。
+         *
+         * UBO 按 kFrameUniformMaxFrames 帧轮转（缓冲大小 = 步长 × 帧数）：
+         * 本帧写第 N 槽时 GPU 可能还在读之前的槽。单缓冲直写在 Metal 的
+         * 3 帧 in flight 下就是 CPU 踩 GPU 正在读的内存——画面随机错光。
+         * 绑定组只建一次，绑定整个缓冲；每帧经 binding.offset 指向本帧槽。
          * 懒创建：纯 2D 的进程不会为此付出任何 GPU 内存。
          */
         RHI::BufferHandle lightingUbo{};
         RHI::BindGroupHandle lightingBindGroup{};
+        /// 本帧写入的 UBO 槽（0..kFrameUniformMaxFrames-1），在 uploadLighting3D 里轮转
+        uint32_t lightingFrameSlot = 0;
 
         /// materials[0] 保留为「无材质」
         std::vector<MaterialDesc> materials;
+        /// removeMaterial 释放、addMaterial 待复用的槽位栈。
+        /// 槽位内容在释放时已清零，因此复用前不需要再清理。
+        std::vector<uint16_t> m_freeMaterials;
 
         /// shader 名 → 已创建的 RHI shader，避免同一 shader 被反复编译
         std::unordered_map<std::string, RHI::ShaderHandle> shaders;
