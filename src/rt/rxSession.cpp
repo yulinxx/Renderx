@@ -229,6 +229,11 @@ namespace Render::RT::detail
             runtime->log.error("[rt] rxSessionBeginFrame: previous frame not ended");  // 上一帧尚未 EndFrame
             return RxResult::ErrorUnknown;
         }
+        // #region debug-point D3a beginFrame 入口
+        runtime->log.info("[rt] DEBUG beginFrame ENTER: sessionsInFrame=%u surface=%dx%d",
+            static_cast<unsigned>(runtime->sessionsInFrame),
+            surface->width, surface->height);
+        // #endregion
 
         // 离屏渲染不需要 acquireNextImage（无交换链）
         const bool isOffscreen = offscreenColorTexture.valid();
@@ -452,6 +457,20 @@ namespace Render::RT::detail
                 currentColorFormat(),
                 currentDepthFormat(),
                 lineWidth);
+            // #region debug-point D2 记录懒创建管线的触发命令参数
+            if (pipelineIndex >= 22)
+            {
+                runtime->log.info("[rt] DEBUG bind cmdIdx=%u resolved pipelineIdx=%u (lazy: vfmt=%d space=%d topo=%d lw=%.3f color=%d depth=%d)",
+                    static_cast<unsigned>(index),
+                    static_cast<unsigned>(pipelineIndex),
+                    static_cast<int>(command.vertexFormat),
+                    static_cast<int>(command.space),
+                    static_cast<int>(command.topology),
+                    lineWidth,
+                    static_cast<int>(currentColorFormat()),
+                    static_cast<int>(currentDepthFormat()));
+            }
+            // #endregion
         }
         else
         {
@@ -611,6 +630,10 @@ namespace Render::RT::detail
         PushConstants& push)
     {
         DrawStateCache cache{};
+        // #region debug-point D3 recordBatches 入口日志
+        runtime->log.info("[rt] DEBUG recordBatches: batchCount=%u rangeCount=%u",
+            static_cast<unsigned>(batchCount), static_cast<unsigned>(rangeCount));
+        // #endregion
 
         for (uint32_t b = 0; b < batchCount; ++b)
         {
@@ -635,6 +658,16 @@ namespace Render::RT::detail
                         static_cast<unsigned>(b));
                     continue;
                 }
+                // #region debug-point D4 indexed draw
+                runtime->log.info("[rt] DEBUG batch[%u] drawIndexed: idxCount=%u instances=%u idxBuf=%llx idxOff=%llu vBufRaw=%llx vOff=%llu",
+                    static_cast<unsigned>(b),
+                    static_cast<unsigned>(command.indexCount),
+                    static_cast<unsigned>(instanceCount),
+                    static_cast<unsigned long long>(indexBuffer.value),
+                    static_cast<unsigned long long>(command.indexOffset),
+                    static_cast<unsigned long long>(static_cast<uint64_t>(command.vertexBuffer)),
+                    static_cast<unsigned long long>(command.vertexOffset));
+                // #endregion
                 cmd->bindIndexBuffer(indexBuffer, command.indexOffset, toRhiIndexType(command.indexType));
                 cmd->drawIndexed(command.indexCount, instanceCount, 0, 0, command.firstInstance);
                 accumulateTopologyStats(command.topology, command.indexCount, instanceCount, stats);
@@ -656,11 +689,25 @@ namespace Render::RT::detail
 
             if (batch.rangeCount == 1)
             {
+                // #region debug-point D5 draw single range
+                runtime->log.info("[rt] DEBUG batch[%u] draw: vCount=%u firstV=%u instances=%u rangeCount=%u",
+                    static_cast<unsigned>(b),
+                    static_cast<unsigned>(batchRanges[0].vertexCount),
+                    static_cast<unsigned>(batchRanges[0].firstVertex),
+                    static_cast<unsigned>(instanceCount),
+                    static_cast<unsigned>(batch.rangeCount));
+                // #endregion
                 cmd->draw(batchRanges[0].vertexCount, instanceCount, batchRanges[0].firstVertex, command.firstInstance);
                 accumulateTopologyStats(command.topology, batchRanges[0].vertexCount, instanceCount, stats);
             }
             else
             {
+                // #region debug-point D6 draw multi ranges
+                runtime->log.info("[rt] DEBUG batch[%u] drawMulti: rangeCount=%u instances=%u",
+                    static_cast<unsigned>(b),
+                    static_cast<unsigned>(batch.rangeCount),
+                    static_cast<unsigned>(instanceCount));
+                // #endregion
                 // 一次提交 N 段不连续区间。段数上万时，逐段 draw 的驱动入口与
                 // 状态校验开销就是整帧的成本（实测每次约 0.4us）。
                 cmd->drawMulti(batchRanges, batch.rangeCount, instanceCount, command.firstInstance);

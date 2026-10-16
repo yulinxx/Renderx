@@ -1293,6 +1293,19 @@ namespace Render::RT::detail
         pipelineNeedsLighting.push_back(needsLighting ? 1u : 0u);
         pipelineKeys.push_back(key);
         const auto index = static_cast<uint16_t>(pipelines.size() - 1);
+        // #region debug-point D1 记录新建管线的完整键参数，定位 idx=23/24 崩溃
+        log.info("[rt] DEBUG pipeline idx=%u vfmt=%d space=%d topo=%d color=%d depth=%d blend=%d fill=%d lw=%.3f shader=%s",
+            index,
+            static_cast<int>(key.vertexFormat),
+            static_cast<int>(key.space),
+            static_cast<int>(key.topology),
+            static_cast<int>(key.colorFormat),
+            static_cast<int>(key.depthFormat),
+            static_cast<int>(key.blendEnable),
+            static_cast<int>(key.fillMode),
+            key.lineWidth,
+            key.shaderName.c_str());
+        // #endregion
         pipelineCache.emplace(key, index);
         // 深度格式进缓存键的取证日志（Test/RenderxMetalTests.mm 的
         // Mesh3DPipelineVariantIsKeyedByDepthFormat 依赖这行）。管线按键缓存、
@@ -1582,22 +1595,24 @@ namespace Render::RT::detail
 
         // 与 renderx.h 的 DefaultPipeline 枚举一一对应。
         // 覆盖层统一走 P3C4：缩放时与图元几何一致变换，且支持半透明。
+        // 注意：渲染侧（RenderSceneBuilder / buildSceneEnvCommands）把所有线段展开为
+        // GL_LINES 对（而非 GL_LINE_STRIP），这里预热管线必须用 PT::Lines 才会命中缓存。
         static const Entry kEntries[] = {
-            { DP::WorldLine, VF::P3C3, RS::World, PT::LineStrip, "WorldLine", nullptr },
+            { DP::WorldLine, VF::P3C3, RS::World, PT::Lines, "WorldLine", nullptr },
             { DP::WorldTri, VF::P3C3, RS::World, PT::Triangles, "WorldTri", nullptr },
             { DP::WorldPoint, VF::P3C3, RS::World, PT::Points, "WorldPoint", nullptr },
-            { DP::ScreenLine, VF::P3C3, RS::Screen, PT::LineStrip, "ScreenLine", nullptr },
+            { DP::ScreenLine, VF::P3C3, RS::Screen, PT::Lines, "ScreenLine", nullptr },
             { DP::ScreenTri, VF::P3C3, RS::Screen, PT::Triangles, "ScreenTri", nullptr },
             { DP::ScreenPoint, VF::P3C3, RS::Screen, PT::Points, "ScreenPoint", nullptr },
             { DP::ScreenTextured, VF::P2T2C4, RS::Screen, PT::Triangles, "ScreenTextured", nullptr },
-            { DP::WorldLine4, VF::P3C4, RS::World, PT::LineStrip, "WorldLine4", nullptr },
+            { DP::WorldLine4, VF::P3C4, RS::World, PT::Lines, "WorldLine4", nullptr },
             { DP::WorldTri4, VF::P3C4, RS::World, PT::Triangles, "WorldTri4", nullptr },
             { DP::WorldPoint4, VF::P3C4, RS::World, PT::Points, "WorldPoint4", nullptr },
-            { DP::ScreenLine4, VF::P3C4, RS::Screen, PT::LineStrip, "ScreenLine4", nullptr },
+            { DP::ScreenLine4, VF::P3C4, RS::Screen, PT::Lines, "ScreenLine4", nullptr },
             { DP::ScreenTri4, VF::P3C4, RS::Screen, PT::Triangles, "ScreenTri4", nullptr },
             { DP::ScreenPoint4, VF::P3C4, RS::Screen, PT::Points, "ScreenPoint4", nullptr },
             // 世界锚定 + 屏幕定尺寸（见 renderx.h RenderSpace::WorldPinned）
-            { DP::WorldPinnedLine, VF::P3O2C4, RS::WorldPinned, PT::LineStrip, "WorldPinnedLine", nullptr },
+            { DP::WorldPinnedLine, VF::P3O2C4, RS::WorldPinned, PT::Lines, "WorldPinnedLine", nullptr },
             { DP::WorldPinnedTri, VF::P3O2C4, RS::WorldPinned, PT::Triangles, "WorldPinnedTri", nullptr },
             // 字形：与 ScreenTextured 同格式同空间同拓扑，只有片元不同，
             // 因此必须显式指定片段着色器，否则两者会命中同一条缓存管线。
