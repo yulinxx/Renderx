@@ -87,6 +87,26 @@ endif()
 # 类型错乱且从未进入编译。
 # Metal 后端已按上面 APPLE 分支重新落地（src/rhi/metal/）。
 
+# rxCApi.cpp 的匿名命名空间里有 `using namespace Render::RT::detail;`。
+# 匿名命名空间在外部命名空间有一份隐式 using-directive，而 using-directive
+# 按标准是传递的——它会连同 detail 里的所有名字一起进入全局名字查找。
+# 一旦与后续源文件同处一个 unity batch（如 glLoader.cpp），Xlib.h 的
+# `typedef XID Font` 就会与 detail::Font 歧义，报 "reference to 'Font' is
+# ambiguous"。单独成 TU 可把泄漏限制在本文件内部，与 .mm 的做法一致
+# （见 Config.cmake 对 unity build 的说明）。
+set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/src/c_api/rxCApi.cpp"
+    PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON
+)
+
+# glLoader.cpp 在 Linux 下 #include <GL/glx.h>，进而拉进 <X11/Xlib.h>。
+# Xlib.h 会 #define 一批与 RHI 枚举同名的宏（None/Success/... ），还会 typedef Font，
+# 一旦与 rhiCore.h（含 BufferUsage::None 等枚举）或 rt/rxFont.cpp（struct Font）
+# 同处一个 unity batch，就报 "expected identifier before numeric constant" /
+# "reference to 'Font' is ambiguous"。单独成 TU 把 X11 宏限制在本文件内。
+set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/src/platform/glLoader.cpp"
+    PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON
+)
+
 # 统一入口要求源文件使用绝对路径（内部 source_group 用 RELATIVE_PATH 拆分），
 # 将上面的相对路径统一归一化
 set(RENDER_SOURCES_NORM)

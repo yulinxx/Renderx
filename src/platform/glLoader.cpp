@@ -5,7 +5,15 @@
 #ifdef _WIN32
     #include <windows.h>
 #elif defined(__linux__)
-    #include <GL/glx.h>
+    // 刻意不 #include <GL/glx.h>：它会拉进 Xlib.h，而 Xlib.h 把
+    // None / Always / Success 等定义成宏（#define None 0L）。
+    // unity build 下本文件与其它源共处一个 TU，这些宏会改写后面
+    // Render::RHI 的 BufferUsage::None、renderx.h 的 Always 等枚举项，
+    // 报出成片 "expected identifier before numeric constant"。
+    // 这里只需要 glXGetProcAddress 一个符号，手写声明即可，
+    // 签名与 glx.h（void (*)(void)，C 链接）保持一致。
+    typedef void (*RxGLXextFuncPtr)(void);
+    extern "C" RxGLXextFuncPtr glXGetProcAddress(const unsigned char* procName);
 #elif defined(__APPLE__)
     #include <dlfcn.h>
 #endif
@@ -24,7 +32,7 @@ static void* default_get_proc_address(const char* name)
     }
     return ptr;
 #elif defined(__linux__)
-    return (void*)glXGetProcAddress((const GLubyte*)name);
+    return (void*)glXGetProcAddress((const unsigned char*)name);
 #elif defined(__APPLE__)
     // macOS 没有 glXGetProcAddress/wglGetProcAddress。
     // OpenGL.framework 导出了全部 GL 符号，直接通过 dlsym 解析。
