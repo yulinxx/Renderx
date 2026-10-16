@@ -1293,19 +1293,6 @@ namespace Render::RT::detail
         pipelineNeedsLighting.push_back(needsLighting ? 1u : 0u);
         pipelineKeys.push_back(key);
         const auto index = static_cast<uint16_t>(pipelines.size() - 1);
-        // #region debug-point D1 记录新建管线的完整键参数，定位 idx=23/24 崩溃
-        log.info("[rt] DEBUG pipeline idx=%u vfmt=%d space=%d topo=%d color=%d depth=%d blend=%d fill=%d lw=%.3f shader=%s",
-            index,
-            static_cast<int>(key.vertexFormat),
-            static_cast<int>(key.space),
-            static_cast<int>(key.topology),
-            static_cast<int>(key.colorFormat),
-            static_cast<int>(key.depthFormat),
-            static_cast<int>(key.blendEnable),
-            static_cast<int>(key.fillMode),
-            key.lineWidth,
-            key.shaderName.c_str());
-        // #endregion
         pipelineCache.emplace(key, index);
         // 深度格式进缓存键的取证日志（Test/RenderxMetalTests.mm 的
         // Mesh3DPipelineVariantIsKeyedByDepthFormat 依赖这行）。管线按键缓存、
