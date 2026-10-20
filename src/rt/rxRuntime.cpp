@@ -8,6 +8,7 @@
 #include "shader/shaderLibrary.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -1297,7 +1298,13 @@ namespace Render::RT::detail
         // 深度格式进缓存键的取证日志（Test/RenderxMetalTests.mm 的
         // Mesh3DPipelineVariantIsKeyedByDepthFormat 依赖这行）。管线按键缓存、
         // 每个键只建一次，debug 级别不会造成日志洪水，无需宏开关。
-        log.debug("[rt] pipeline created idx=%u colorFmt=%d depthFmt=%d", index, static_cast<int>(key.colorFormat), static_cast<int>(key.depthFormat));
+        static std::chrono::steady_clock::time_point s_lastPipelineLog;
+        auto now = std::chrono::steady_clock::now();
+        if (now - s_lastPipelineLog >= std::chrono::milliseconds(200))
+        {
+            s_lastPipelineLog = now;
+            log.debug("[rt] pipeline created idx=%u colorFmt=%d depthFmt=%d", index, static_cast<int>(key.colorFormat), static_cast<int>(key.depthFormat));
+        }
         return index;
     }
 
