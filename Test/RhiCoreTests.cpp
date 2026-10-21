@@ -268,8 +268,7 @@ TEST_F(NullDeviceFixture, TextureRejectsOutOfBoundsRegion)
 
     const uint8_t payload[64] = {};
     Rect2D region{ 2, 2, 4, 4 };  // 越过右下边界
-    EXPECT_EQ(device->writeTexture(texture, 0, region, payload, sizeof(payload)),
-              RhiResult::ErrorInvalidArgument);
+    EXPECT_EQ(device->writeTexture(texture, 0, region, payload, sizeof(payload)), RhiResult::ErrorInvalidArgument);
 
     device->destroyTexture(texture);
 }

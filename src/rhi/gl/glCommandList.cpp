@@ -80,6 +80,7 @@ namespace Render::RHI::gl
     using ::Render::RHI::kMaxDescriptorSets;
     using ::Render::RHI::kMaxVertexAttributes;
     using ::Render::RHI::kMaxBindingsPerSet;
+
     GlCommandList::GlCommandList(GlDevice* device)
         : m_device(device)
     {
@@ -284,7 +285,8 @@ namespace Render::RHI::gl
         }
         if (f.PolygonMode)
         {
-            f.PolygonMode(GL_FRONT_AND_BACK, pipeline.raster.fillMode == ::Render::RHI::FillMode::Wireframe ? GL_LINE : GL_FILL);
+            f.PolygonMode(
+                GL_FRONT_AND_BACK, pipeline.raster.fillMode == ::Render::RHI::FillMode::Wireframe ? GL_LINE : GL_FILL);
         }
         if (f.LineWidth)
         {
@@ -403,7 +405,8 @@ namespace Render::RHI::gl
         m_vertexBindingsDirty = true;
     }
 
-    void GlCommandList::bindIndexBuffer(::Render::RHI::BufferHandle buffer, uint64_t offsetBytes, ::Render::RHI::IndexType type)
+    void GlCommandList::bindIndexBuffer(
+        ::Render::RHI::BufferHandle buffer, uint64_t offsetBytes, ::Render::RHI::IndexType type)
     {
         m_indexBuffer = buffer;
         m_indexOffset = offsetBytes;
@@ -477,7 +480,7 @@ namespace Render::RHI::gl
                 //     static_cast<unsigned>(stride),
                 //     static_cast<long long>(binding.offset + attr.offset),
                 //     static_cast<unsigned>(buffer->name));
-                
+
                 ++s_glProbeCount;
             }
             if (f.VertexAttribDivisor)
@@ -559,7 +562,8 @@ namespace Render::RHI::gl
             {
                 continue;
             }
-            const GLenum target = type == ::Render::RHI::BindingType::StorageBuffer ? GL_SHADER_STORAGE_BUFFER : GL_UNIFORM_BUFFER;
+            const GLenum target =
+                type == ::Render::RHI::BindingType::StorageBuffer ? GL_SHADER_STORAGE_BUFFER : GL_UNIFORM_BUFFER;
             const uint64_t size = entry.size == 0 ? buffer->desc.size - entry.offset : entry.size;
             f.BindBufferRange(
                 target, slot, buffer->name, static_cast<GLintptr>(entry.offset), static_cast<GLsizeiptr>(size));

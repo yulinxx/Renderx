@@ -317,7 +317,7 @@ namespace Render::RT::detail
 
         // 段数必须覆盖后端允许的 frames-in-flight：CPU 最多领先 GPU
         // maxFramesInFlight 帧，段数不足时第 N 帧会覆写仍在被 GPU 读取的段
-        //（症状是画面随机缺块，且无任何报错——与 §4.7 同一根因）。
+        // （症状是画面随机缺块，且无任何报错——与 §4.7 同一根因）。
         const uint32_t flight = (std::max)(kMinSegmentCount, m_device->capabilities().maxFramesInFlight);
         m_segmentCount = (std::max)(segmentCount, flight);
 
@@ -1303,7 +1303,10 @@ namespace Render::RT::detail
         if (now - s_lastPipelineLog >= std::chrono::milliseconds(200))
         {
             s_lastPipelineLog = now;
-            log.debug("[rt] pipeline created idx=%u colorFmt=%d depthFmt=%d", index, static_cast<int>(key.colorFormat), static_cast<int>(key.depthFormat));
+            log.debug("[rt] pipeline created idx=%u colorFmt=%d depthFmt=%d",
+                index,
+                static_cast<int>(key.colorFormat),
+                static_cast<int>(key.depthFormat));
         }
         return index;
     }
@@ -1461,8 +1464,8 @@ namespace Render::RT::detail
             lightingUbo = device->createBuffer(bufferDesc);
             if (!lightingUbo.valid())
             {
-                log.error("[rt] 3D lighting UBO creation failed (%u bytes)",
-                    kFrameUniformStride * kFrameUniformMaxFrames);
+                log.error(
+                    "[rt] 3D lighting UBO creation failed (%u bytes)", kFrameUniformStride * kFrameUniformMaxFrames);
                 return false;
             }
         }
@@ -1747,7 +1750,8 @@ namespace Render::RT::detail
             }
         }
         log.error(
-            "[rt] Surface handle does not belong to this Runtime (destroyed or from another Runtime)");  // Surface 句柄不属于本
+            "[rt] Surface handle does not belong to this Runtime (destroyed or from another Runtime)");  // Surface
+                                                                                                         // 句柄不属于本
                                                                                                          // Runtime
         return nullptr;
     }

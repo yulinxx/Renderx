@@ -61,13 +61,18 @@ namespace
             names[i] = s.nextName++;
         }
     }
+
     void RENDER_GLAPI stubDeleteTextures(GLsizei n, const GLuint*)
     {
         StubGlState::get().deletedTextures += n;
     }
+
     void RENDER_GLAPI stubBindTexture(GLenum, GLuint) {}
+
     void RENDER_GLAPI stubTexImage2D(GLenum, GLint, GLint, GLsizei, GLsizei, GLint, GLenum, GLenum, const void*) {}
+
     void RENDER_GLAPI stubTexParameteri(GLenum, GLenum, GLint) {}
+
     void RENDER_GLAPI stubGenFramebuffers(GLsizei n, GLuint* names)
     {
         auto& s = StubGlState::get();
@@ -76,12 +81,16 @@ namespace
             names[i] = s.nextName++;
         }
     }
+
     void RENDER_GLAPI stubDeleteFramebuffers(GLsizei n, const GLuint*)
     {
         StubGlState::get().deletedFramebuffers += n;
     }
+
     void RENDER_GLAPI stubBindFramebuffer(GLenum, GLuint) {}
+
     void RENDER_GLAPI stubFramebufferTexture2D(GLenum, GLenum, GLenum, GLuint, GLint) {}
+
     GLenum RENDER_GLAPI stubCheckFramebufferStatus(GLenum)
     {
         auto& s = StubGlState::get();

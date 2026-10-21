@@ -89,111 +89,135 @@ namespace
         std::lock_guard<std::mutex> guard(registry.mutex);
         return registry.sessions.count(candidate) != 0 ? candidate : nullptr;
     }
-/// C ABI 异常屏障：任何逃逸的异常都翻成失败返回值。
-///
-/// renderx.h 明文要求「异常不得穿越 C ABI 边界」（见文件头第 9 行），
-/// 而本模块入口会做分配（new / vector 增长）与字符串处理，bad_alloc
-/// 等异常若逃到宿主（RenderBridge 与 UI 都没有 catch）会直接终止进程。
-/// 此处统一在入口处拦截，保持错误语义与原有校验一致。
-///
-/// 返回类型与兜底值的对应关系（需手写各 overload，模板只能覆盖同类型组）：
-///   RxResult           -> RxResult::ErrorUnknown
-///   RuntimeHandle      -> RuntimeHandle::Invalid
-///   SessionHandle      -> SessionHandle::Invalid
-///   SurfaceHandle      -> SurfaceHandle::Invalid
-///   DrawListHandle     -> DrawListHandle::Invalid
-///   GeometryStoreHandle-> GeometryStoreHandle::Invalid
-///   BufferHandle       -> BufferHandle::Invalid
-///   TextureHandle      -> TextureHandle::Invalid
-///   FontHandle         -> FontHandle::Invalid
-///   uint16_t           -> 0
-///   uint32_t           -> 0
-///   uint64_t           -> 0
-///   uint8_t            -> 0
-///   const char*        -> "Unknown"
-///   void               -> (swallow)
-///
-/// 说明：各 handle 类型在 rt/rxHandle.h 中均以 `static constexpr Invalid{0}` 定义，
-/// 故统一返回 0 即可；RxResult::ErrorUnknown 亦为整数 2，但显式写明语义。
-///
-// Fallback traits for common types
-template <typename T>
-struct RxAbiFallback {
-    static constexpr T value = T{};
-};
 
-template <>
-struct RxAbiFallback<RxResult> {
-    static constexpr RxResult value = RxResult::ErrorUnknown;
-};
+    /// C ABI 异常屏障：任何逃逸的异常都翻成失败返回值。
+    ///
+    /// renderx.h 明文要求「异常不得穿越 C ABI 边界」（见文件头第 9 行），
+    /// 而本模块入口会做分配（new / vector 增长）与字符串处理，bad_alloc
+    /// 等异常若逃到宿主（RenderBridge 与 UI 都没有 catch）会直接终止进程。
+    /// 此处统一在入口处拦截，保持错误语义与原有校验一致。
+    ///
+    /// 返回类型与兜底值的对应关系（需手写各 overload，模板只能覆盖同类型组）：
+    ///   RxResult           -> RxResult::ErrorUnknown
+    ///   RuntimeHandle      -> RuntimeHandle::Invalid
+    ///   SessionHandle      -> SessionHandle::Invalid
+    ///   SurfaceHandle      -> SurfaceHandle::Invalid
+    ///   DrawListHandle     -> DrawListHandle::Invalid
+    ///   GeometryStoreHandle-> GeometryStoreHandle::Invalid
+    ///   BufferHandle       -> BufferHandle::Invalid
+    ///   TextureHandle      -> TextureHandle::Invalid
+    ///   FontHandle         -> FontHandle::Invalid
+    ///   uint16_t           -> 0
+    ///   uint32_t           -> 0
+    ///   uint64_t           -> 0
+    ///   uint8_t            -> 0
+    ///   const char*        -> "Unknown"
+    ///   void               -> (swallow)
+    ///
+    /// 说明：各 handle 类型在 rt/rxHandle.h 中均以 `static constexpr Invalid{0}` 定义，
+    /// 故统一返回 0 即可；RxResult::ErrorUnknown 亦为整数 2，但显式写明语义。
+    ///
+    // Fallback traits for common types
+    template<typename T>
+    struct RxAbiFallback
+    {
+        static constexpr T value = T{};
+    };
 
-template <>
-struct RxAbiFallback<RuntimeHandle> {
-    static constexpr RuntimeHandle value = RuntimeHandle::Invalid;
-};
+    template<>
+    struct RxAbiFallback<RxResult>
+    {
+        static constexpr RxResult value = RxResult::ErrorUnknown;
+    };
 
-template <>
-struct RxAbiFallback<SessionHandle> {
-    static constexpr SessionHandle value = SessionHandle::Invalid;
-};
+    template<>
+    struct RxAbiFallback<RuntimeHandle>
+    {
+        static constexpr RuntimeHandle value = RuntimeHandle::Invalid;
+    };
 
-template <>
-struct RxAbiFallback<SurfaceHandle> {
-    static constexpr SurfaceHandle value = SurfaceHandle::Invalid;
-};
+    template<>
+    struct RxAbiFallback<SessionHandle>
+    {
+        static constexpr SessionHandle value = SessionHandle::Invalid;
+    };
 
-template <>
-struct RxAbiFallback<DrawListHandle> {
-    static constexpr DrawListHandle value = DrawListHandle::Invalid;
-};
+    template<>
+    struct RxAbiFallback<SurfaceHandle>
+    {
+        static constexpr SurfaceHandle value = SurfaceHandle::Invalid;
+    };
 
-template <>
-struct RxAbiFallback<GeometryStoreHandle> {
-    static constexpr GeometryStoreHandle value = GeometryStoreHandle::Invalid;
-};
+    template<>
+    struct RxAbiFallback<DrawListHandle>
+    {
+        static constexpr DrawListHandle value = DrawListHandle::Invalid;
+    };
 
-template <>
-struct RxAbiFallback<BufferHandle> {
-    static constexpr BufferHandle value = BufferHandle::Invalid;
-};
+    template<>
+    struct RxAbiFallback<GeometryStoreHandle>
+    {
+        static constexpr GeometryStoreHandle value = GeometryStoreHandle::Invalid;
+    };
 
-template <>
-struct RxAbiFallback<TextureHandle> {
-    static constexpr TextureHandle value = TextureHandle::Invalid;
-};
+    template<>
+    struct RxAbiFallback<BufferHandle>
+    {
+        static constexpr BufferHandle value = BufferHandle::Invalid;
+    };
 
-template <>
-struct RxAbiFallback<FontHandle> {
-    static constexpr FontHandle value = FontHandle::Invalid;
-};
+    template<>
+    struct RxAbiFallback<TextureHandle>
+    {
+        static constexpr TextureHandle value = TextureHandle::Invalid;
+    };
 
-template <>
-struct RxAbiFallback<const char*> {
-    static constexpr const char* value = "Unknown";
-};
+    template<>
+    struct RxAbiFallback<FontHandle>
+    {
+        static constexpr FontHandle value = FontHandle::Invalid;
+    };
 
-// Main template with explicit fallback parameter
-template <typename Ret, typename Fn>
-Ret rxAbiGuard(Fn&& fn, Ret fallback)
-{
-    try { return fn(); } catch (...) { return fallback; }
-}
+    template<>
+    struct RxAbiFallback<const char*>
+    {
+        static constexpr const char* value = "Unknown";
+    };
 
-// Overload without explicit fallback - uses traits
-template <typename Ret, typename Fn>
-Ret rxAbiGuard(Fn&& fn)
-{
-    return rxAbiGuard<Ret>(std::forward<Fn>(fn), RxAbiFallback<Ret>::value);
-}
+    // Main template with explicit fallback parameter
+    template<typename Ret, typename Fn>
+    Ret rxAbiGuard(Fn&& fn, Ret fallback)
+    {
+        try
+        {
+            return fn();
+        }
+        catch (...)
+        {
+            return fallback;
+        }
+    }
 
-// void return overload
-template <typename Fn>
-void rxAbiGuardVoid(Fn&& fn)
-{
-    try { fn(); } catch (...) { }
-}
+    // Overload without explicit fallback - uses traits
+    template<typename Ret, typename Fn>
+    Ret rxAbiGuard(Fn&& fn)
+    {
+        return rxAbiGuard<Ret>(std::forward<Fn>(fn), RxAbiFallback<Ret>::value);
+    }
 
-}  // namespace (unnamed)
+    // void return overload
+    template<typename Fn>
+    void rxAbiGuardVoid(Fn&& fn)
+    {
+        try
+        {
+            fn();
+        }
+        catch (...)
+        {
+        }
+    }
+}  // namespace
 
 namespace Render
 {
@@ -205,22 +229,30 @@ namespace Render
 
             uint32_t rxGetAbiVersion()
             {
-                return rxAbiGuard<uint32_t>([] { return RENDERX_ABI_VERSION; });
+                return rxAbiGuard<uint32_t>([] {
+                    return RENDERX_ABI_VERSION;
+                });
             }
 
             uint32_t rxGetVersion()
             {
-                return rxAbiGuard<uint32_t>([] { return RENDERX_VERSION; });
+                return rxAbiGuard<uint32_t>([] {
+                    return RENDERX_VERSION;
+                });
             }
 
             const char* rxGetVersionString()
             {
-                return rxAbiGuard<const char*>([] { return RENDERX_VERSION_STRING; });
+                return rxAbiGuard<const char*>([] {
+                    return RENDERX_VERSION_STRING;
+                });
             }
 
             const char* rxStatusText(int32_t status)
             {
-                return rxAbiGuard<const char*>([status] { return rxResultName(static_cast<RxResult>(status)); });
+                return rxAbiGuard<const char*>([status] {
+                    return rxResultName(static_cast<RxResult>(status));
+                });
             }
 
             const char* rxResultName(RxResult result)
@@ -1145,10 +1177,10 @@ namespace Render
                         return RxResult::ErrorInvalidHandle;
                     }
                     if (rxValid(depthTexture) && !depthRhi)
-                {
-                    return RxResult::ErrorInvalidHandle;
-                }
-                return session->setRenderTarget(colorRhi ? *colorRhi : ::Render::RHI::TextureHandle{},
+                    {
+                        return RxResult::ErrorInvalidHandle;
+                    }
+                    return session->setRenderTarget(colorRhi ? *colorRhi : ::Render::RHI::TextureHandle{},
                         depthRhi ? *depthRhi : ::Render::RHI::TextureHandle{},
                         width,
                         height);
@@ -1179,7 +1211,8 @@ namespace Render
                     {
                         return RxResult::ErrorInvalidHandle;
                     }
-                    const ::Render::RHI::TextureHandle* rhiTexture = runtime->textures.find(static_cast<uint64_t>(texture));
+                    const ::Render::RHI::TextureHandle* rhiTexture =
+                        runtime->textures.find(static_cast<uint64_t>(texture));
                     if (!rhiTexture)
                     {
                         return RxResult::ErrorInvalidHandle;

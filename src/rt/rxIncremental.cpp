@@ -633,7 +633,7 @@ namespace Render::RT::detail
 
             return RxResult::ErrorInvalidArgument;
         }
-        
+
         if (slot >= m_entries.size())
         {
             m_entries.resize(slot + 1);

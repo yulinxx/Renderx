@@ -70,7 +70,8 @@ namespace Render::RHI::gl
 {
     // ==================== GlSurface ====================
 
-    GlSurface::GlSurface(GlDevice* device, const ::Render::RHI::SurfaceDesc& desc, const ::Render::RHI::RhiLogger& logger)
+    GlSurface::GlSurface(
+        GlDevice* device, const ::Render::RHI::SurfaceDesc& desc, const ::Render::RHI::RhiLogger& logger)
         : m_device(device)
         , m_window(desc.window)
         , m_extent(desc.initialExtent)
@@ -783,7 +784,7 @@ namespace Render::RHI::gl
 
         const bool wantPersistent = m_caps.persistentMapping &&
             (desc.access == ::Render::RHI::MemoryAccess::CpuToGpu ||
-             desc.access == ::Render::RHI::MemoryAccess::CpuToGpuCoherent);
+                desc.access == ::Render::RHI::MemoryAccess::CpuToGpuCoherent);
         if (wantPersistent)
         {
             // glBufferStorage 的 flags 只接受**存储位**：DYNAMIC_STORAGE / MAP_READ /
@@ -837,7 +838,8 @@ namespace Render::RHI::gl
         m_buffers.remove(buffer);
     }
 
-    ::Render::RHI::RhiResult GlDevice::writeBuffer(::Render::RHI::BufferHandle buffer, uint64_t offset, const void* data, uint64_t sizeBytes)
+    ::Render::RHI::RhiResult GlDevice::writeBuffer(
+        ::Render::RHI::BufferHandle buffer, uint64_t offset, const void* data, uint64_t sizeBytes)
     {
         GlBufferRecord* record = m_buffers.get(buffer);
         if (!record || !data || sizeBytes == 0)
@@ -858,7 +860,8 @@ namespace Render::RHI::gl
         return ::Render::RHI::RhiResult::Ok;
     }
 
-    ::Render::RHI::MappedRange GlDevice::mapBuffer(::Render::RHI::BufferHandle buffer, uint64_t offset, uint64_t sizeBytes)
+    ::Render::RHI::MappedRange GlDevice::mapBuffer(
+        ::Render::RHI::BufferHandle buffer, uint64_t offset, uint64_t sizeBytes)
     {
         GlBufferRecord* record = m_buffers.get(buffer);
         if (!record || !m_gl.MapBufferRange)
@@ -891,7 +894,7 @@ namespace Render::RHI::gl
         {
             access |= GL_MAP_PERSISTENT_BIT;
             access |= (record->desc.access == ::Render::RHI::MemoryAccess::CpuToGpuCoherent) ? GL_MAP_COHERENT_BIT
-                                                                                       : GL_MAP_FLUSH_EXPLICIT_BIT;
+                                                                                             : GL_MAP_FLUSH_EXPLICIT_BIT;
         }
         else
         {
@@ -1036,8 +1039,11 @@ namespace Render::RHI::gl
         m_textures.remove(texture);
     }
 
-    ::Render::RHI::RhiResult GlDevice::writeTexture(
-        ::Render::RHI::TextureHandle texture, uint32_t mipLevel, const ::Render::RHI::Rect2D& region, const void* data, uint64_t sizeBytes)
+    ::Render::RHI::RhiResult GlDevice::writeTexture(::Render::RHI::TextureHandle texture,
+        uint32_t mipLevel,
+        const ::Render::RHI::Rect2D& region,
+        const void* data,
+        uint64_t sizeBytes)
     {
         GlTextureRecord* record = m_textures.get(texture);
         if (!record || !data)
@@ -1333,8 +1339,11 @@ namespace Render::RHI::gl
         return entry.fbo;
     }
 
-    ::Render::RHI::RhiResult GlDevice::readTexture(
-        ::Render::RHI::TextureHandle texture, const ::Render::RHI::Rect2D& region, void* outPixels, uint64_t bufferSize, uint32_t* outRowPitch)
+    ::Render::RHI::RhiResult GlDevice::readTexture(::Render::RHI::TextureHandle texture,
+        const ::Render::RHI::Rect2D& region,
+        void* outPixels,
+        uint64_t bufferSize,
+        uint32_t* outRowPitch)
     {
         GlTextureRecord* record = m_textures.get(texture);
         if (!record || !outPixels || region.width == 0 || region.height == 0)

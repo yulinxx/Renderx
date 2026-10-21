@@ -211,8 +211,7 @@ TEST(RxRuntime, AllDefaultPipelinesAreAvailable)
     for (uint8_t i = 0; i < static_cast<uint8_t>(DefaultPipeline::Count); ++i)
     {
         const auto kind = static_cast<DefaultPipeline>(i);
-        EXPECT_NE(rxPipelineGetDefault(runtime, kind), 0)
-            << "内建管线 " << static_cast<int>(i) << " 创建失败";
+        EXPECT_NE(rxPipelineGetDefault(runtime, kind), 0) << "内建管线 " << static_cast<int>(i) << " 创建失败";
     }
     // WorldPinned 是本轮新增的第三档渲染空间，单列一条断言以防被顺带删掉
     EXPECT_NE(rxPipelineGetDefault(runtime, DefaultPipeline::WorldPinnedLine), 0);
@@ -235,7 +234,7 @@ TEST(RxRuntime, WorldTexturedDiffersFromScreenTextured)
     // 必须是两条独立管线。若哪天顶点格式判据写错而落到同一条，贴图会画在
     // 屏幕坐标上、不随视图变换——是静默画错而非报错，所以在此设一道断言。
     EXPECT_NE(rxPipelineGetDefault(runtime, DefaultPipeline::WorldTextured),
-              rxPipelineGetDefault(runtime, DefaultPipeline::ScreenTextured));
+        rxPipelineGetDefault(runtime, DefaultPipeline::ScreenTextured));
 
     rxRuntimeDestroy(runtime);
 }
@@ -472,14 +471,12 @@ TEST(RxRuntime, BufferCreateUploadDestroy)
 
     const std::vector<uint8_t> payload(128, 0x5A);
     EXPECT_EQ(rxBufferUpload(runtime, buffer, 0, payload.size(), payload.data()), RxResult::Ok);
-    EXPECT_EQ(rxBufferUpload(runtime, buffer, 0, payload.size(), nullptr),
-              RxResult::ErrorInvalidArgument);
+    EXPECT_EQ(rxBufferUpload(runtime, buffer, 0, payload.size(), nullptr), RxResult::ErrorInvalidArgument);
 
     rxBufferDestroy(runtime, buffer);
     sink.warnings.clear();
     // 世代式句柄：销毁后的句柄必须解不出资源，而不是命中被复用的槽位
-    EXPECT_EQ(rxBufferUpload(runtime, buffer, 0, payload.size(), payload.data()),
-              RxResult::ErrorInvalidArgument);
+    EXPECT_EQ(rxBufferUpload(runtime, buffer, 0, payload.size(), payload.data()), RxResult::ErrorInvalidArgument);
     rxBufferDestroy(runtime, buffer);
     EXPECT_FALSE(sink.warnings.empty()) << "重复销毁必须留下告警";
 
@@ -541,8 +538,7 @@ TEST(RxRuntime, FontGlyphRasterizesAndFillsMetrics)
 
     std::ifstream file(RENDERX_TEST_FONT_PATH, std::ios::binary);
     ASSERT_TRUE(file.good()) << "缺少测试字体：" << RENDERX_TEST_FONT_PATH;
-    const std::vector<uint8_t> ttf((std::istreambuf_iterator<char>(file)),
-                                   std::istreambuf_iterator<char>());
+    const std::vector<uint8_t> ttf((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
     ASSERT_FALSE(ttf.empty());
 
     FontDesc fd{};
@@ -607,8 +603,7 @@ TEST(RxRuntime, FontSdfModeOutsetsGlyphByPadding)
 
     std::ifstream file(RENDERX_TEST_FONT_PATH, std::ios::binary);
     ASSERT_TRUE(file.good()) << "缺少测试字体：" << RENDERX_TEST_FONT_PATH;
-    const std::vector<uint8_t> ttf((std::istreambuf_iterator<char>(file)),
-                                   std::istreambuf_iterator<char>());
+    const std::vector<uint8_t> ttf((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
     ASSERT_FALSE(ttf.empty());
 
     constexpr uint32_t kPadding = 8;
@@ -649,7 +644,6 @@ TEST(RxRuntime, FontSdfModeOutsetsGlyphByPadding)
     rxFontDestroy(runtime, coverageFont);
     rxRuntimeDestroy(runtime);
 }
-
 
 TEST(RxRuntime, ZeroSizedSurfaceIsRejected)
 {
@@ -787,8 +781,7 @@ TEST_F(RxSessionFixture, SubmitCountsDrawCallsAndPrimitives)
     ASSERT_EQ(rxSessionBeginFrame(session), RxResult::Ok);
 
     TransientAlloc alloc{};
-    ASSERT_EQ(rxSessionAllocTransient(session, rxVertexStride(VertexFormat::P3C4) * 6, &alloc),
-              RxResult::Ok);
+    ASSERT_EQ(rxSessionAllocTransient(session, rxVertexStride(VertexFormat::P3C4) * 6, &alloc), RxResult::Ok);
 
     DrawCommand commands[2]{};
     commands[0].vertexBuffer = alloc.buffer;
@@ -864,8 +857,7 @@ TEST_F(RxSessionFixture, WorldPinnedCommandUsesPinnedVertexFormat)
     ASSERT_EQ(rxSessionBeginFrame(session), RxResult::Ok);
 
     TransientAlloc alloc{};
-    ASSERT_EQ(rxSessionAllocTransient(session, rxVertexStride(VertexFormat::P3O2C4) * 3, &alloc),
-              RxResult::Ok);
+    ASSERT_EQ(rxSessionAllocTransient(session, rxVertexStride(VertexFormat::P3O2C4) * 3, &alloc), RxResult::Ok);
 
     DrawCommand command{};
     command.vertexBuffer = alloc.buffer;
@@ -910,10 +902,22 @@ TEST_F(RxSessionFixture, QueryVisibilityFiltersAndTruncates)
 {
     // (minX, minY, maxX, maxY) 紧凑排列
     const float aabbs[] = {
-        0.0f,   0.0f,   10.0f,  10.0f,   // 命中
-        100.0f, 100.0f, 110.0f, 110.0f,  // 不命中
-        -5.0f,  -5.0f,  1.0f,   1.0f,    // 命中（部分相交）
-        50.0f,  0.0f,   60.0f,  5.0f,    // 不命中
+        0.0f,
+        0.0f,
+        10.0f,
+        10.0f,  // 命中
+        100.0f,
+        100.0f,
+        110.0f,
+        110.0f,  // 不命中
+        -5.0f,
+        -5.0f,
+        1.0f,
+        1.0f,  // 命中（部分相交）
+        50.0f,
+        0.0f,
+        60.0f,
+        5.0f,  // 不命中
     };
     const float viewBounds[4] = { -10.0f, -10.0f, 20.0f, 20.0f };
 
@@ -936,8 +940,7 @@ TEST_F(RxSessionFixture, QueryVisibilityFiltersAndTruncates)
     EXPECT_FALSE(sink.warnings.empty());
 
     result.indices = nullptr;
-    EXPECT_EQ(rxSessionQueryVisibility(session, aabbs, 4, viewBounds, &result),
-              RxResult::ErrorInvalidArgument);
+    EXPECT_EQ(rxSessionQueryVisibility(session, aabbs, 4, viewBounds, &result), RxResult::ErrorInvalidArgument);
 }
 
 // ==================== 排序键 ====================
@@ -1038,8 +1041,7 @@ TEST_F(RxIncrementalFixture, GeometryFreeCoalescesAdjacentHoles)
     // 已释放的块不能再写：句柄是世代式的，重复释放/写入必须报错而不是越界
     EXPECT_EQ(rxGeometryFree(runtime, store, blocks[0].id), RxResult::ErrorInvalidHandle);
     const uint8_t byte = 0;
-    EXPECT_EQ(rxGeometryWrite(runtime, store, blocks[0].id, 0, 1, &byte),
-              RxResult::ErrorInvalidHandle);
+    EXPECT_EQ(rxGeometryWrite(runtime, store, blocks[0].id, 0, 1, &byte), RxResult::ErrorInvalidHandle);
 
     rxGeometryStoreDestroy(runtime, store);
 }
@@ -1160,8 +1162,7 @@ TEST_F(RxIncrementalFixture, GeometryWriteRejectsOutOfBlockRange)
     std::vector<uint8_t> payload(256, 0xAB);
     EXPECT_EQ(rxGeometryWrite(runtime, store, block.id, 0, 256, payload.data()), RxResult::Ok);
     sink.errors.clear();
-    EXPECT_EQ(rxGeometryWrite(runtime, store, block.id, 1, 256, payload.data()),
-              RxResult::ErrorInvalidArgument);
+    EXPECT_EQ(rxGeometryWrite(runtime, store, block.id, 1, 256, payload.data()), RxResult::ErrorInvalidArgument);
     EXPECT_FALSE(sink.errors.empty());
 
     rxGeometryStoreDestroy(runtime, store);
@@ -1231,8 +1232,8 @@ TEST_F(RxIncrementalFixture, GeometryUploadBytesReflectDirtyMerging)
 namespace
 {
     /// 一条最简可绘制命令：P3C3 三角形列表，顶点来自给定缓冲
-    DrawCommand makeListCommand(BufferHandle buffer, uint32_t vertexOffset, uint32_t vertexCount,
-                                uint64_t sortKey, PrimitiveTopology topology)
+    DrawCommand makeListCommand(
+        BufferHandle buffer, uint32_t vertexOffset, uint32_t vertexCount, uint64_t sortKey, PrimitiveTopology topology)
     {
         DrawCommand command{};
         command.vertexBuffer = buffer;
@@ -1259,12 +1260,12 @@ namespace
     RxFrustum makeBoxFrustum(float minValue, float maxValue)
     {
         const float planes[6][4] = {
-            { 1.0f, 0.0f, 0.0f, -minValue },   // x >= minValue
-            { -1.0f, 0.0f, 0.0f, maxValue },   // x <= maxValue
-            { 0.0f, 1.0f, 0.0f, -minValue },   // y >= minValue
-            { 0.0f, -1.0f, 0.0f, maxValue },   // y <= maxValue
-            { 0.0f, 0.0f, 1.0f, -minValue },   // z >= minValue
-            { 0.0f, 0.0f, -1.0f, maxValue },   // z <= maxValue
+            { 1.0f, 0.0f, 0.0f, -minValue },  // x >= minValue
+            { -1.0f, 0.0f, 0.0f, maxValue },  // x <= maxValue
+            { 0.0f, 1.0f, 0.0f, -minValue },  // y >= minValue
+            { 0.0f, -1.0f, 0.0f, maxValue },  // y <= maxValue
+            { 0.0f, 0.0f, 1.0f, -minValue },  // z >= minValue
+            { 0.0f, 0.0f, -1.0f, maxValue },  // z <= maxValue
         };
         RxFrustum frustum{};
         for (int i = 0; i < 6; ++i)
@@ -1310,8 +1311,7 @@ TEST_F(RxIncrementalFixture, DrawListTracksEntryCountAcrossUpsertRemoveClear)
 
     // 槽号必须紧凑分配：直接拿图元 64 位 ID 当槽号会撑爆稠密数组
     sink.errors.clear();
-    EXPECT_EQ(rxDrawListUpsert(runtime, list, 1u << 25, &command, nullptr),
-              RxResult::ErrorInvalidArgument);
+    EXPECT_EQ(rxDrawListUpsert(runtime, list, 1u << 25, &command, nullptr), RxResult::ErrorInvalidArgument);
     EXPECT_FALSE(sink.errors.empty());
 
     rxDrawListDestroy(runtime, list);
@@ -1358,6 +1358,7 @@ TEST_F(RxIncrementalFixture, DrawListNonIndexedRemoveStaysConsistentAcrossSwapPo
         uint32_t begin;
         uint32_t end;
     };
+
     const Batch batches[] = {
         { 0, 16 },
         { kCount - 8, kCount },
@@ -1650,12 +1651,10 @@ TEST_F(RxIncrementalFixture, DrawListBatchesTightBlocksFromRealAllocator)
         GeometryBlock block{};
         ASSERT_EQ(rxGeometryAlloc(runtime, store, bytes, &block), RxResult::Ok);
         // 紧排：第 i 块必须紧接前一块，中间不能有粒度补白
-        EXPECT_EQ(block.offset, expectedOffset)
-            << "粒度不能整除步长时块之间会出现空隙，合批必然一次都不发生";
+        EXPECT_EQ(block.offset, expectedOffset) << "粒度不能整除步长时块之间会出现空隙，合批必然一次都不发生";
         expectedOffset += bytes;
 
-        const DrawCommand command =
-            makeListCommand(buffer, block.offset, kVertexCount, 1, PrimitiveTopology::Triangles);
+        const DrawCommand command = makeListCommand(buffer, block.offset, kVertexCount, 1, PrimitiveTopology::Triangles);
         ASSERT_EQ(rxDrawListUpsert(runtime, list, i, &command, nullptr), RxResult::Ok);
     }
 
@@ -1854,8 +1853,7 @@ TEST_F(RxIncrementalFixture, DrawListRejectsForeignAndDestroyedHandles)
     EXPECT_EQ(rxSessionSubmitDrawList(session, list, nullptr), RxResult::ErrorInvalidHandle);
 
     GeometryStoreStats storeStats{};
-    EXPECT_EQ(rxGeometryStoreGetStats(runtime, GeometryStoreHandle::Invalid, &storeStats),
-              RxResult::ErrorInvalidHandle);
+    EXPECT_EQ(rxGeometryStoreGetStats(runtime, GeometryStoreHandle::Invalid, &storeStats), RxResult::ErrorInvalidHandle);
 }
 
 // ======================================================================
@@ -1882,8 +1880,7 @@ TEST(RxDrawListGridTest, SelectGridLevelPicksFinestFittingLayer)
 TEST(RxDrawListGridTest, SelectGridLevelClampsToLastLayer)
 {
     // 最大层边长 = kGridBaseCellSize << (kGridLevelCount-1)，超过它只能落在最后一层
-    const float maxCellSize =
-        detail::kGridBaseCellSize * static_cast<float>(1 << (detail::kGridLevelCount - 1));
+    const float maxCellSize = detail::kGridBaseCellSize * static_cast<float>(1 << (detail::kGridLevelCount - 1));
     EXPECT_EQ(detail::selectGridLevel(maxCellSize), detail::kGridLevelCount - 1);
     EXPECT_EQ(detail::selectGridLevel(maxCellSize * 4.0f), detail::kGridLevelCount - 1);
     EXPECT_EQ(detail::selectGridLevel(1e9f), detail::kGridLevelCount - 1);
@@ -1893,10 +1890,9 @@ TEST(RxDrawListGridTest, SelectGridLevelFitsAndIsFinest)
 {
     // 不变式：所选层 cellSize >= maxExtent（未被 clamp 时），且再细一层就装不下
     // —— 这正是「最细的能容纳它的层」。
-    const float maxCellSize =
-        detail::kGridBaseCellSize * static_cast<float>(1 << (detail::kGridLevelCount - 1));
-    for (float extent : { 0.5f, 1.0f, 100.0f, 256.0f, 256.1f, 400.0f, 512.0f, 513.0f,
-                          1000.0f, 1024.0f, 2000.0f, 4096.0f, 100000.0f })
+    const float maxCellSize = detail::kGridBaseCellSize * static_cast<float>(1 << (detail::kGridLevelCount - 1));
+    for (float extent :
+        { 0.5f, 1.0f, 100.0f, 256.0f, 256.1f, 400.0f, 512.0f, 513.0f, 1000.0f, 1024.0f, 2000.0f, 4096.0f, 100000.0f })
     {
         const uint16_t level = detail::selectGridLevel(extent);
         const float cellSize = detail::kGridBaseCellSize * static_cast<float>(1 << level);
@@ -1906,8 +1902,7 @@ TEST(RxDrawListGridTest, SelectGridLevelFitsAndIsFinest)
         }
         if (level > 0)
         {
-            const float finerCellSize =
-                detail::kGridBaseCellSize * static_cast<float>(1 << (level - 1));
+            const float finerCellSize = detail::kGridBaseCellSize * static_cast<float>(1 << (level - 1));
             EXPECT_GT(extent, finerCellSize) << "extent=" << extent << " level=" << level;
         }
     }
@@ -1917,8 +1912,7 @@ TEST(RxDrawListGridTest, SelectGridLevelMonotonicInExtent)
 {
     // 单调性：extent 增大时层号不减（选层不回退，索引分层稳定）
     uint16_t prev = 0;
-    for (float extent : { 1.0f, 100.0f, 256.0f, 300.0f, 512.0f, 600.0f, 1024.0f,
-                          1500.0f, 2048.0f, 5000.0f, 100000.0f })
+    for (float extent : { 1.0f, 100.0f, 256.0f, 300.0f, 512.0f, 600.0f, 1024.0f, 1500.0f, 2048.0f, 5000.0f, 100000.0f })
     {
         const uint16_t level = detail::selectGridLevel(extent);
         EXPECT_GE(level, prev) << "extent=" << extent;
@@ -1957,8 +1951,7 @@ TEST_F(RxIncrementalFixture, DrawListSpatialIndexMatchesBruteForceCulling)
     // 顶点偏移不连续，避免合批干扰 drawCallCount 与 visibleCount 的对应。
     for (uint32_t i = 0; i < kCount; ++i)
     {
-        const DrawCommand command =
-            makeListCommand(buffer, i * 1024, 3, 100 + i, PrimitiveTopology::Triangles);
+        const DrawCommand command = makeListCommand(buffer, i * 1024, 3, 100 + i, PrimitiveTopology::Triangles);
         ASSERT_EQ(rxDrawListUpsert(runtime, list, i, &command, boxes[i]), RxResult::Ok);
     }
 
@@ -1968,7 +1961,7 @@ TEST_F(RxIncrementalFixture, DrawListSpatialIndexMatchesBruteForceCulling)
     for (uint32_t i = 0; i < kCount; ++i)
     {
         const bool disjoint = boxes[i][2] < viewBounds[0] || boxes[i][0] > viewBounds[2] ||
-                              boxes[i][3] < viewBounds[1] || boxes[i][1] > viewBounds[3];
+            boxes[i][3] < viewBounds[1] || boxes[i][1] > viewBounds[3];
         if (!disjoint)
         {
             expectedVisible += 1;
@@ -2116,13 +2109,13 @@ namespace
                     // 取 ';' 之前的最后一个标识符，即成员名
                     size_t end = semi;
                     while (end > stmtBegin && !std::isalnum(static_cast<unsigned char>(body[end - 1])) &&
-                           body[end - 1] != '_')
+                        body[end - 1] != '_')
                     {
                         --end;
                     }
                     size_t begin = end;
-                    while (begin > stmtBegin && (std::isalnum(static_cast<unsigned char>(body[begin - 1])) ||
-                                                 body[begin - 1] == '_'))
+                    while (begin > stmtBegin &&
+                        (std::isalnum(static_cast<unsigned char>(body[begin - 1])) || body[begin - 1] == '_'))
                     {
                         --begin;
                     }
@@ -2251,19 +2244,16 @@ TEST_F(RxIncrementalFixture, ReadPixelsRequiresOpenFrameAndSufficientCapacity)
     // 帧外读回：EndFrame 之后后备缓冲已交给呈现，内容不再保证有效。
     // 明确报错比「尽力读一次」好——读到上一帧或空白画面更难排查。
     sink.errors.clear();
-    EXPECT_EQ(rxSessionReadPixels(session, 0, 0, 4, 4, pixels.data(), pixels.size()),
-              RxResult::ErrorUnknown);
+    EXPECT_EQ(rxSessionReadPixels(session, 0, 0, 4, 4, pixels.data(), pixels.size()), RxResult::ErrorUnknown);
     EXPECT_FALSE(sink.errors.empty());
 
     ASSERT_EQ(rxSessionBeginFrame(session), RxResult::Ok);
 
     sink.errors.clear();
-    EXPECT_EQ(rxSessionReadPixels(session, 0, 0, 4, 4, pixels.data(), 16),
-              RxResult::ErrorInvalidArgument);
+    EXPECT_EQ(rxSessionReadPixels(session, 0, 0, 4, 4, pixels.data(), 16), RxResult::ErrorInvalidArgument);
     EXPECT_FALSE(sink.errors.empty()) << "缓冲过小必须说明需要多少字节";
 
-    EXPECT_EQ(rxSessionReadPixels(session, 0, 0, 4, 4, nullptr, pixels.size()),
-              RxResult::ErrorInvalidArgument);
+    EXPECT_EQ(rxSessionReadPixels(session, 0, 0, 4, 4, nullptr, pixels.size()), RxResult::ErrorInvalidArgument);
 
     // 读回后必须能继续正常收尾：readPixels 内部拆了 RenderPass 又重开，
     // 漏掉重开会让 EndFrame 的 endRenderPass 变成未配对调用。
@@ -2307,7 +2297,11 @@ TEST_F(RxIncrementalFixture, OffscreenRenderTargetCreateAndRead)
     cmd.vertexOffset = alloc.offset;
 
     // 写入三角形顶点（屏幕空间，像素坐标）
-    struct Vertex { float x, y, z, r, g, b, a; };
+    struct Vertex
+    {
+        float x, y, z, r, g, b, a;
+    };
+
     Vertex* verts = static_cast<Vertex*>(alloc.cpuPtr);
     verts[0] = { 100.0f, 100.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f };  // 红
     verts[1] = { 200.0f, 100.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f };  // 绿
@@ -2319,15 +2313,18 @@ TEST_F(RxIncrementalFixture, OffscreenRenderTargetCreateAndRead)
     packet.enableCulling = 0;
     packet.frameId = 1;
     std::memset(packet.viewMatrix, 0, sizeof(packet.viewMatrix));
-    packet.viewport[0] = 0; packet.viewport[1] = 0; packet.viewport[2] = 256; packet.viewport[3] = 256;
+    packet.viewport[0] = 0;
+    packet.viewport[1] = 0;
+    packet.viewport[2] = 256;
+    packet.viewport[3] = 256;
 
     EXPECT_EQ(rxSessionSubmit(session, &packet), RxResult::Ok);
     EXPECT_EQ(rxSessionEndFrame(session), RxResult::Ok);
 
     // 从离屏纹理读回像素（不要求在帧内）
     std::vector<uint8_t> pixels(256 * 256 * 4);
-    EXPECT_EQ(rxSessionReadPixelsFromTexture(session, rtTexture, 0, 0, 256, 256, pixels.data(), pixels.size()),
-              RxResult::Ok);
+    EXPECT_EQ(
+        rxSessionReadPixelsFromTexture(session, rtTexture, 0, 0, 256, 256, pixels.data(), pixels.size()), RxResult::Ok);
 
     // Null 后端不实际渲染，只验证 API 调用成功
     // 真实 GPU 后端测试由 RenderxGLTests（GL 后端）覆盖
@@ -2374,7 +2371,11 @@ TEST_F(RxIncrementalFixture, OffscreenWithDepthAttachment)
     cmd.vertexBuffer = alloc.buffer;
     cmd.vertexOffset = alloc.offset;
 
-    struct Vertex3D { float x, y, z, nx, ny, nz; };
+    struct Vertex3D
+    {
+        float x, y, z, nx, ny, nz;
+    };
+
     Vertex3D* verts = static_cast<Vertex3D*>(alloc.cpuPtr);
     verts[0] = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f };
     verts[1] = { 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f };
@@ -2385,17 +2386,20 @@ TEST_F(RxIncrementalFixture, OffscreenWithDepthAttachment)
     packet.commandCount = 1;
     packet.enableCulling = 0;
     packet.frameId = 1;
-    float viewMatrix[16] = { 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1 };
+    float viewMatrix[16] = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
     std::memcpy(packet.viewMatrix, viewMatrix, sizeof(viewMatrix));
-    packet.viewport[0] = 0; packet.viewport[1] = 0; packet.viewport[2] = 128; packet.viewport[3] = 128;
+    packet.viewport[0] = 0;
+    packet.viewport[1] = 0;
+    packet.viewport[2] = 128;
+    packet.viewport[3] = 128;
 
     EXPECT_EQ(rxSessionSubmit(session, &packet), RxResult::Ok);
     EXPECT_EQ(rxSessionEndFrame(session), RxResult::Ok);
 
     // 读回验证
     std::vector<uint8_t> pixels(128 * 128 * 4);
-    EXPECT_EQ(rxSessionReadPixelsFromTexture(session, colorTex, 0, 0, 128, 128, pixels.data(), pixels.size()),
-              RxResult::Ok);
+    EXPECT_EQ(
+        rxSessionReadPixelsFromTexture(session, colorTex, 0, 0, 128, 128, pixels.data(), pixels.size()), RxResult::Ok);
 
     // 恢复
     EXPECT_EQ(rxSessionSetRenderTarget(session, TextureHandle::Invalid, TextureHandle::Invalid, 0, 0), RxResult::Ok);
@@ -2412,8 +2416,7 @@ namespace
     /// 毫秒计时（steady_clock，不受系统时钟调整影响）
     double elapsedMs(std::chrono::steady_clock::time_point start)
     {
-        return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start)
-            .count();
+        return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
     }
 }  // namespace
 
@@ -2481,8 +2484,9 @@ TEST_F(RxIncrementalFixture, DrawListMillionPrimitiveCullingBaseline)
                 const uint32_t cy = static_cast<uint32_t>(ys[i] / kCell);
                 return cy * 64u + cx;
             };
-            std::stable_sort(order.begin(), order.end(),
-                             [&](uint32_t a, uint32_t b) { return cellKey(a) < cellKey(b); });
+            std::stable_sort(order.begin(), order.end(), [&](uint32_t a, uint32_t b) {
+                return cellKey(a) < cellKey(b);
+            });
         }
 
         DrawListDesc listDesc{};
@@ -2490,8 +2494,7 @@ TEST_F(RxIncrementalFixture, DrawListMillionPrimitiveCullingBaseline)
         listDesc.enableCulling = 1;
         listDesc.enableMerging = 1;
         const DrawListHandle list = rxDrawListCreate(runtime, &listDesc);
-        const BufferHandle buffer =
-            makeVertexBuffer(runtime, static_cast<uint64_t>(kCount) * 2u * stride);
+        const BufferHandle buffer = makeVertexBuffer(runtime, static_cast<uint64_t>(kCount) * 2u * stride);
 
         const auto buildStart = std::chrono::steady_clock::now();
         for (uint32_t k = 0; k < kCount; ++k)
@@ -2500,8 +2503,7 @@ TEST_F(RxIncrementalFixture, DrawListMillionPrimitiveCullingBaseline)
             const float x = xs[src];
             const float y = ys[src];
             const float box[4] = { x, y, x + 5.0f, y + 5.0f };
-            const DrawCommand command =
-                makeListCommand(buffer, k * 2u * stride, 2, 1, PrimitiveTopology::Lines);
+            const DrawCommand command = makeListCommand(buffer, k * 2u * stride, 2, 1, PrimitiveTopology::Lines);
             if (rxDrawListUpsert(runtime, list, k, &command, box) != RxResult::Ok)
             {
                 out.upsertFailures += 1;
@@ -2569,8 +2571,8 @@ TEST_F(RxIncrementalFixture, DrawListMillionPrimitiveCullingBaseline)
         for (int c = 0; c < kViewCount; ++c)
         {
             std::cout << "[bench]   " << viewNames[c] << ": avg=" << results[s]->avgMs[c]
-                      << " ms/frame, visible=" << results[s]->visible[c]
-                      << ", drawCalls=" << results[s]->drawCalls[c] << "\n";
+                      << " ms/frame, visible=" << results[s]->visible[c] << ", drawCalls=" << results[s]->drawCalls[c]
+                      << "\n";
         }
     }
     std::cout << std::flush;
@@ -2647,9 +2649,12 @@ namespace
 
     /// 全图（zoom out）单变体测量：20 万条全部可见，走退化回退的线性路径。
     /// 多轮取最小值，抑制环境噪声。
-    ZoomOutMeasurement measureZoomOut(RuntimeHandle runtime, SessionHandle session,
-                                      const BenchPositions& positions, uint8_t culling,
-                                      uint8_t merging, const char* label)
+    ZoomOutMeasurement measureZoomOut(RuntimeHandle runtime,
+        SessionHandle session,
+        const BenchPositions& positions,
+        uint8_t culling,
+        uint8_t merging,
+        const char* label)
     {
         constexpr uint32_t kFrames = 5;
         constexpr uint32_t kRounds = 7;
@@ -2657,8 +2662,7 @@ namespace
 
         const uint32_t count = static_cast<uint32_t>(positions.xs.size());
         const uint32_t stride = rxVertexStride(VertexFormat::P3C3);
-        const BufferHandle buffer =
-            makeVertexBuffer(runtime, static_cast<uint64_t>(count) * 2u * stride);
+        const BufferHandle buffer = makeVertexBuffer(runtime, static_cast<uint64_t>(count) * 2u * stride);
 
         DrawListDesc listDesc{};
         listDesc.initialCapacity = count;
@@ -2671,8 +2675,7 @@ namespace
             const float x = positions.xs[i];
             const float y = positions.ys[i];
             const float box[4] = { x, y, x + 5.0f, y + 5.0f };
-            const DrawCommand command =
-                makeListCommand(buffer, i * 2u * stride, 2, 1, PrimitiveTopology::Lines);
+            const DrawCommand command = makeListCommand(buffer, i * 2u * stride, 2, 1, PrimitiveTopology::Lines);
             rxDrawListUpsert(runtime, list, i, &command, box);
         }
 
@@ -2703,8 +2706,7 @@ namespace
         }
         result.msPerFrame = best;
 
-        std::cout << "[bench] " << label << ": " << best
-                  << " ms/frame, drawCalls=" << result.drawCalls << "\n";
+        std::cout << "[bench] " << label << ": " << best << " ms/frame, drawCalls=" << result.drawCalls << "\n";
         std::cout << std::flush;
 
         rxDrawListDestroy(runtime, list);
@@ -2719,8 +2721,7 @@ namespace
 TEST_F(RxIncrementalFixture, ZoomOutBreakdownCullMerge)
 {
     const BenchPositions positions = makeBenchPositions(kZoomOutCount);
-    const ZoomOutMeasurement measured =
-        measureZoomOut(runtime, session, positions, 1, 1, "cull+merge");
+    const ZoomOutMeasurement measured = measureZoomOut(runtime, session, positions, 1, 1, "cull+merge");
     EXPECT_GT(measured.drawCalls, 0u);
 }
 
@@ -2728,8 +2729,7 @@ TEST_F(RxIncrementalFixture, ZoomOutBreakdownNoCull)
 {
     // 关掉判交：与 CullMerge 的差值即判交成本
     const BenchPositions positions = makeBenchPositions(kZoomOutCount);
-    const ZoomOutMeasurement measured =
-        measureZoomOut(runtime, session, positions, 0, 1, "no-cull");
+    const ZoomOutMeasurement measured = measureZoomOut(runtime, session, positions, 0, 1, "no-cull");
     EXPECT_GT(measured.drawCalls, 0u);
 }
 
@@ -2737,8 +2737,7 @@ TEST_F(RxIncrementalFixture, ZoomOutBreakdownNoMerge)
 {
     // 关掉合批：draw call 数应等于图元数
     const BenchPositions positions = makeBenchPositions(kZoomOutCount);
-    const ZoomOutMeasurement measured =
-        measureZoomOut(runtime, session, positions, 1, 0, "no-merge");
+    const ZoomOutMeasurement measured = measureZoomOut(runtime, session, positions, 1, 0, "no-merge");
     EXPECT_EQ(measured.drawCalls, kZoomOutCount);
 }
 
@@ -2746,8 +2745,7 @@ TEST_F(RxIncrementalFixture, ZoomOutBreakdownNeither)
 {
     // 既不算也不合：纯遍历 + 输出成本基线
     const BenchPositions positions = makeBenchPositions(kZoomOutCount);
-    const ZoomOutMeasurement measured =
-        measureZoomOut(runtime, session, positions, 0, 0, "neither");
+    const ZoomOutMeasurement measured = measureZoomOut(runtime, session, positions, 0, 0, "neither");
     EXPECT_EQ(measured.drawCalls, kZoomOutCount);
 }
 
@@ -2832,10 +2830,10 @@ TEST_F(RxIncrementalFixture, CullingVisibleCountMatchesBruteForce)
     };
 
     const float typicalViews[4][4] = {
-        { -600.0f, -600.0f, 600.0f, 600.0f },      // 全覆盖：命中并集捷径
-        { -100.0f, -100.0f, 100.0f, 100.0f },       // 局部重叠：网格粗筛 + 精确判交
-        { 2000.0f, 2000.0f, 3000.0f, 3000.0f },     // 完全不相交：全部剔除
-        { -600.0f, -600.0f, 0.0f, 0.0f },           // 只覆盖左下半区
+        { -600.0f, -600.0f, 600.0f, 600.0f },    // 全覆盖：命中并集捷径
+        { -100.0f, -100.0f, 100.0f, 100.0f },    // 局部重叠：网格粗筛 + 精确判交
+        { 2000.0f, 2000.0f, 3000.0f, 3000.0f },  // 完全不相交：全部剔除
+        { -600.0f, -600.0f, 0.0f, 0.0f },        // 只覆盖左下半区
     };
     for (const auto& view : typicalViews)
     {
@@ -2852,11 +2850,10 @@ TEST_F(RxIncrementalFixture, CullingVisibleCountMatchesBruteForce)
         const float y = viewCoord(rng);
         const float view[4] = { x, y, x + viewSize(rng), y + viewSize(rng) };
         EXPECT_EQ(measuredVisible(view), bruteForceVisible(view))
-            << "iteration=" << iteration << " view=(" << view[0] << "," << view[1] << ","
-            << view[2] << "," << view[3] << ")";
+            << "iteration=" << iteration << " view=(" << view[0] << "," << view[1] << "," << view[2] << "," << view[3]
+            << ")";
     }
 
     rxDrawListDestroy(runtime, list);
     rxBufferDestroy(runtime, buffer);
 }
-
