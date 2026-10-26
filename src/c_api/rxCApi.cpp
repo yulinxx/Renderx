@@ -106,7 +106,6 @@ namespace
     ///   GeometryStoreHandle-> GeometryStoreHandle::Invalid
     ///   BufferHandle       -> BufferHandle::Invalid
     ///   TextureHandle      -> TextureHandle::Invalid
-    ///   FontHandle         -> FontHandle::Invalid
     ///   uint16_t           -> 0
     ///   uint32_t           -> 0
     ///   uint64_t           -> 0
@@ -170,12 +169,6 @@ namespace
     struct RxAbiFallback<TextureHandle>
     {
         static constexpr TextureHandle value = TextureHandle::Invalid;
-    };
-
-    template<>
-    struct RxAbiFallback<FontHandle>
-    {
-        static constexpr FontHandle value = FontHandle::Invalid;
     };
 
     template<>

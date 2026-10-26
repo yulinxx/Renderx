@@ -87,7 +87,9 @@ namespace Render::RHI::metal
         case Format::RGBA32Float: return MTLPixelFormatRGBA32Float;
         case Format::R32Uint: return MTLPixelFormatR32Uint;
         case Format::D32Float: return MTLPixelFormatDepth32Float;
-        case Format::D24UnormS8Uint: return MTLPixelFormatDepth24Unorm_Stencil8;
+        // Depth24Unorm_Stencil8 is deprecated in macOS 27; Metal's recommended
+        // replacement is Depth32Float_Stencil8, so both enum values map to it.
+        case Format::D24UnormS8Uint: return MTLPixelFormatDepth32Float_Stencil8;
         case Format::D32FloatS8Uint: return MTLPixelFormatDepth32Float_Stencil8;
         case Format::Unknown: return MTLPixelFormatInvalid;
         }
@@ -105,7 +107,6 @@ namespace Render::RHI::metal
         case MTLPixelFormatBGRA8Unorm: return Format::BGRA8Unorm;
         case MTLPixelFormatBGRA8Unorm_sRGB: return Format::BGRA8Srgb;
         case MTLPixelFormatDepth32Float: return Format::D32Float;
-        case MTLPixelFormatDepth24Unorm_Stencil8: return Format::D24UnormS8Uint;
         case MTLPixelFormatDepth32Float_Stencil8: return Format::D32FloatS8Uint;
         default: return Format::Unknown;
         }
