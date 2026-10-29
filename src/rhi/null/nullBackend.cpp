@@ -601,7 +601,8 @@ namespace Render::RHI
                 {
                     return RhiResult::ErrorInvalidArgument;
                 }
-                if (offset + sizeBytes > record->desc.size)
+                // offset/sizeBytes 均为 uint64_t，直接相加可能回绕绕过越界检查
+                if (offset > record->desc.size || sizeBytes > record->desc.size - offset)
                 {
                     m_log.error("[null] writeBuffer out of bounds: offset=%llu size=%llu bufferSize=%llu",
                         static_cast<unsigned long long>(offset),
@@ -631,8 +632,14 @@ namespace Render::RHI
                     m_log.error("[null] mapBuffer: buffer is already mapped");  // 该缓冲已处于映射状态
                     return MappedRange{};
                 }
+                // 先校验 offset，否则 sizeBytes==0 时 desc.size - offset 本身会回绕
+                if (offset > record->desc.size)
+                {
+                    m_log.error("[null] mapBuffer: out of bounds");  // mapBuffer 越界
+                    return MappedRange{};
+                }
                 const uint64_t size = sizeBytes == 0 ? record->desc.size - offset : sizeBytes;
-                if (offset + size > record->desc.size)
+                if (size > record->desc.size - offset)
                 {
                     m_log.error("[null] mapBuffer: out of bounds");  // mapBuffer 越界
                     return MappedRange{};

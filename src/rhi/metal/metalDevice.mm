@@ -884,7 +884,8 @@ namespace Render::RHI::metal
             m_log.error("[metal] writeBuffer: data is null");
             return RhiResult::ErrorInvalidArgument;
         }
-        if (offset + sizeBytes > record->desc.size)
+        // offset/sizeBytes 均为 uint64_t，直接相加可能回绕绕过越界检查
+        if (offset > record->desc.size || sizeBytes > record->desc.size - offset)
         {
             m_log.error("[metal] writeBuffer: out of range (buffer %llu bytes, requested %llu+%llu)",
                         static_cast<unsigned long long>(record->desc.size),
@@ -908,7 +909,8 @@ namespace Render::RHI::metal
             m_log.error("[metal] mapBuffer: invalid buffer handle");
             return range;
         }
-        if (offset + sizeBytes > record->desc.size)
+        // offset/sizeBytes 均为 uint64_t，直接相加可能回绕绕过越界检查
+        if (offset > record->desc.size || sizeBytes > record->desc.size - offset)
         {
             m_log.error("[metal] mapBuffer: out of range (buffer %llu bytes, requested %llu+%llu)",
                         static_cast<unsigned long long>(record->desc.size),
