@@ -305,7 +305,7 @@ namespace Render
 
             uint8_t rxIsBackendAvailable(Backend backend)
             {
-                return rxAbiGuard<uint8_t>([backend] {
+                return rxAbiGuard<uint8_t>([backend]() -> uint8_t {
                     if (backend == Backend::Auto)
                     {
                         // Auto 总能落到某个可用后端：preferredBackend 的兜底是 OpenGL，
