@@ -504,7 +504,7 @@ namespace Render::RHI::metal
             return nullptr;
         }
         m_surfaces.push_back(surface);
-        m_log.debug("[metal] createSurface: %ux%u (surface count: %zu)",  // 创建表面
+        m_log.debug("[metal] createSurface: %ux%u (surface count: %zu)",
                     desc.initialExtent.width, desc.initialExtent.height, m_surfaces.size());
         return surface;
     }
@@ -1367,7 +1367,7 @@ namespace Render::RHI
             delete device;
             return nullptr;
         }
-        logger.debug("[metal] createMetalDevice succeeded (%s)", device->capabilities().deviceName);  // 创建 Metal 设备
+        logger.debug("[metal] createMetalDevice succeeded (%s)", device->capabilities().deviceName);
         return device;
     }
 

@@ -157,7 +157,7 @@ namespace Render::RT::detail
         {
             // 帧未结束就销毁：命令记录器与后备缓冲都还占着，先补上收尾，
             // 否则设备的 beginFrame/submitFrame 配对被破坏，下一帧直接失败。
-            runtime->log.error("[rt] rxSessionDestroy: frame not ended, forced cleanup");  // 帧未结束即销毁 Session
+            runtime->log.error("[rt] rxSessionDestroy: frame not ended, forced cleanup");
             endFrame();
         }
         if (surface && surface->boundSession == this)
@@ -226,7 +226,7 @@ namespace Render::RT::detail
         }
         if (inFrame)
         {
-            runtime->log.error("[rt] rxSessionBeginFrame: previous frame not ended");  // 上一帧尚未 EndFrame
+            runtime->log.error("[rt] rxSessionBeginFrame: previous frame not ended");
             return RxResult::ErrorUnknown;
         }
         // 离屏渲染不需要 acquireNextImage（无交换链）
@@ -252,7 +252,7 @@ namespace Render::RT::detail
         if (!cmd)
         {
             runtime->log.error(
-                "[rt] rxSessionBeginFrame: device did not return command recorder");  // 设备未返回命令记录器
+                "[rt] rxSessionBeginFrame: device did not return command recorder");
             return RxResult::ErrorDeviceLost;
         }
 
@@ -332,7 +332,7 @@ namespace Render::RT::detail
         const RHI::RhiResult began = cmd->beginRenderPass(pass);
         if (began != RHI::RhiResult::Ok)
         {
-            runtime->log.error("[rt] rxSessionBeginFrame: beginRenderPass failed (%s)",  // beginRenderPass 失败
+            runtime->log.error("[rt] rxSessionBeginFrame: beginRenderPass failed (%s)",
                 RHI::resultName(began));
             // 设备帧已经开了，必须配对提交，否则后续所有帧都会被判为未配对。
             runtime->device->submitFrame();
@@ -366,7 +366,7 @@ namespace Render::RT::detail
         if (!inFrame)
         {
             runtime->log.error(
-                "[rt] rxSessionAllocTransient: must be called between BeginFrame/EndFrame");  // 必须在 BeginFrame/EndFrame 之间调用
+                "[rt] rxSessionAllocTransient: must be called between BeginFrame/EndFrame");
             return RxResult::ErrorUnknown;
         }
         if (!runtime->transient.allocate(sizeBytes, out))
@@ -425,7 +425,7 @@ namespace Render::RT::detail
         if (!vertexBuffer.valid())
         {
             runtime->log.warn("[rt] command %u has invalid vertex buffer handle, skipped",
-                static_cast<unsigned>(index));  // 顶点缓冲句柄无效
+                static_cast<unsigned>(index));
             return false;
         }
 
@@ -465,7 +465,7 @@ namespace Render::RT::detail
         if (!pipeline.valid())
         {
             runtime->log.warn(
-                "[rt] command %u has no available pipeline (fmt=%d space=%d topo=%d), skipped",  // 命令没有可用管线
+                "[rt] command %u has no available pipeline (fmt=%d space=%d topo=%d), skipped",
                 static_cast<unsigned>(index),
                 static_cast<int>(command.vertexFormat),
                 static_cast<int>(command.space),
@@ -550,7 +550,7 @@ namespace Render::RT::detail
             else
             {
                 runtime->log.warn(
-                    "[rt] command %u has invalid texture handle", static_cast<unsigned>(index));  // 纹理句柄无效
+                    "[rt] command %u has invalid texture handle", static_cast<unsigned>(index));
             }
         }
         return true;
@@ -583,7 +583,7 @@ namespace Render::RT::detail
                 if (!indexBuffer.valid())
                 {
                     runtime->log.warn(
-                        "[rt] command %u declares indexed draw but index buffer handle invalid, skipped",  // 索引绘制但索引缓冲句柄无效
+                        "[rt] command %u declares indexed draw but index buffer handle invalid, skipped",
                         static_cast<unsigned>(index));
                     continue;
                 }
@@ -630,7 +630,7 @@ namespace Render::RT::detail
                 if (!indexBuffer.valid())
                 {
                     runtime->log.warn(
-                        "[rt] batch %u declares indexed draw but index buffer handle invalid, skipped",  // 索引绘制但索引缓冲句柄无效
+                        "[rt] batch %u declares indexed draw but index buffer handle invalid, skipped",
                         static_cast<unsigned>(b));
                     continue;
                 }
@@ -648,7 +648,7 @@ namespace Render::RT::detail
                     static_cast<unsigned>(b),
                     static_cast<unsigned>(batch.rangeBegin),
                     static_cast<unsigned>(batch.rangeBegin + batch.rangeCount),
-                    static_cast<unsigned>(rangeCount));  // 段窗口越界
+                    static_cast<unsigned>(rangeCount));
                 continue;
             }
             const RHI::DrawRange* batchRanges = ranges + batch.rangeBegin;
@@ -684,7 +684,7 @@ namespace Render::RT::detail
         if (!inFrame || !cmd)
         {
             runtime->log.error(
-                "[rt] rxSessionSubmit: must be called between BeginFrame/EndFrame");  // 必须在 BeginFrame/EndFrame 之间调用
+                "[rt] rxSessionSubmit: must be called between BeginFrame/EndFrame");
             return RxResult::ErrorUnknown;
         }
         if (packet.commandCount == 0)
@@ -753,7 +753,7 @@ namespace Render::RT::detail
         if (!inFrame || !cmd)
         {
             runtime->log.error(
-                "[rt] rxSessionSubmitDrawList: must be called between BeginFrame/EndFrame");  // 必须在 BeginFrame/EndFrame 之间调用
+                "[rt] rxSessionSubmitDrawList: must be called between BeginFrame/EndFrame");
             return RxResult::ErrorUnknown;
         }
 
@@ -800,7 +800,7 @@ namespace Render::RT::detail
         }
         if (!inFrame)
         {
-            runtime->log.error("[rt] rxSessionEndFrame: no beginFrame this frame");  // 本帧未 BeginFrame
+            runtime->log.error("[rt] rxSessionEndFrame: no beginFrame this frame");
             return RxResult::ErrorUnknown;
         }
 
@@ -822,8 +822,8 @@ namespace Render::RT::detail
             stats.transientBytesUsed * 4ull >= runtime->transient.capacityBytes() * 3ull)
         {
             transientBudgetWarned = true;
-            runtime->log.warn("[rt] 瞬态环用量已达单段容量的 75%%：本帧 %llu / %llu bytes"
-                              "（历史峰值 %llu）。持续逼近时应提高 RuntimeDesc::transientBufferBytes",
+            runtime->log.warn("[rt] transient ring usage reached 75%% of segment capacity: this frame %llu / %llu bytes "
+                              "(peak %llu). Consider raising RuntimeDesc::transientBufferBytes if pressure persists",
                 static_cast<unsigned long long>(stats.transientBytesUsed),
                 static_cast<unsigned long long>(runtime->transient.capacityBytes()),
                 static_cast<unsigned long long>(runtime->transient.highWaterBytes()));
@@ -848,7 +848,7 @@ namespace Render::RT::detail
 
         if (submitted != RHI::RhiResult::Ok)
         {
-            runtime->log.error("[rt] rxSessionEndFrame: submitFrame failed (%s)",  // submitFrame 失败
+            runtime->log.error("[rt] rxSessionEndFrame: submitFrame failed (%s)",
                 RHI::resultName(submitted));
             return toRxResult(submitted);
         }
@@ -856,7 +856,7 @@ namespace Render::RT::detail
         {
             if (presented != RHI::RhiResult::ErrorSwapchainOutOfDate)
             {
-                runtime->log.error("[rt] rxSessionEndFrame: present failed (%s)",  // present 失败
+                runtime->log.error("[rt] rxSessionEndFrame: present failed (%s)",
                     RHI::resultName(presented));
             }
             return toRxResult(presented);
@@ -928,7 +928,7 @@ namespace Render::RT::detail
             // EndFrame 之后后备缓冲已交给呈现，内容不再保证有效。
             // 这里报错而不是「尽力读一次」：读到上一帧或空白画面
             // 比明确失败更难排查。
-            runtime->log.error("[rt] rxSessionReadPixels: must be called before EndFrame");  // 必须在 EndFrame 之前调用
+            runtime->log.error("[rt] rxSessionReadPixels: must be called before EndFrame");
             return RxResult::ErrorUnknown;
         }
 
@@ -936,7 +936,7 @@ namespace Render::RT::detail
         const uint64_t required = static_cast<uint64_t>(width) * height * kBytesPerPixel;
         if (outByteCapacity < required)
         {
-            runtime->log.error("[rt] rxSessionReadPixels: output buffer too small (need %llu, got %llu)",  // 输出缓冲不足
+            runtime->log.error("[rt] rxSessionReadPixels: output buffer too small (need %llu, got %llu)",
                 static_cast<unsigned long long>(required),
                 static_cast<unsigned long long>(outByteCapacity));
             return RxResult::ErrorInvalidArgument;
@@ -944,7 +944,7 @@ namespace Render::RT::detail
 
         if (!texture.valid())
         {
-            runtime->log.error("[rt] rxSessionReadPixels: invalid texture handle");  // 无效的纹理句柄
+            runtime->log.error("[rt] rxSessionReadPixels: invalid texture handle");
             return RxResult::ErrorInvalidArgument;
         }
 
@@ -1004,7 +1004,7 @@ namespace Render::RT::detail
 
         if (read != RHI::RhiResult::Ok)
         {
-            runtime->log.error("[rt] rxSessionReadPixels: readTexture failed (%s)",  // readTexture 失败
+            runtime->log.error("[rt] rxSessionReadPixels: readTexture failed (%s)",
                 RHI::resultName(read));
             return toRxResult(read);
         }
@@ -1043,7 +1043,7 @@ namespace Render::RT::detail
         if (inFrame)
         {
             runtime->log.error(
-                "[rt] rxSessionSetRenderTarget: must be called after EndFrame");  // 必须在 EndFrame 之后调用
+                "[rt] rxSessionSetRenderTarget: must be called after EndFrame");
             return RxResult::ErrorUnknown;
         }
 
@@ -1095,7 +1095,7 @@ namespace Render::RT::detail
                 if (runtime)
                 {
                     runtime->log.warn(
-                        "[rt] rxSessionQueryVisibility: output capacity %u full, results truncated",  // 输出容量已满
+                        "[rt] rxSessionQueryVisibility: output capacity %u full, results truncated",
                         out->capacity);
                 }
                 break;

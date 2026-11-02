@@ -159,10 +159,6 @@ namespace Render::RT::detail
         m_free.clear();
         m_free.emplace(0u, static_cast<uint32_t>(initial));
 
-        // m_owner->log.debug("[rt] Geometry store ready: capacity %llu bytes, granularity %u, %s",  // 几何仓就绪
-        //     static_cast<unsigned long long>(initial),
-        //     m_granularity,
-        //     m_forIndices ? "indices" : "vertices");
         return true;
     }
 
@@ -180,7 +176,7 @@ namespace Render::RT::detail
         const RHI::BufferHandle created = m_owner->device->createBuffer(desc);
         if (!created.valid())
         {
-            m_owner->log.error("[rt] geometry store buffer creation failed (%llu bytes)",  // 几何仓缓冲创建失败
+            m_owner->log.error("[rt] geometry store buffer creation failed (%llu bytes)",
                 static_cast<unsigned long long>(capacity));
             return false;
         }
@@ -242,7 +238,7 @@ namespace Render::RT::detail
     {
         if (m_capacity >= m_maxBytes)
         {
-            m_owner->log.error("[rt] geometry store reached limit %llu bytes, cannot allocate more",  // 几何仓已达上限
+            m_owner->log.error("[rt] geometry store reached limit %llu bytes, cannot allocate more",
                 static_cast<unsigned long long>(m_maxBytes));
             return false;
         }
@@ -279,11 +275,6 @@ namespace Render::RT::detail
         // 新缓冲内容未定义，整段标脏，由下一次 flush 从影子重传
         m_dirty.clear();
         markDirty(0, static_cast<uint32_t>(next));
-
-        // m_owner->log.debug("[rt] Geometry store expanded: %llu -> %llu bytes (attempt %u)",  // 几何仓扩容
-        //     static_cast<unsigned long long>(oldCapacity),
-        //     static_cast<unsigned long long>(next),
-        //     m_growCount);
 
         return true;
     }
@@ -417,7 +408,7 @@ namespace Render::RT::detail
         const Block* block = m_blocks.find(blockId);
         if (!block)
         {
-            m_owner->log.warn("[rt] rxGeometryWrite: block %llu invalid (possibly freed)",  // 块无效
+            m_owner->log.warn("[rt] rxGeometryWrite: block %llu invalid (possibly freed)",
                 static_cast<unsigned long long>(blockId));
 
             return RxResult::ErrorInvalidHandle;
@@ -425,7 +416,7 @@ namespace Render::RT::detail
 
         if (static_cast<uint64_t>(byteOffset) + sizeBytes > block->size)
         {
-            m_owner->log.error("[rt] rxGeometryWrite: write out of bounds (block %u bytes, request %u+%u)",  // 写入越界
+            m_owner->log.error("[rt] rxGeometryWrite: write out of bounds (block %u bytes, request %u+%u)",
                 block->size,
                 byteOffset,
                 sizeBytes);
@@ -449,7 +440,7 @@ namespace Render::RT::detail
         const Block* block = m_blocks.find(blockId);
         if (!block)
         {
-            m_owner->log.warn("[rt] rxGeometryFree: block %llu already freed or never existed",  // 块已释放或从未存在
+            m_owner->log.warn("[rt] rxGeometryFree: block %llu already freed or never existed",
                 static_cast<unsigned long long>(blockId));
 
             return RxResult::ErrorInvalidHandle;

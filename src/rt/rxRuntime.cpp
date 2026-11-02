@@ -331,7 +331,7 @@ namespace Render::RT::detail
         m_buffer = m_device->createBuffer(desc);
         if (!m_buffer.valid())
         {
-            m_log.error("[rt] transient ring buffer creation failed (%llu bytes)",  // 瞬态环形缓冲创建失败
+            m_log.error("[rt] transient ring buffer creation failed (%llu bytes)",
                 static_cast<unsigned long long>(desc.size));
             return false;
         }
@@ -429,7 +429,7 @@ namespace Render::RT::detail
                    "allocating temporary buffer for %llu bytes this frame. Increase RuntimeDesc::transientBufferBytes",
             static_cast<unsigned long long>(m_cursor - m_segmentBase),
             static_cast<unsigned long long>(m_capacity),
-            static_cast<unsigned long long>(sizeBytes));  // 瞬态缓冲单帧容量不足
+            static_cast<unsigned long long>(sizeBytes));
 
         Overflow overflow{};
         RHI::BufferDesc desc{};
@@ -440,7 +440,7 @@ namespace Render::RT::detail
         overflow.buffer = m_device->createBuffer(desc);
         if (!overflow.buffer.valid())
         {
-            m_log.error("[rt] transient overflow buffer creation failed");  // 瞬态溢出缓冲创建失败
+            m_log.error("[rt] transient overflow buffer creation failed");
             return false;
         }
         overflow.staging.assign(static_cast<size_t>(aligned), 0);
@@ -551,7 +551,7 @@ namespace Render::RT::detail
         uint64_t transientBytes = desc.transientBufferBytes != 0 ? desc.transientBufferBytes : kDefaultTransientBytes;
         if (transientBytes > kMaxTransientBytes)
         {
-            log.warn("[rt] transientBufferBytes=%llu exceeds per-segment limit %llu, clamped",  // 超过单段上限
+            log.warn("[rt] transientBufferBytes=%llu exceeds per-segment limit %llu, clamped",
                 static_cast<unsigned long long>(transientBytes),
                 static_cast<unsigned long long>(kMaxTransientBytes));
             transientBytes = kMaxTransientBytes;
@@ -573,10 +573,10 @@ namespace Render::RT::detail
         if (!ensureDefaultPipelines())
         {
             log.warn(
-                "[rt] some built-in pipelines failed to create, related draws will be skipped");  // 部分内建管线创建失败
+                "[rt] some built-in pipelines failed to create, related draws will be skipped");
         }
 
-        log.debug("[rt] Runtime ready: backend=%s device=%s transient=%llu bytes",  // Runtime 就绪
+        log.debug("[rt] Runtime ready: backend=%s device=%s transient=%llu bytes",
             rxBackendName(caps.backend),
             caps.deviceName,
             static_cast<unsigned long long>(transientBytes));
@@ -712,7 +712,7 @@ namespace Render::RT::detail
         }
 
         materials.clear();
-        log.info("[rt] Runtime destroyed");  // Runtime 已销毁
+        log.info("[rt] Runtime destroyed");
     }
 
     // ==================== Runtime：缓冲 ====================
@@ -721,7 +721,7 @@ namespace Render::RT::detail
     {
         if (!device || desc.sizeBytes == 0)
         {
-            log.error("[rt] rxBufferCreate: sizeBytes is 0");  // sizeBytes 为 0
+            log.error("[rt] rxBufferCreate: sizeBytes is 0");
             return BufferHandle::Invalid;
         }
         RHI::BufferDesc rhiDesc{};
@@ -755,13 +755,13 @@ namespace Render::RT::detail
         const RHI::BufferHandle rhi = resolveBuffer(handle);
         if (!rhi.valid())
         {
-            log.warn("[rt] rxBufferDestroy: handle invalid or already destroyed");  // 句柄无效或已销毁
+            log.warn("[rt] rxBufferDestroy: handle invalid or already destroyed");
             return;
         }
         if (handle == transient.publicHandle())
         {
             log.error(
-                "[rt] rxBufferDestroy: cannot destroy transient ring buffer, it is owned by Runtime");  // 不能销毁瞬态环形缓冲
+                "[rt] rxBufferDestroy: cannot destroy transient ring buffer, it is owned by Runtime");
             return;
         }
         device->destroyBuffer(rhi);
@@ -785,7 +785,7 @@ namespace Render::RT::detail
     {
         if (!device || desc.width == 0 || desc.height == 0)
         {
-            log.error("[rt] rxTextureCreate: dimensions are 0");  // 尺寸为 0
+            log.error("[rt] rxTextureCreate: dimensions are 0");
             return TextureHandle::Invalid;
         }
         RHI::TextureDesc rhiDesc{};
@@ -815,7 +815,7 @@ namespace Render::RT::detail
         const RHI::TextureHandle* found = textures.find(static_cast<uint64_t>(handle));
         if (!found)
         {
-            log.warn("[rt] rxTextureDestroy: handle invalid or already destroyed");  // 句柄无效或已销毁
+            log.warn("[rt] rxTextureDestroy: handle invalid or already destroyed");
             return;
         }
         // 该纹理的绑定组随之失效，必须一并销毁，否则下次同句柄值
@@ -846,7 +846,7 @@ namespace Render::RT::detail
     {
         if (!device || desc.width == 0 || desc.height == 0)
         {
-            log.error("[rt] rxTextureCreateRenderTarget: dimensions are 0");  // 尺寸为 0
+            log.error("[rt] rxTextureCreateRenderTarget: dimensions are 0");
             return TextureHandle::Invalid;
         }
         // Must include ColorAttachment or DepthStencilAttachment
@@ -857,7 +857,7 @@ namespace Render::RT::detail
         if (!hasColor && !hasDepth)
         {
             log.error(
-                "[rt] rxTextureCreateRenderTarget: must include ColorAttachment or DepthStencilAttachment usage");  // 必须包含 ColorAttachment 或 DepthStencilAttachment 用途
+                "[rt] rxTextureCreateRenderTarget: must include ColorAttachment or DepthStencilAttachment usage");
             return TextureHandle::Invalid;
         }
 
@@ -938,7 +938,7 @@ namespace Render::RT::detail
         }
         if (materials.size() >= 0xFFFF)
         {
-            log.error("[rt] rxMaterialAdd: material count reached uint16 limit");  // 材质数量已达 uint16 上限
+            log.error("[rt] rxMaterialAdd: material count reached uint16 limit");
             return 0;
         }
         materials.push_back(desc);
@@ -1002,7 +1002,7 @@ namespace Render::RT::detail
         GeometryStore* store = resolveGeometryStore(handle);
         if (!store)
         {
-            log.warn("[rt] rxGeometryStoreDestroy: handle invalid or already destroyed");  // 句柄无效或已销毁
+            log.warn("[rt] rxGeometryStoreDestroy: handle invalid or already destroyed");
             return;
         }
         // 仓销毁后，任何仍引用它的 DrawCommand 都会在 resolveBuffer 时拿到
@@ -1056,7 +1056,7 @@ namespace Render::RT::detail
         DrawList* list = resolveDrawList(handle);
         if (!list)
         {
-            log.warn("[rt] rxDrawListDestroy: handle invalid or already destroyed");  // 句柄无效或已销毁
+            log.warn("[rt] rxDrawListDestroy: handle invalid or already destroyed");
             return;
         }
         list->shutdown();
@@ -1200,7 +1200,7 @@ namespace Render::RT::detail
             log.error("[rt] cannot find built-in shader for vertexFormat=%d space=%d "
                       "(no semantically correct shader for this combination, see defaultShadersFor)",
                 static_cast<int>(key.vertexFormat),
-                static_cast<int>(key.space));  // 无法为 vertexFormat space 找到内建 shader
+                static_cast<int>(key.space));
             return 0;
         }
 
@@ -1285,7 +1285,7 @@ namespace Render::RT::detail
         }
         if (pipelines.size() >= 0xFFFF)
         {
-            log.error("[rt] pipeline count reached uint16 limit");  // 管线数量已达 uint16 上限
+            log.error("[rt] pipeline count reached uint16 limit");
             device->destroyPipeline(handle);
             return 0;
         }
@@ -1658,7 +1658,7 @@ namespace Render::RT::detail
             }
             else
             {
-                log.error("[rt] built-in pipeline %s creation failed", entry.label);  // 内建管线创建失败
+                log.error("[rt] built-in pipeline %s creation failed", entry.label);
             }
         }
 
@@ -1679,7 +1679,7 @@ namespace Render::RT::detail
         }
         if (desc.width == 0 || desc.height == 0)
         {
-            log.error("[rt] rxSurfaceCreate: dimensions are 0");  // 尺寸为 0
+            log.error("[rt] rxSurfaceCreate: dimensions are 0");
             return SurfaceHandle::Invalid;
         }
 

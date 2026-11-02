@@ -83,7 +83,7 @@ namespace Render::RHI
             return false;
 #endif
         case BackendKind::Vulkan:
-            // Phase 8 落地前明确返回不可用，
+            // Vulkan 实现之前明确返回不可用，
             // 而不是「有个空壳实现，跑起来才发现什么都没画」。
             return false;
         }
@@ -133,12 +133,12 @@ namespace Render::RHI
 #endif
         case BackendKind::Vulkan:
             logger.error(
-                "[rhi] Vulkan backend not yet implemented (Phase 8). "
-                "No silent fallback: please explicitly select OpenGL, or wait for Vulkan.");  // Vulkan 后端尚未实现
+                "[rhi] Vulkan backend not yet implemented. "
+                "No silent fallback: please explicitly select OpenGL, or wait for Vulkan.");
             return nullptr;
         }
 
-        logger.error("[rhi] createDevice: 未知的 backend 取值 %d", static_cast<int>(backend));
+        logger.error("[rhi] createDevice: unknown backend value %d", static_cast<int>(backend));
         return nullptr;
     }
 

@@ -83,7 +83,7 @@ namespace Render::RT::detail
         // DLL 不做字体集合解析（那属于字体管理，不是渲染）。
         if (stbtt_InitFont(&font->info, font->data->data(), 0) == 0)
         {
-            log.error("[rt] rxFontCreate: font data cannot be parsed (not TTF/OTF?)");  // 字体数据无法解析
+            log.error("[rt] rxFontCreate: font data cannot be parsed (not TTF/OTF?)");
             delete font;
             return RxResult::ErrorInvalidArgument;
         }
@@ -121,7 +121,7 @@ namespace Render::RT::detail
         const RHI::TextureHandle rhiTexture = device->createTexture(texDesc);
         if (!rhiTexture.valid())
         {
-            log.error("[rt] rxFontCreate: atlas texture creation failed");  // 图集纹理创建失败
+            log.error("[rt] rxFontCreate: atlas texture creation failed");
             delete font;
             return RxResult::ErrorUnknown;
         }
@@ -135,7 +135,7 @@ namespace Render::RT::detail
         device->writeTexture(rhiTexture, 0, full, font->pixels.data(), font->pixels.size());
 
         *outFont = static_cast<FontHandle>(fonts.insert(font));
-        log.debug("[rt] Font ready: pixelHeight=%.1f atlas %ux%u (R8 %s, %.2f MB)",  // 字体就绪
+        log.debug("[rt] Font ready: pixelHeight=%.1f atlas %ux%u (R8 %s, %.2f MB)",
             static_cast<double>(desc.pixelHeight),
             width,
             height,
@@ -149,7 +149,7 @@ namespace Render::RT::detail
         Font** found = fonts.find(static_cast<uint64_t>(handle));
         if (!found || !*found)
         {
-            log.warn("[rt] rxFontDestroy: handle invalid or already destroyed");  // 句柄无效或已销毁
+            log.warn("[rt] rxFontDestroy: handle invalid or already destroyed");
             return;
         }
         Font* font = *found;

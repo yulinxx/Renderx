@@ -109,7 +109,7 @@ namespace Render::RHI::gl
     {
         if (!m_acquired)
         {
-            m_log.error("[gl] present: must call acquireNextImage first");  // 未先调用 acquireNextImage
+            m_log.error("[gl] present: must call acquireNextImage first");
             return ::Render::RHI::RhiResult::ErrorInvalidArgument;
         }
         m_acquired = false;
@@ -201,7 +201,7 @@ namespace Render::RHI::gl
             m_gl.Enable(GL_PROGRAM_POINT_SIZE);
         }
 
-        m_log.info("[gl] Device created: %s | %s", m_caps.deviceName, m_caps.driverInfo);  // 设备已创建
+        m_log.info("[gl] Device created: %s | %s", m_caps.deviceName, m_caps.driverInfo);
         // 尽早接上驱动的诊断通道：同步模式下驱动会在出错的那一句调用里回调，
         // 是定位「GL 用法非法」最直接的手段。取不到入口就静默跳过（老驱动/ES）。
         if (m_gl.DebugMessageCallback && m_gl.Enable)
@@ -215,7 +215,7 @@ namespace Render::RHI::gl
             }
             m_log.debug("[gl] debug output enabled (synchronous)");
         }
-        m_log.debug("[gl] Capabilities: compute=%u indirect=%u multiIndirect=%u storage=%u persistentMap=%u "  // 能力
+        m_log.debug("[gl] Capabilities: compute=%u indirect=%u multiIndirect=%u storage=%u persistentMap=%u "
                     "maxTexture=%u maxUboBindings(1 used for pushConstant)",
             m_caps.computeShaders,
             m_caps.indirectDraw,
@@ -230,7 +230,7 @@ namespace Render::RHI::gl
         if (!m_surfaces.empty())
         {
             m_log.error("[gl] Device destroyed with %zu surfaces still alive (host lifecycle error)",
-                m_surfaces.size());  // 设备销毁时仍有表面未销毁
+                m_surfaces.size());
             for (GlSurface* s : m_surfaces)
             {
                 delete s;
@@ -259,7 +259,7 @@ namespace Render::RHI::gl
         }
         m_framebufferCache.clear();
 
-        m_log.debug("[gl] Device destroyed");  // 设备已销毁
+        m_log.debug("[gl] Device destroyed");
     }
 
     void GlDevice::queryCapabilities()
@@ -353,14 +353,14 @@ namespace Render::RHI::gl
         {
             m_log.error("[gl] createSurface: only ForeignGlContext (host-owned context) is supported, got kind=%d. "
                         "Host-owned WGL/GLX/NSOpenGL contexts are not in this backend's scope.",
-                static_cast<int>(desc.window.kind));  // 仅支持 ForeignGlContext
+                static_cast<int>(desc.window.kind));
             return nullptr;
         }
 
         auto* surface = new GlSurface(this, desc, m_log);
         m_surfaces.push_back(surface);
         m_log.debug("[gl] createSurface: %ux%u (surface count: %zu)",
-            desc.initialExtent.width,  // 创建表面
+            desc.initialExtent.width,
             desc.initialExtent.height,
             m_surfaces.size());
         return surface;
@@ -380,7 +380,7 @@ namespace Render::RHI::gl
             }
             if (m_frameSurface == m_surfaces[i])
             {
-                m_log.error("[gl] destroySurface: surface is in beginFrame");  // 该表面正处于 beginFrame 中
+                m_log.error("[gl] destroySurface: surface is in beginFrame");
                 m_frameSurface = nullptr;
                 m_inFrame = false;
             }
@@ -389,7 +389,7 @@ namespace Render::RHI::gl
             m_surfaces.pop_back();
             return;
         }
-        m_log.error("[gl] destroySurface: surface does not belong to this device");  // 表面不属于本设备
+        m_log.error("[gl] destroySurface: surface does not belong to this device");
     }
 
     // ==================== 着色器与管线 ====================
@@ -398,13 +398,13 @@ namespace Render::RHI::gl
     {
         if (!desc.data || desc.sizeBytes == 0)
         {
-            m_log.error("[gl] createShader: empty source");  // 空源码
+            m_log.error("[gl] createShader: empty source");
             return ShaderHandle{};
         }
         if (desc.language != ::Render::RHI::ShaderLanguage::GlslSource)
         {
             m_log.error(
-                "[gl] createShader: this backend only accepts GlslSource, got language=%d",  // 本后端只接受 GlslSource
+                "[gl] createShader: this backend only accepts GlslSource, got language=%d",
                 static_cast<int>(desc.language));
             return ShaderHandle{};
         }
@@ -424,7 +424,7 @@ namespace Render::RHI::gl
     {
         if (shader.valid() && !m_shaders.remove(shader))
         {
-            m_log.warn("[gl] destroyShader: handle already invalid (double destroy?)");  // 句柄已失效（重复销毁？）
+            m_log.warn("[gl] destroyShader: handle already invalid (double destroy?)");
         }
     }
 
@@ -461,7 +461,7 @@ namespace Render::RHI::gl
                                                               : "unknown";
             m_log.error("[gl] shader compilation failed (stage=%s(0x%04X), pipeline=%s): %s",
                 stageWord,
-                stage,  // 着色器编译失败
+                stage,
                 debugName ? debugName : "?",
                 log.data());
             m_gl.DeleteShader(name);
@@ -477,7 +477,7 @@ namespace Render::RHI::gl
         if (!vs || !fs)
         {
             m_log.error(
-                "[gl] createGraphicsPipeline: vertex or fragment shader handle invalid (vs=%s fs=%s)",  // 顶点或片段着色器句柄无效
+                "[gl] createGraphicsPipeline: vertex or fragment shader handle invalid (vs=%s fs=%s)",
                 vs ? "ok" : "无效",
                 fs ? "ok" : "无效");
             return PipelineHandle{};
@@ -485,7 +485,7 @@ namespace Render::RHI::gl
         if (desc.attributeCount > kMaxVertexAttributes || desc.bufferLayoutCount > kMaxVertexBufferSlots)
         {
             m_log.error(
-                "[gl] createGraphicsPipeline: vertex attributes/binding slots exceed limit (attr=%u slots=%u)",  // 顶点属性/绑定槽数量超限
+                "[gl] createGraphicsPipeline: vertex attributes/binding slots exceed limit (attr=%u slots=%u)",
                 desc.attributeCount,
                 desc.bufferLayoutCount);
             return PipelineHandle{};
@@ -531,7 +531,7 @@ namespace Render::RHI::gl
                 m_gl.GetProgramInfoLog(program, length, nullptr, log.data());
             }
             m_log.error(
-                "[gl] pipeline link failed (%s): %s", desc.debugName ? desc.debugName : "?", log.data());  // 管线链接失败
+                "[gl] pipeline link failed (%s): %s", desc.debugName ? desc.debugName : "?", log.data());
             m_gl.DeleteProgram(program);
             return PipelineHandle{};
         }
@@ -571,7 +571,7 @@ namespace Render::RHI::gl
                            "but shader lacks uniform block \"%s\", pushConstants will have no effect",
                     desc.debugName ? desc.debugName : "?",
                     desc.pushConstantBytes,
-                    kPushConstantBlockName);  // 管线声明了 pushConstant 但找不到 uniform block
+                    kPushConstantBlockName);
             }
             else
             {
@@ -637,7 +637,7 @@ namespace Render::RHI::gl
                     if (location < 0)
                     {
                         m_log.warn(
-                            "[gl] pipeline %s: sampler uniform \"%s\" (set=%u binding=%u) not found",  // 采样器 uniform 未找到
+                            "[gl] pipeline %s: sampler uniform \"%s\" (set=%u binding=%u) not found",
                             desc.debugName ? desc.debugName : "?",
                             slot.glName,
                             slot.set,
@@ -677,13 +677,13 @@ namespace Render::RHI::gl
             // 调用方必须以本身的 Capabilities::computeShaders 先判定，
             // 不支持时降级到 CPU 路径（rxSessionQueryVisibility 等）。
             m_log.error("[gl] createComputePipeline: compute shaders not supported in current context "
-                        "(requires GL 4.3+ / compute shaders, use CPU path on macOS)");  // 当前上下文不支持计算着色器
+                        "(requires GL 4.3+ / compute shaders, use CPU path on macOS)");
             return PipelineHandle{};
         }
         const GlShaderRecord* cs = m_shaders.get(desc.computeShader);
         if (!cs)
         {
-            m_log.error("[gl] createComputePipeline: compute shader handle invalid");  // 计算着色器句柄无效
+            m_log.error("[gl] createComputePipeline: compute shader handle invalid");
             return PipelineHandle{};
         }
 
@@ -710,7 +710,7 @@ namespace Render::RHI::gl
                 m_gl.GetProgramInfoLog(program, length, nullptr, log.data());
             }
             m_log.error("[gl] compute pipeline link failed (%s): %s",
-                desc.debugName ? desc.debugName : "?",  // 计算管线链接失败
+                desc.debugName ? desc.debugName : "?",
                 log.data());
             m_gl.DeleteProgram(program);
             return PipelineHandle{};
@@ -746,7 +746,7 @@ namespace Render::RHI::gl
         {
             if (pipeline.valid())
             {
-                m_log.warn("[gl] destroyPipeline: handle already invalid (double destroy?)");  // 句柄已失效（重复销毁？）
+                m_log.warn("[gl] destroyPipeline: handle already invalid (double destroy?)");
             }
             return;
         }
@@ -767,7 +767,7 @@ namespace Render::RHI::gl
     {
         if (desc.size == 0)
         {
-            m_log.error("[gl] createBuffer: size is 0");  // size 为 0
+            m_log.error("[gl] createBuffer: size is 0");
             return BufferHandle{};
         }
         if (!m_gl.GenBuffers)
@@ -820,7 +820,7 @@ namespace Render::RHI::gl
         {
             if (buffer.valid())
             {
-                m_log.warn("[gl] destroyBuffer: handle already invalid (double destroy?)");  // 句柄已失效（重复销毁？）
+                m_log.warn("[gl] destroyBuffer: handle already invalid (double destroy?)");
             }
             return;
         }
@@ -849,7 +849,7 @@ namespace Render::RHI::gl
         // offset/sizeBytes 均为 uint64_t，直接相加可能回绕绕过越界检查
         if (offset > record->desc.size || sizeBytes > record->desc.size - offset)
         {
-            m_log.error("[gl] writeBuffer out of bounds: offset=%llu size=%llu buffer=%llu",  // writeBuffer 越界
+            m_log.error("[gl] writeBuffer out of bounds: offset=%llu size=%llu buffer=%llu",
                 static_cast<unsigned long long>(offset),
                 static_cast<unsigned long long>(sizeBytes),
                 static_cast<unsigned long long>(record->desc.size));
@@ -871,24 +871,24 @@ namespace Render::RHI::gl
         }
         if (record->desc.access == ::Render::RHI::MemoryAccess::GpuOnly)
         {
-            m_log.error("[gl] mapBuffer: GpuOnly buffer cannot be mapped");  // GpuOnly 缓冲不可映射
+            m_log.error("[gl] mapBuffer: GpuOnly buffer cannot be mapped");
             return ::Render::RHI::MappedRange{};
         }
         if (record->mappedPtr)
         {
-            m_log.error("[gl] mapBuffer: buffer is already mapped");  // 该缓冲已处于映射状态
+            m_log.error("[gl] mapBuffer: buffer is already mapped");
             return ::Render::RHI::MappedRange{};
         }
         // 先校验 offset，否则 sizeBytes==0 时 desc.size - offset 本身会回绕
         if (offset > record->desc.size)
         {
-            m_log.error("[gl] mapBuffer: out of bounds");  // mapBuffer 越界
+            m_log.error("[gl] mapBuffer: out of bounds");
             return ::Render::RHI::MappedRange{};
         }
         const uint64_t size = sizeBytes == 0 ? record->desc.size - offset : sizeBytes;
         if (size > record->desc.size - offset)
         {
-            m_log.error("[gl] mapBuffer: out of bounds");  // mapBuffer 越界
+            m_log.error("[gl] mapBuffer: out of bounds");
             return ::Render::RHI::MappedRange{};
         }
 
@@ -916,7 +916,7 @@ namespace Render::RHI::gl
         m_gl.BindBuffer(record->target, 0);
         if (!ptr)
         {
-            m_log.error("[gl] mapBuffer failed (GL returned null pointer)");  // mapBuffer 失败（GL 返回空指针）
+            m_log.error("[gl] mapBuffer failed (GL returned null pointer)");
             return ::Render::RHI::MappedRange{};
         }
         record->mappedPtr = ptr;
@@ -954,7 +954,7 @@ namespace Render::RHI::gl
     {
         if (desc.width == 0 || desc.height == 0)
         {
-            m_log.error("[gl] createTexture: dimensions are 0");  // 尺寸为 0
+            m_log.error("[gl] createTexture: dimensions are 0");
             return TextureHandle{};
         }
         if (desc.width > m_caps.maxTextureSize || desc.height > m_caps.maxTextureSize)
@@ -968,7 +968,7 @@ namespace Render::RHI::gl
         const GLenum internalFormat = toGlInternalFormat(desc.format);
         if (internalFormat == 0 || !m_gl.GenTextures)
         {
-            m_log.error("[gl] createTexture: unsupported format %d", static_cast<int>(desc.format));  // 不支持的格式
+            m_log.error("[gl] createTexture: unsupported format %d", static_cast<int>(desc.format));
             return TextureHandle{};
         }
 
@@ -1032,7 +1032,7 @@ namespace Render::RHI::gl
         {
             if (texture.valid())
             {
-                m_log.warn("[gl] destroyTexture: handle already invalid (double destroy?)");  // 句柄已失效（重复销毁？）
+                m_log.warn("[gl] destroyTexture: handle already invalid (double destroy?)");
             }
             return;
         }
@@ -1064,7 +1064,7 @@ namespace Render::RHI::gl
         }
         if (sizeBytes < static_cast<uint64_t>(region.width) * region.height * pixelSize)
         {
-            m_log.error("[gl] writeTexture: insufficient data");  // 数据不足
+            m_log.error("[gl] writeTexture: insufficient data");
             return ::Render::RHI::RhiResult::ErrorInvalidArgument;
         }
 
@@ -1100,7 +1100,7 @@ namespace Render::RHI::gl
     {
         if (sampler.valid() && !m_samplers.remove(sampler))
         {
-            m_log.warn("[gl] destroySampler: handle already invalid (double destroy?)");  // 句柄已失效（重复销毁？）
+            m_log.warn("[gl] destroySampler: handle already invalid (double destroy?)");
         }
     }
 
@@ -1113,7 +1113,7 @@ namespace Render::RHI::gl
         {
             if (!m_buffers.get(desc.buffers[i].buffer))
             {
-                m_log.error("[gl] createBindGroup: buffers[%u] handle invalid", i);  // buffers[i] 句柄无效
+                m_log.error("[gl] createBindGroup: buffers[%u] handle invalid", i);
                 return BindGroupHandle{};
             }
             record.buffers.push_back(desc.buffers[i]);
@@ -1122,7 +1122,7 @@ namespace Render::RHI::gl
         {
             if (!m_textures.get(desc.textures[i].texture))
             {
-                m_log.error("[gl] createBindGroup: textures[%u] handle invalid", i);  // textures[i] 句柄无效
+                m_log.error("[gl] createBindGroup: textures[%u] handle invalid", i);
                 return BindGroupHandle{};
             }
             record.textures.push_back(desc.textures[i]);
@@ -1134,7 +1134,7 @@ namespace Render::RHI::gl
     {
         if (group.valid() && !m_bindGroups.remove(group))
         {
-            m_log.warn("[gl] destroyBindGroup: handle already invalid (double destroy?)");  // 句柄已失效（重复销毁？）
+            m_log.warn("[gl] destroyBindGroup: handle already invalid (double destroy?)");
         }
     }
 
@@ -1144,12 +1144,12 @@ namespace Render::RHI::gl
     {
         if (!surface)
         {
-            m_log.error("[gl] beginFrame: surface is null");  // surface 为空
+            m_log.error("[gl] beginFrame: surface is null");
             return nullptr;
         }
         if (m_inFrame)
         {
-            m_log.error("[gl] beginFrame: previous frame not submitted");  // 上一帧未 submitFrame
+            m_log.error("[gl] beginFrame: previous frame not submitted");
             return nullptr;
         }
 
@@ -1161,7 +1161,7 @@ namespace Render::RHI::gl
         }
         if (!owned)
         {
-            m_log.error("[gl] beginFrame: surface does not belong to this device");  // 表面不属于本设备
+            m_log.error("[gl] beginFrame: surface does not belong to this device");
             return nullptr;
         }
 
@@ -1175,12 +1175,12 @@ namespace Render::RHI::gl
     {
         if (!m_inFrame)
         {
-            m_log.error("[gl] submitFrame: no beginFrame called");  // 未先调用 beginFrame
+            m_log.error("[gl] submitFrame: no beginFrame called");
             return ::Render::RHI::RhiResult::ErrorInvalidArgument;
         }
         if (m_commands.inRenderPass())
         {
-            m_log.error("[gl] submitFrame: RenderPass not ended");  // RenderPass 未结束
+            m_log.error("[gl] submitFrame: RenderPass not ended");
             return ::Render::RHI::RhiResult::ErrorInvalidArgument;
         }
 
@@ -1282,7 +1282,7 @@ namespace Render::RHI::gl
             }
             m_log.warn("[gl] cached FBO %u incomplete on reuse (status=0x%04X), dropping and recreating",
                 entry.fbo,
-                status);  // 缓存的 FBO 复用时不再完整，丢弃重建
+                status);
             if (entry.fbo && m_gl.DeleteFramebuffers)
             {
                 m_gl.DeleteFramebuffers(1, &entry.fbo);
@@ -1333,7 +1333,7 @@ namespace Render::RHI::gl
             {
                 m_log.error("[gl] framebuffer incomplete (status=0x%04X, color=%u depth=%u)",
                     status,
-                    colorCount,  // 帧缓冲不完整
+                    colorCount,
                     depthName);
                 m_gl.BindFramebuffer(GL_FRAMEBUFFER, 0);
                 m_gl.DeleteFramebuffers(1, &entry.fbo);
@@ -1437,7 +1437,7 @@ namespace Render::RHI::gl
         if (leaked > 0)
         {
             m_log.warn(
-                "[gl] Device destroyed with %u unreleased resources (buffers=%u textures=%u pipelines=%u)",  // 设备销毁时仍有资源未释放
+                "[gl] Device destroyed with %u unreleased resources (buffers=%u textures=%u pipelines=%u)",
                 leaked,
                 m_buffers.size(),
                 m_textures.size(),
@@ -1490,8 +1490,8 @@ namespace Render::RHI
         GLFuncs functions{};
         if (!gl_loader_load(&functions, desc.glGetProcAddress))
         {
-            logger.error("[gl] createDevice 失败：GL 函数加载失败。"
-                         "请确认调用时已有当前 GL 上下文（Qt 应在 initializeGL 内创建设备）");
+            logger.error("[gl] createDevice failed: GL function loading failed. "
+                         "Ensure a current GL context exists (Qt: create device inside initializeGL).");
             return nullptr;
         }
 
