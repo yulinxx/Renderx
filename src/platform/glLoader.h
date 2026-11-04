@@ -302,8 +302,13 @@ typedef long long GLint64;
 #ifndef GL_DEPTH_COMPONENT24
     #define GL_DEPTH_COMPONENT24 0x81A6
 #endif
+// GL_DEPTH_COMPONENT32F 的正确枚举值是 0x8CAC。
+// 此前误写为 0x8C29（那是 GL_MAX_GEOMETRY_TEXTURE_IMAGE_UNITS），
+// 导致 glTexImage2D 申请 D32Float 纹理时报 GL_INVALID_OPERATION、
+// 纹理没有实际存储，挂到 FBO 上后是 GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT。
+// 之所以长期没暴露：创建 D32 纹理的路径（离屏深度附件）此前无人使用。
 #ifndef GL_DEPTH_COMPONENT32F
-    #define GL_DEPTH_COMPONENT32F 0x8C29
+    #define GL_DEPTH_COMPONENT32F 0x8CAC
 #endif
 #ifndef GL_DEPTH24_STENCIL8
     #define GL_DEPTH24_STENCIL8 0x88F0

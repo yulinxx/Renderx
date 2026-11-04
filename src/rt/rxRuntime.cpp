@@ -1378,7 +1378,9 @@ namespace Render::RT::detail
         key.depthFormat = depthFormat;
         key.depthTest = state.depthTest;
         key.depthWrite = state.depthWrite;
-        key.blendEnable = 1;
+        // 混合状态必须来自 state：不透明网格要关混合，否则 alpha=1 时虽然
+        // 结果相同，但半透明网格需要的是「后画覆盖先画」以外的真实混色。
+        key.blendEnable = state.blendEnable;
         key.srcBlend = BlendFactor::SrcAlpha;
         key.dstBlend = BlendFactor::OneMinusSrcAlpha;
         key.depthFunc = state.depthFunc;
@@ -1571,24 +1573,41 @@ namespace Render::RT::detail
             const PipelineStateHint* state = nullptr;
         };
 
-        // 3D 的三条深度/填充组合。提成具名常量而不是内联在表里，
+        // 3D 的深度/填充/混合组合。提成具名常量而不是内联在表里，
         // 是因为它们表达的是渲染意图，值本身看不出来。
         //
-        // 网格：开深度测试 + 写深度。面片间的遮挡靠深度缓冲，排序键无解。
-        static const PipelineStateHint kMesh3DState{ 1, 1, DepthFunc::LessEqual, FillMode::Solid };
+        // 网格：开深度测试 + 写深度，不透明网格不开混合。
+        // 面片间的遮挡靠深度缓冲，排序键无解；alpha=1 时关混合不影响颜色。
+        static const PipelineStateHint kMesh3DState{
+            1, 1, DepthFunc::LessEqual, FillMode::Solid, 0.0f, 0.0f, 0
+        };
         // 线框：同上，只是填充模式不同。线框必须是独立管线，见 FillMode。
-        static const PipelineStateHint kMesh3DWireState{ 1, 1, DepthFunc::LessEqual, FillMode::Wireframe };
+        // 混合保持开启（与改动前一致）：线框视图下场景不透明度下调时的幽灵观感
+        // 由 alpha 混合表达；alpha=1 时开/关混合像素完全一致，故不构成回归。
+        static const PipelineStateHint kMesh3DWireState{
+            1, 1, DepthFunc::LessEqual, FillMode::Wireframe, 0.0f, 0.0f, 1
+        };
+        // 网格半透明：开深度测试、不写深度、开混合。
+        // - 不写深度：后画的半透明面不能把先画的物体从深度缓冲里剔除
+        // - 开混合：同一像素需要按 alpha 叠加，顺序由调用方排序键保证
+        static const PipelineStateHint kMesh3DTransparentState{
+            1, 0, DepthFunc::LessEqual, FillMode::Solid, 0.0f, 0.0f, 1
+        };
         // 选中高亮：LessEqual、不写深度、线框填充。
         // - LessEqual：高亮线就贴在面上，Less 会被自己遮掉
         // - 不写深度：否则后画的网格会被高亮线挡住
         // - Wireframe：顶点是三角形，靠填充模式画出每个面的三条边
-        static const PipelineStateHint kHighlight3DState{ 1, 0, DepthFunc::LessEqual, FillMode::Wireframe };
+        static const PipelineStateHint kHighlight3DState{
+            1, 0, DepthFunc::LessEqual, FillMode::Wireframe, 0.0f, 0.0f, 1
+        };
         // 变换手柄（gizmo）：开深度测试、不写深度、实心 + 深度偏移 1/1。
         // - 不写深度：手柄之间不该互相遮挡，前后关系由提交顺序决定
         // - 深度偏移：手柄常常与网格表面共面，LessEqual 也压不住 z-fighting，
         //   靠 polygon offset 把手柄整体往观察者方向推一格（宿主原来就是
         //   glEnable(GL_POLYGON_OFFSET_FILL) + glPolygonOffset(1, 1)）
-        static const PipelineStateHint kGizmo3DState{ 1, 0, DepthFunc::LessEqual, FillMode::Solid, 1.0f, 1.0f };
+        static const PipelineStateHint kGizmo3DState{
+            1, 0, DepthFunc::LessEqual, FillMode::Solid, 1.0f, 1.0f, 1
+        };
 
         // 与 renderx.h 的 DefaultPipeline 枚举一一对应。
         // 覆盖层统一走 P3C4：缩放时与图元几何一致变换，且支持半透明。
@@ -1633,6 +1652,10 @@ namespace Render::RT::detail
             // 四边形，因为 macOS 的 maxLineWidth 是 1.0）。与 Highlight3D 同格式
             // 同拓扑，靠 fillMode + 深度偏移区分成两条管线。
             { DP::Gizmo3D, VF::P3C4, RS::World, PT::Triangles, "Gizmo3D", nullptr, &kGizmo3DState },
+            // 半透明网格：与 Mesh3D 同格式同空间同拓扑，只有混合与深度写入不同，
+            // 靠状态差异区分成两条管线。
+            { DP::Mesh3DTransparent, VF::P3N3, RS::World, PT::Triangles, "Mesh3DTransparent",
+                nullptr, &kMesh3DTransparentState },
         };
         static_assert(sizeof(kEntries) / sizeof(kEntries[0]) == static_cast<size_t>(DP::Count),
             "内建管线表必须覆盖 DefaultPipeline 的全部取值");

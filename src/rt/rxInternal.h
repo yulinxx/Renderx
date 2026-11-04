@@ -257,6 +257,8 @@ namespace Render::RT::detail
         /// 深度偏移。两者都为 0 表示关闭，见 PipelineDesc::depthBiasConstant。
         float depthBiasConstant = 0.0f;
         float depthBiasSlope = 0.0f;
+        /// 是否开启颜色混合。默认开（2D 覆盖层现状），3D 不透明网格显式关掉。
+        uint8_t blendEnable = 1;
     };
 
     /// 管线缓存键：同一组状态只建一条管线
@@ -683,6 +685,8 @@ namespace Render::RT::detail
         RHI::TextureHandle offscreenDepthTexture{};
         uint32_t offscreenWidth = 0;
         uint32_t offscreenHeight = 0;
+        /// 离屏深度纹理由 Session 自动创建（调用方未显式给深度附件时为 true）
+        bool ownsOffscreenDepthTexture = false;
 
         bool inFrame = false;
         RHI::ICommandList* cmd = nullptr;
@@ -797,6 +801,14 @@ namespace Render::RT::detail
         RxResult setRenderTarget(RHI::TextureHandle colorTexture,
                                  RHI::TextureHandle depthTexture,
                                  uint32_t width, uint32_t height);
+
+        /**
+         * @brief 释放 Session 自动创建的离屏深度纹理
+         *
+         * 只销毁 ownsOffscreenDepthTexture 为 true 的那张；调用方显式传入的
+         * 深度纹理所有权归调用方，这里不能碰。
+         */
+        void releaseAutoDepthTexture();
 
     private:
         /**

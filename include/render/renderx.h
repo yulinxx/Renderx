@@ -104,6 +104,11 @@
 //      它只用到 x/y，等于把相机当成正交俯视，用在 3D 斜视角下会误裁。
 //      新增接口为纯追加，结构体尺寸未变，故只抬 minor。
 //
+// 5.5：3D 网格半透明管线。DefaultPipeline 追加 Mesh3DTransparent（枚举尾部
+//      追加、既有取值不变，Count 由 22 变 23）。与 Mesh3D 的差别仅在渲染状态：
+//      开混合、不写深度，绘制顺序由调用方排序键决定。未改任何结构体尺寸，
+//      故只抬 minor。
+//
 // 5.4：材质槽位释放。新增 rxMaterialRemove：宿主按图元创建的材质此前无处释放，
 //      每次重建渲染器都会把整张材质表留在 Runtime 上（Metal 的 Runtime 是
 //      进程级共享的，泄漏随之跨视口累积）。槽位不复用前 table 无上限，
@@ -114,12 +119,12 @@
 //      宿主自己拼四边形」。rxFontLoad 被 rxFontCreate 系列取代，签名不兼容，
 //      故抬 major。旧接口恒返回 ErrorUnsupportedBackend，无可用调用方。
 #define RENDERX_ABI_VERSION_MAJOR 5
-#define RENDERX_ABI_VERSION_MINOR 4
+#define RENDERX_ABI_VERSION_MINOR 5
 #define RENDERX_ABI_VERSION       ((RENDERX_ABI_VERSION_MAJOR << 16) | RENDERX_ABI_VERSION_MINOR)
 
 // packed 语义版本 (major<<16)|(minor<<8)|patch
 #define RENDERX_VERSION_MAJOR 5
-#define RENDERX_VERSION_MINOR 4
+#define RENDERX_VERSION_MINOR 5
 #define RENDERX_VERSION_PATCH 0
 #define RENDERX_VERSION       ((RENDERX_VERSION_MAJOR << 16) | (RENDERX_VERSION_MINOR << 8) | RENDERX_VERSION_PATCH)
 
@@ -467,7 +472,16 @@ namespace Render
              * （先不透明后半透明），这与 2D 覆盖层的做法一致。
              */
             Gizmo3D = 21,
-            Count = 22,
+            /**
+             * 3D 网格半透明（P3N3 + 世界空间 + 三角形）。
+             *
+             * 与 Mesh3D 的唯一差别是渲染状态：开混合（SrcAlpha / OneMinusSrcAlpha）、
+             * 关闭深度写入、深度测试仍为 LessEqual。这样后画的半透明面不会把
+             * 先画的同场景物体从深度缓冲里剔掉。绘制顺序由调用方的排序键决定，
+             * 调用方必须保证半透明命令按视距从远到近提交（排序键升序 = 先画）。
+             */
+            Mesh3DTransparent = 22,
+            Count = 23,
         };
 
         // ==================== 创建描述 ====================

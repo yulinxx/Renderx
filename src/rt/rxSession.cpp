@@ -164,6 +164,8 @@ namespace Render::RT::detail
         {
             surface->boundSession = nullptr;
         }
+        // 自动挂载的离屏深度纹理由 Session 拥有，销毁前必须还给设备
+        releaseAutoDepthTexture();
         auto& list = runtime->sessions;
         list.erase(std::remove(list.begin(), list.end(), this), list.end());
         runtime = nullptr;
@@ -231,6 +233,39 @@ namespace Render::RT::detail
         }
         // 离屏渲染不需要 acquireNextImage（无交换链）
         const bool isOffscreen = offscreenColorTexture.valid();
+        // 离屏目标必须在开帧前补挂深度附件：没有深度缓冲时，GL 的深度测试
+        // 恒通过，所有三角面按提交顺序互相覆盖，导出图会出现穿模/内外翻转。
+        // 主视口的深度格式由 Surface 报告为 D32Float，这里保持一致，
+        // 使离屏与视口复用同一批管线变体。
+        if (isOffscreen && !offscreenDepthTexture.valid() && !inFrame)
+        {
+            if (offscreenWidth > 0 && offscreenHeight > 0)
+            {
+                RHI::TextureDesc depthDesc;
+                depthDesc.width = offscreenWidth;
+                depthDesc.height = offscreenHeight;
+                depthDesc.format = RHI::Format::D32Float;
+                depthDesc.usage = RHI::TextureUsage::DepthStencilAttachment;
+                depthDesc.debugName = "RxSessionAutoDepth";
+                const RHI::TextureHandle depth = runtime->device->createTexture(depthDesc);
+                if (depth.valid())
+                {
+                    offscreenDepthTexture = depth;
+                    ownsOffscreenDepthTexture = true;
+                }
+                else
+                {
+                    runtime->log.warn(
+                        "[rt] rxSessionBeginFrame: auto depth attachment creation failed, "
+                        "depth test will pass unconditionally");
+                }
+            }
+            else
+            {
+                runtime->log.warn(
+                    "[rt] rxSessionBeginFrame: offscreen target has zero extent, depth attachment skipped");
+            }
+        }
         if (!isOffscreen)
         {
             // GL 后端在 acquireNextImage 内部完成 makeCurrent，宿主不需要也不应该自己做。
@@ -1047,8 +1082,20 @@ namespace Render::RT::detail
             return RxResult::ErrorUnknown;
         }
 
+        // 目标未变化且调用方仍不提供深度时保留已挂载的自动深度，避免每次
+        // 截图/导出都重建一张同尺寸深度纹理；尺寸或颜色附件变了就重建。
+        const bool keepAutoDepth = ownsOffscreenDepthTexture && !depthTexture.valid() &&
+            colorTexture.valid() && colorTexture == offscreenColorTexture &&
+            width == offscreenWidth && height == offscreenHeight;
+        if (ownsOffscreenDepthTexture && !keepAutoDepth)
+        {
+            releaseAutoDepthTexture();
+        }
         offscreenColorTexture = colorTexture;
-        offscreenDepthTexture = depthTexture;
+        if (!keepAutoDepth)
+        {
+            offscreenDepthTexture = depthTexture;
+        }
         offscreenWidth = width;
         offscreenHeight = height;
 
@@ -1058,6 +1105,16 @@ namespace Render::RT::detail
             width,
             height);
         return RxResult::Ok;
+    }
+
+    void Session::releaseAutoDepthTexture()
+    {
+        if (ownsOffscreenDepthTexture && offscreenDepthTexture.valid() && runtime && runtime->device)
+        {
+            runtime->device->destroyTexture(offscreenDepthTexture);
+            offscreenDepthTexture = {};
+        }
+        ownsOffscreenDepthTexture = false;
     }
 
     RxResult Session::queryVisibility(
