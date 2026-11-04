@@ -154,11 +154,10 @@ gtest_discover_tests(RenderxGLTests DISCOVERY_TIMEOUT 120)
 
 set_property(TARGET RenderxTests RenderxGLTests PROPERTY FOLDER "Tests")
 
-# 关闭 unity build：RhiCoreTests.cpp 用 using namespace Render::RHI，
-# RxRuntimeTests.cpp 用 using namespace Render::RT，合并进同一翻译单元后
-# Capabilities / BufferDesc / SurfaceDesc / FrameStats 等同名类型全部歧义。
-# 需要重构代码消除类型冲突后才能启用。
-set_target_properties(RenderxGLTests PROPERTIES UNITY_BUILD OFF)
+# 继承全局 unity build（SANYI_UNITY_BUILD）。
+# RhiCoreTests.cpp 与 RxRuntimeTests.cpp 曾分别 using namespace Render::RHI /
+# Render::RT，合并进同一翻译单元后 Capabilities / BufferDesc / SurfaceDesc /
+# FrameStats 等同名类型全部歧义；冲突需在测试源码内以显式限定名消除。
 
 if(MSVC)
     target_compile_options(RenderxTests PRIVATE /utf-8)

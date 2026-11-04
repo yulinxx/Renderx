@@ -18,6 +18,10 @@
 
 #include <vector>
 
+// 用独立命名空间包裹本文件：unity build 下多个测试文件合并进同一 TU，
+// Render::RHI 与 Render::RT 存在同名类型，文件级 using 会跨文件泄漏并产生歧义。
+namespace RenderxFboCacheTestDetail
+{
 using namespace Render::RHI;
 
 // glLoader.h 只兜底了 GL_FRAMEBUFFER_COMPLETE，未兜底 incomplete 系列
@@ -260,3 +264,4 @@ TEST_F(GlFboCacheFixture, DeviceDestructionReleasesCachedFramebuffers)
 
     EXPECT_EQ(StubGlState::get().deletedFramebuffers, 1) << "设备销毁时缓存的 FBO 也要还给驱动";
 }
+}  // namespace RenderxFboCacheTestDetail

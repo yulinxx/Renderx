@@ -27,6 +27,11 @@
 #include <string>
 #include <vector>
 
+// 用独立命名空间包裹本文件：unity build 下多个测试文件合并进同一 TU，
+// Render::RHI 与 Render::RT 存在同名类型（Capabilities / FrameStats 等），
+// 文件级 using 会跨文件泄漏并产生歧义。
+namespace RenderxRtTestDetail
+{
 using namespace Render::RT;
 
 namespace
@@ -2857,3 +2862,4 @@ TEST_F(RxIncrementalFixture, CullingVisibleCountMatchesBruteForce)
     rxDrawListDestroy(runtime, list);
     rxBufferDestroy(runtime, buffer);
 }
+}  // namespace RenderxRtTestDetail

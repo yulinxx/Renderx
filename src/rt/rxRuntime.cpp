@@ -938,7 +938,12 @@ namespace Render::RT::detail
         }
         if (materials.size() >= 0xFFFF)
         {
-            log.error("[rt] rxMaterialAdd: material count reached uint16 limit");
+            // 0xFFFF 是索引宽度硬顶（0 保留给「无材质」，可用下标 1..0xFFFE）。
+            // 调用方拿到 0 会把图元回落到默认材质，因此这里必须把在用/空闲
+            // 情况写进日志，便于判断是「真的建了这么多」还是「引用没释放」。
+            log.error("[rt] rxMaterialAdd: material table full (%llu slots, %llu free), index width is uint16",
+                static_cast<unsigned long long>(materials.size()),
+                static_cast<unsigned long long>(m_freeMaterials.size()));
             return 0;
         }
         materials.push_back(desc);
