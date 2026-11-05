@@ -764,7 +764,7 @@ DLL 不再从磁盘读取字体。原先 `renderCreateDevice` 用 `std::filesyst
 ```bash
 # 需要 GTest 支持
 find_package(GTest QUIET)
-option(BUILD_RENDERX_TESTS "Build Renderx unit tests" ON)
+# 全工程唯一测试开关：BUILD_TESTS=ON 且找到 GTest 时才构建 Test/
 add_subdirectory(Test)
 ```
 
