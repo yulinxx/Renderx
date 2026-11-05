@@ -450,21 +450,17 @@ install(DIRECTORY include/render
 )
 
 # ==================== 测试配置 ====================
-# 开关由根 Config.cmake 统一配置（BUILD_RENDERX_TESTS）。
-# 独立构建（Renderx 作为顶层项目）时不走集成构建的取值约束：这里以「顶层构建且
-# GTest 可用」作为是否加入 Test 子目录的**局部判据**，不改写 Config.cmake 的开关。
+# 测试是否构建统一由 BUILD_TESTS 与 RENDERX 模块键决定，独立构建不再局部强制开启。
 #
 # 用 CONFIG 模式：vcpkg 的 GTest 是 config 包，无 CONFIG 时 find_package 会走
 # CMake 内置 FindGTest.cmake，找不到 vcpkg 里的库。
 find_package(GTest CONFIG QUIET)
-set(_renderx_build_tests ${BUILD_RENDERX_TESTS})
-if(PROJECT_IS_TOP_LEVEL AND GTest_FOUND)
-    set(_renderx_build_tests ON)
+if(BUILD_TESTS AND NOT GTest_FOUND AND PROJECT_IS_TOP_LEVEL)
+    # 独立构建入口没有 sanyi_find_gtest()，这里补同等的降级行为
+    sanyi_force_tests_off("GTest not found")
 endif()
-if(NOT GTest_FOUND)
-    set(_renderx_build_tests OFF)
-endif()
-if(_renderx_build_tests)
+sanyi_module_tests_enabled(RENDERX _renderx_tests)
+if(_renderx_tests AND GTest_FOUND)
     add_subdirectory(Test)
 endif()
 
@@ -475,7 +471,7 @@ message(STATUS "========================================")
 message(STATUS "  [Single-layer: ${PROJECT_NAME}]")
 message(STATUS "========================================")
 message(STATUS "  Version:     ${PROJECT_VERSION}")
-message(STATUS "  Build Tests: ${_renderx_build_tests}")
+sanyi_print_test_status()
 message(STATUS "  Output:      ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
 message(STATUS "========================================")
 message(STATUS "")
