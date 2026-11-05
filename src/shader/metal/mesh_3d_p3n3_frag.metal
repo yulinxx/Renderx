@@ -27,7 +27,7 @@ struct RxDirectionalLight
     float4 directionAndEnabled;  // offset 0：xyz=direction，w=enabled(uint 位模式)
     float4 colorAndIntensity;    // offset 16：xyz=color，w=intensity
 };
-static_assert(sizeof(RxDirectionalLight) == 32, "RxDirectionalLight 必须 32 字节");
+static_assert(sizeof(RxDirectionalLight) == 32, "RxDirectionalLight must be 32 bytes");
 
 struct FrameUniforms
 {
@@ -45,7 +45,7 @@ struct FrameUniforms
     float uExposure;               // offset 144
     float uLightingPad0[3];        // offset 148-159：尾占位（4 对齐，不能用 float3）
 };
-static_assert(sizeof(FrameUniforms) == 160, "FrameUniforms 必须与 Lighting3DDesc 同为 160 字节");
+static_assert(sizeof(FrameUniforms) == 160, "FrameUniforms must be 160 bytes, same as Lighting3DDesc");
 
 // 计算一个方向光的贡献
 float3 calcDirectionalLight(float3 N, float3 V, float3 L,

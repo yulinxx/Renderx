@@ -32,7 +32,7 @@ struct RxDirectionalLight
     float4 directionAndEnabled;  // offset 0：xyz=direction，w=enabled(uint 位模式)
     float4 colorAndIntensity;    // offset 16：xyz=color，w=intensity
 };
-static_assert(sizeof(RxDirectionalLight) == 32, "RxDirectionalLight 必须 32 字节");
+static_assert(sizeof(RxDirectionalLight) == 32, "RxDirectionalLight must be 32 bytes");
 
 struct FrameUniforms
 {
@@ -51,7 +51,7 @@ struct FrameUniforms
     float uLightingPad0[3];        // offset 148-159：尾占位（4 对齐，不能用 float3）
 };
 // 钉死与 Lighting3DDesc 的 160 字节约定（renderx.h 有同名 static_assert）
-static_assert(sizeof(FrameUniforms) == 160, "FrameUniforms 必须与 Lighting3DDesc 同为 160 字节");
+static_assert(sizeof(FrameUniforms) == 160, "FrameUniforms must be 160 bytes, same as Lighting3DDesc");
 
 vertex RxVertexOut vs_main(RxVertexIn in [[stage_in]],
                            constant RxPushConstants& pc [[buffer(30)]],

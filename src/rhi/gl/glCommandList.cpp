@@ -909,7 +909,7 @@ namespace Render::RHI::gl
         const GLFuncs& f = m_device->gl();
         if (!f.DispatchCompute)
         {
-            m_device->log().error("[gl] dispatchCompute: 当前上下文不支持计算着色器");
+            m_device->log().error("[gl] dispatchCompute: compute shaders are not supported in the current context");
             return;
         }
         flushPushConstants();

@@ -83,9 +83,9 @@ namespace Render::RT::detail
         float matSpecular[3]{};
         float matShininess = 1.0f;
     };
-    static_assert(sizeof(PushConstants) == 128, "PushConstants 与 shader 中的 std140 块必须一致");
-    static_assert(offsetof(PushConstants, matDiffuse) == 80, "3D 材质段必须从偏移 80 开始");
-    static_assert(offsetof(PushConstants, matSpecular) == 112, "std140 要求 vec3 按 16 字节对齐");
+    static_assert(sizeof(PushConstants) == 128, "PushConstants must match the std140 block in the shaders");
+    static_assert(offsetof(PushConstants, matDiffuse) == 80, "3D material block must start at offset 80");
+    static_assert(offsetof(PushConstants, matSpecular) == 112, "std140 requires vec3 to be 16-byte aligned");
 
     constexpr uint32_t kPushConstantBytes = sizeof(PushConstants);
 
@@ -103,7 +103,7 @@ namespace Render::RT::detail
     {
         Lighting3DDesc lighting{};
     };
-    static_assert(sizeof(FrameUniforms) == 160, "FrameUniforms 与 shader 中的 std140 块必须一致");
+    static_assert(sizeof(FrameUniforms) == 160, "FrameUniforms must match the std140 block in the shaders");
 
     constexpr uint32_t kFrameUniformBytes = sizeof(FrameUniforms);
 
@@ -124,7 +124,7 @@ namespace Render::RT::detail
     /// 单帧 UBO 的对齐步长：Metal 的 uniformBufferOffsetAlignment 上限是 256，
     /// 取最大对齐可以覆盖全部后端（GL/Null 按 256 对齐同样合法）。
     constexpr uint32_t kFrameUniformStride = 256;
-    static_assert(kFrameUniformBytes <= kFrameUniformStride, "FrameUniforms 超出单帧 UBO 步长");
+    static_assert(kFrameUniformBytes <= kFrameUniformStride, "FrameUniforms exceeds the per-frame UBO stride");
 
     /// 顶点格式对应的属性布局，供建管线时展开
     struct VertexLayout
