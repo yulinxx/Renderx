@@ -520,12 +520,31 @@ namespace
         }
 
         /// 取 from 之后新建管线的 depthFmt=（管线键的深度维度，见
-        /// createPipelineFromKey 的 debug 日志）。只比较「两次是否不同」，
+        /// createPipelineFromKey 的 debug 日志）。只比较「几次是否不同」，
         /// 不依赖 Format 的具体枚举值。
+        ///
+        /// 这条取证链要求「一条管线 = 一行日志」。rxRuntime.cpp 曾经按 200ms
+        /// 对这行做进程级节流（且 static 跨 Runtime 实例共享），同一进程里
+        /// 别的 fixture 刚打过日志就会把本用例的整段记录吞掉，表现为按运行
+        /// 顺序随机失败；现已在生产侧移除，缓存本身已保证日志量有界。
         std::vector<int> depthFormatsCreatedSince(size_t from) const
         {
+            return parseDepthFormats(from, sink.lines.size());
+        }
+
+        /// 取 to 之前最后一条管线创建日志的 depthFmt。内建管线在 Runtime
+        /// 创建期按 Unknown 深度预热，用它当基准值，避免硬编码 Format 枚举。
+        /// 返回 -1 表示取证日志缺失，调用方必须显式失败而不是继续比大小。
+        int lastDepthFormatBefore(size_t to) const
+        {
+            const auto formats = parseDepthFormats(0, std::min(to, sink.lines.size()));
+            return formats.empty() ? -1 : formats.back();
+        }
+
+        std::vector<int> parseDepthFormats(size_t from, size_t to) const
+        {
             std::vector<int> formats;
-            for (size_t i = from; i < sink.lines.size(); ++i)
+            for (size_t i = from; i < to; ++i)
             {
                 const std::string& line = sink.lines[i];
                 const size_t at = line.find("depthFmt=");
@@ -1159,12 +1178,23 @@ TEST_F(MetalOffscreenFixture, Mesh3DDoubleSidedLightsBackFacingQuad)
 /**
  * 深度格式必须进管线缓存键（Task 4 的核心）。
  *
- * 同一条内建 Mesh3D 管线先在「无深度附件」的离屏目标上画一次（键为
- * RGBA8/Unknown），再到「D32Float 深度附件」的目标上画一次（键必须变成
- * RGBA8/D32Float）。Metal 把 depthAttachmentPixelFormat 烘进管线对象，
- * 因此若深度格式没进键，第二次会复用第一条管线并被校验层判为像素格式
- * 不匹配——在 MTL_DEBUG_LAYER=1 下直接失败。两次都画出正确颜色，即证明
- * 深度维度确实按深度附件补建了变体。
+ * 历史版本断言「第一帧无深度 → 第二帧 D32Float，必须各建一条变体」。
+ * 5906c49 之后 Session::beginFrame 会给**每一个**离屏目标自动挂一张
+ * D32Float 深度纹理（修离屏导出穿模），于是两帧的深度格式本来就相同：
+ * 第二帧理应命中缓存、一条新管线都不建。旧断言因此恒定失败，并不是产品
+ * 退化，不能用放宽断言或跳过糊过去，得按新语义重写。
+ *
+ * 现在的两段取证：
+ *   1. 内建管线在 Runtime 创建期按 Unknown 深度 + 交换链颜色格式预热；
+ *      第一帧离屏目标是 RGBA8/D32Float，必须补建一条**深度维度已改写**的
+ *      变体。若 depthFormat 没进键，变体会沿用 Unknown 深度，Metal 校验层
+ *      会判 depthAttachmentPixelFormat 不匹配。
+ *   2. 换到显式 D32Float 深度附件后，键没变 → 零新建管线（不泄漏变体），
+ *      且同一条变体仍要正确画出蓝色，证明它确实能用在带深度的 RenderPass 上。
+ *
+ * 「depthFormat 参与 equality/hash」这条纯逻辑另有
+ * RxRuntimeTests.cpp 的 PipelineKeyDepthFormatIsPartOfCacheKey 直接把关，
+ * 不依赖 GPU、日志或运行顺序。
  */
 TEST_F(MetalOffscreenFixture, Mesh3DPipelineVariantIsKeyedByDepthFormat)
 {
@@ -1175,31 +1205,36 @@ TEST_F(MetalOffscreenFixture, Mesh3DPipelineVariantIsKeyedByDepthFormat)
     const uint16_t meshPipeline = rxPipelineGetDefault(runtime, DefaultPipeline::Mesh3D);
     ASSERT_NE(meshPipeline, 0u) << "Mesh3D 管线未创建（缺 mesh_3d_p3n3 metallib）";
 
-    // ---- 第一帧：SetUp 设的离屏目标没有深度附件 ----
-    rxSessionSetClearColor(session, 0.0f, 0.0f, 0.0f, 1.0f);
-    const size_t logMarkWithoutDepth = sink.lines.size();
-    drawSingleQuad(redMaterial, meshPipeline, 0.5f, rxMakeSortKey(10, 0, 0, 0));
-    expectPixel(readback(), 32, 32, 255, 0, 0, 255, "no-depth target: quad is drawn");
-    const std::vector<int> noDepthCreated = depthFormatsCreatedSince(logMarkWithoutDepth);
-    ASSERT_EQ(noDepthCreated.size(), 1u)
-        << "首帧应恰好补建一条管线（内建预热键的深度格式与实际目标不符）";
-    const int noDepthFormat = noDepthCreated.front();
+    // SetUp 期间内建管线预热的深度格式（Unknown），作为比较基准；不硬编码枚举值。
+    const int prewarmDepthFormat = lastDepthFormatBefore(sink.lines.size());
+    ASSERT_GE(prewarmDepthFormat, 0)
+        << "预热期没有 pipeline created 日志，取证链断了（检查 rxRuntime.cpp 的日志是否被节流）";
 
-    // ---- 第二帧：换到带 D32Float 深度附件的目标，同一条内建管线 ----
+    // ---- 第一帧：离屏目标，beginFrame 自动挂 D32Float 深度附件 ----
+    rxSessionSetClearColor(session, 0.0f, 0.0f, 0.0f, 1.0f);
+    const size_t logMarkAutoDepth = sink.lines.size();
+    drawSingleQuad(redMaterial, meshPipeline, 0.5f, rxMakeSortKey(10, 0, 0, 0));
+    expectPixel(readback(), 32, 32, 255, 0, 0, 255, "auto-depth target: quad is drawn");
+    const std::vector<int> autoDepthCreated = depthFormatsCreatedSince(logMarkAutoDepth);
+    ASSERT_EQ(autoDepthCreated.size(), 1u)
+        << "离屏首帧应恰好补建一条管线（预热键与 RGBA8/D32Float 目标不符）";
+    // 核心断言（TR-4.1）：补建的变体必须按目标深度格式改写键，不能沿用预热的 Unknown。
+    EXPECT_NE(autoDepthCreated.front(), prewarmDepthFormat)
+        << "深度格式未进管线键：离屏变体仍沿用预热时的 Unknown 深度";
+
+    // ---- 第二帧：换成显式 D32Float 深度附件，同一条内建管线 ----
     const TextureHandle depthTarget = createDepthTarget();
     ASSERT_TRUE(rxValid(depthTarget));
     ASSERT_EQ(rxSessionSetRenderTarget(session, colorTarget, depthTarget, kWidth, kHeight),
               RxResult::Ok);
 
-    const size_t logMarkWithDepth = sink.lines.size();
+    const size_t logMarkExplicitDepth = sink.lines.size();
     drawSingleQuad(blueMaterial, meshPipeline, 0.5f, rxMakeSortKey(10, 0, 0, 0));
-    expectPixel(readback(), 32, 32, 0, 0, 255, 255, "depth target: quad is drawn");
-    const std::vector<int> withDepthCreated = depthFormatsCreatedSince(logMarkWithDepth);
-    ASSERT_EQ(withDepthCreated.size(), 1u) << "换到带深度附件的目标后必须再补建一条管线";
-    // 核心断言（TR-4.1）：深度格式确实进了缓存键——否则第二帧会命中第一帧
-    // 那条「无深度」的管线，校验层会报像素格式不匹配，而这里根本不会有新键。
-    EXPECT_NE(withDepthCreated.front(), noDepthFormat)
-        << "深度格式未进管线键：第二帧复用了无深度附件的管线";
+    expectPixel(readback(), 32, 32, 0, 0, 255, 255, "explicit depth target: quad is drawn");
+    // 自动深度与显式深度都是 D32Float：键不变，应命中同一条变体而不是再建一条。
+    const std::vector<int> explicitDepthCreated = depthFormatsCreatedSince(logMarkExplicitDepth);
+    EXPECT_TRUE(explicitDepthCreated.empty())
+        << "同深度格式却重复补建了 " << explicitDepthCreated.size() << " 条管线，缓存键不稳定";
 
     EXPECT_EQ(rxSessionSetRenderTarget(session, colorTarget, TextureHandle::Invalid, kWidth,
                                        kHeight),

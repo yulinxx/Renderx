@@ -8,7 +8,6 @@
 #include "shader/shaderLibrary.h"
 
 #include <algorithm>
-#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -1301,18 +1300,21 @@ namespace Render::RT::detail
         const auto index = static_cast<uint16_t>(pipelines.size() - 1);
         pipelineCache.emplace(key, index);
         // 深度格式进缓存键的取证日志（Test/RenderxMetalTests.mm 的
-        // Mesh3DPipelineVariantIsKeyedByDepthFormat 依赖这行）。管线按键缓存、
-        // 每个键只建一次，debug 级别不会造成日志洪水，无需宏开关。
-        static std::chrono::steady_clock::time_point s_lastPipelineLog;
-        auto now = std::chrono::steady_clock::now();
-        if (now - s_lastPipelineLog >= std::chrono::milliseconds(200))
-        {
-            s_lastPipelineLog = now;
-            log.debug("[rt] pipeline created idx=%u colorFmt=%d depthFmt=%d",
-                index,
-                static_cast<int>(key.colorFormat),
-                static_cast<int>(key.depthFormat));
-        }
+        // Mesh3DPipelineVariantIsKeyedByDepthFormat 依赖这行）。
+        //
+        // 这里**不能按时间节流**：本函数只在 pipelineCache 未命中时执行，
+        // 每个键本来就只建一次，日志量已经被缓存天然限死（上限 0xFFFF 条）；
+        // 反而曾经加过一段「200ms 内只打一条」的进程级 static 节流，把
+        // 「一条管线 = 一行取证日志」的契约破坏了：
+        //   - 同一进程里其它 Runtime（每个 GTest fixture 都会新建一个）刚打过日志，
+        //     本用例的两帧就可能被静默吞掉，断言随机拿到 0 条；
+        //   - 同一帧里连续补建两条不同键的管线也会被吞掉一条。
+        // 结果就是测试按运行顺序随机失败，而这行日志本身就是为了给
+        // 「深度格式是否进了缓存键」留证据的，丢一条等于证据链断了。
+        log.debug("[rt] pipeline created idx=%u colorFmt=%d depthFmt=%d",
+            index,
+            static_cast<int>(key.colorFormat),
+            static_cast<int>(key.depthFormat));
         return index;
     }
 

@@ -13,6 +13,7 @@
 
 #include "render/renderx.h"
 #include "rt/rxIncremental.h"
+#include "rt/rxInternal.h"  // PipelineKey / PipelineKeyHash（缓存键契约的直接断言）
 #include "shader/shaderLibrary.h"
 
 #include <algorithm>
@@ -2861,5 +2862,37 @@ TEST_F(RxIncrementalFixture, CullingVisibleCountMatchesBruteForce)
 
     rxDrawListDestroy(runtime, list);
     rxBufferDestroy(runtime, buffer);
+}
+
+/**
+ * 深度附件格式必须是管线缓存键的一维（TR-4.1 的纯逻辑版本）。
+ *
+ * Metal 把 depthAttachmentPixelFormat 烘进 MTLRenderPipelineState，绑到格式
+ * 不同的 RenderPass 会被校验层直接拒绝。离屏 Metal 用例
+ * Mesh3DPipelineVariantIsKeyedByDepthFormat 靠像素 + 日志取证，但 5906c49
+ * 起离屏目标一律自动挂 D32Float 深度，两帧不再产生「不同深度格式」的对照；
+ * 这条用例因此独立于 GPU、日志节流和运行顺序，直接钉住键本身的契约：
+ * 只改 depthFormat 一维，equality 与 hash 都必须跟着变。
+ */
+TEST(RxRuntimePipelineKey, DepthFormatIsPartOfCacheKey)
+{
+    using Render::RT::detail::PipelineKey;
+    using Render::RT::detail::PipelineKeyHash;
+
+    PipelineKey noDepth;
+    noDepth.depthFormat = Render::RHI::Format::Unknown;
+
+    PipelineKey withDepth = noDepth;
+    withDepth.depthFormat = Render::RHI::Format::D32Float;
+
+    EXPECT_FALSE(noDepth == withDepth)
+        << "PipelineKey::operator== 漏掉 depthFormat：无深度管线会被带深度的 RenderPass 复用";
+    EXPECT_NE(PipelineKeyHash{}(noDepth), PipelineKeyHash{}(withDepth))
+        << "PipelineKeyHash 漏掉 depthFormat：pipelineCache 会静默命中错误的管线";
+
+    // 对照组：完全相同的键必须相等、散列一致，防止把「一律判不等」当成修好。
+    const PipelineKey same = withDepth;
+    EXPECT_TRUE(same == withDepth);
+    EXPECT_EQ(PipelineKeyHash{}(same), PipelineKeyHash{}(withDepth));
 }
 }  // namespace RenderxRtTestDetail
