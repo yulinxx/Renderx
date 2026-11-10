@@ -26,7 +26,7 @@ namespace RenderxRhiTestDetail
 {
 using namespace Render::RHI;
 
-namespace
+namespace RhiCoreFixtureDetail
 {
     /// 收集日志以便断言「失败路径确实报告了原因」，而不是静默返回
     struct LogSink
@@ -78,7 +78,9 @@ namespace
             return device->createSurface(desc);
         }
     };
-}  // namespace
+}  // namespace RhiCoreFixtureDetail
+
+using namespace RhiCoreFixtureDetail;
 
 // ==================== 工厂：不做静默回退 ====================
 

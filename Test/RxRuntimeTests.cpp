@@ -35,7 +35,7 @@ namespace RenderxRtTestDetail
 {
 using namespace Render::RT;
 
-namespace
+namespace RxSessionFixtureDetail
 {
     /// 收集 DLL 日志，供「失败时必须留下可诊断记录」这类断言使用
     struct LogSink
@@ -125,7 +125,9 @@ namespace
         SurfaceHandle surface = SurfaceHandle::Invalid;
         SessionHandle session = SessionHandle::Invalid;
     };
-}  // namespace
+}  // namespace RxSessionFixtureDetail
+
+using namespace RxSessionFixtureDetail;
 
 // ==================== 版本与后端 ====================
 
@@ -964,7 +966,7 @@ TEST(RxSortKey, LayerDominatesThenTransparencyThenDepthThenSeq)
 
 // ==================== 持久几何仓 ====================
 
-namespace
+namespace RxIncrementalFixtureDetail
 {
     GeometryStoreDesc makeStoreDesc(uint64_t initialBytes, uint64_t maxBytes, uint32_t granularity)
     {
@@ -980,7 +982,9 @@ namespace
     class RxIncrementalFixture : public RxSessionFixture
     {
     };
-}  // namespace
+}  // namespace RxIncrementalFixtureDetail
+
+using namespace RxIncrementalFixtureDetail;
 
 TEST_F(RxIncrementalFixture, GeometryStoreAllocatesAlignedBlocks)
 {

@@ -29,7 +29,7 @@ using namespace Render::RHI;
     #define GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT 0x8CD6
 #endif
 
-namespace
+namespace GlFboCacheFixtureDetail
 {
     /// 打桩 GL 状态：名字分配、删除计数、可控的完整性报告
     struct StubGlState
@@ -155,7 +155,9 @@ namespace
             return d;
         }
     };
-}  // namespace
+}  // namespace GlFboCacheFixtureDetail
+
+using namespace GlFboCacheFixtureDetail;
 
 TEST_F(GlFboCacheFixture, FirstRequestCreatesAndCachesOneEntry)
 {
