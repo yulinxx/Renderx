@@ -96,7 +96,7 @@ namespace Render::RHI
         //
         // Metal 后端（设备/表面/资源 + 管线与绘制）在 Apple 平台上已经可用，
         // 但产品路径不会落到这里的自动分支：宿主视口通过编译期开关
-        // SY_ENABLE_METAL_VIEWPORT 把具体后端显式传给 Runtime（见根 CMakeLists），
+        // APR_ENABLE_METAL_VIEWPORT 把具体后端显式传给 Runtime（见根 CMakeLists），
         // Runtime 解析 Auto 之前就已确定后端。
         // 这里保持 OpenGL 作为 Auto 的结果，是为了让「没显式指定后端」的调用方
         // （测试、工具、无头路径）行为完全不变。

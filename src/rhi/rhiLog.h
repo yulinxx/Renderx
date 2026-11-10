@@ -2,8 +2,8 @@
  * @file rhiLog.h
  * @brief RHI 内部日志转发（只依赖注入的回调，不依赖任何日志库）
  *
- * 旧实现里 17 个文件硬依赖 `Log/SyLogger.h`，这让「渲染 DLL 零业务耦合」
- * 无法成立：宿主必须同时携带 SanYi 的 Log 库才能加载 RenderX。
+ * 旧实现里 17 个文件硬依赖 `Log/AprLogger.h`，这让「渲染 DLL 零业务耦合」
+ * 无法成立：宿主必须同时携带 April 的 Log 库才能加载 RenderX。
  * 新 RHI 统一通过 DeviceDesc::logCallback 注入日志出口，
  * 未注入时静默丢弃（不是 fallback 到 stdout——库不该擅自污染宿主的输出）。
  */

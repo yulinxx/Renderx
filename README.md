@@ -19,7 +19,7 @@
 >   `DrawList`（命令由 DLL 持有，只 upsert 变化的槽位）。
 >   10 万条图元改一条时，两笔 O(n) 开销（重传顶点 / 重建命令）同时消掉。
 > - **Shader**：构建期编入二进制，运行期零文件 IO。
-> - **零业务耦合**：Renderx 目录下已无任何 `Log/SyLogger.h` 引用；
+> - **零业务耦合**：Renderx 目录下已无任何 `Log/AprLogger.h` 引用；
 >   `otool -L` / `ldd` 结果只有 OpenGL + libc++ + libSystem，**零第一方依赖**。
 > - **测试**：`RenderxTests` 34/34、`RenderxGLTests` 83/83，构建零警告。
 >
@@ -539,7 +539,7 @@ RenderPrimitiveType 枚举:
 
 **问题描述：** STL 导入原来直接使用 `StlLoader`，绕过了 `FileIOManager::importToIR()` 中立 IR 路径，与 DXF/STEP 等格式的导入架构不一致。
 
-**解决方案：** 创建 `StlParser` 实现 `IFileParser` 接口，将 STL 解析结果输出为中立 IR（`FioParseResult`），再通过 `FioEntityConverter` 转换为 `SyMeshEntity`。
+**解决方案：** 创建 `StlParser` 实现 `IFileParser` 接口，将 STL 解析结果输出为中立 IR（`FioParseResult`），再通过 `FioEntityConverter` 转换为 `AprMeshEntity`。
 
 **改动文件：**
 
@@ -702,7 +702,7 @@ option(BUILD_SHARED_LIBS "Build shared libraries" ON)
 | macOS | `OpenGL::GL` | - |
 
 **输出配置**：
-- Debug 版本添加 `_d` 后缀（`SanYiRender_d.dll`）
+- Debug 版本添加 `_d` 后缀（`AprRender_d.dll`）
 - 公开头文件安装到 `include/`
 - 动态库安装到 `bin/`，静态库安装到 `lib/`
 

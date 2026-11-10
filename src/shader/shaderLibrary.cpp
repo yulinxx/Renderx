@@ -70,7 +70,7 @@ namespace Render::shader
     bool find(const char* name, Language lang, ShaderBlob* out)
     {
         // 本文件刻意不做任何日志：它是 RenderX 里唯一曾经硬依赖
-        // 宿主日志库（Log/SyLogger.h）的地方，而查表本身是纯数据逻辑。
+        // 宿主日志库（Log/AprLogger.h）的地方，而查表本身是纯数据逻辑。
         // 失败原因由调用方结合自身上下文报告——调用方持有 RhiLogger，
         // 最终经 rxLogCallback 回到宿主。
         if (!name)

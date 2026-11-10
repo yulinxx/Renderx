@@ -21,16 +21,16 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/../Config.cmake)
 # 项目配置
 project(RenderX
     VERSION 2.0.0
-    DESCRIPTION "SanYi CAD Render Library (Industrial-Grade 2D/3D Rendering)"
+    DESCRIPTION "April CAD Render Library (Industrial-Grade 2D/3D Rendering)"
     LANGUAGES CXX
 )
 
-# 模块路径（引入统一入口 sanyi_add_shared_library）
-if(NOT SANYI_ROOT)
-    get_filename_component(SANYI_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
+# 模块路径（引入统一入口 apr_add_shared_library）
+if(NOT APR_ROOT)
+    get_filename_component(APR_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
 endif()
-include("${SANYI_ROOT}/CMake/SanYiPaths.cmake")
-include("${SANYI_ROOT}/CMake/Utils.cmake")
+include("${APR_ROOT}/CMake/AprPaths.cmake")
+include("${APR_ROOT}/CMake/Utils.cmake")
 
 # 编译器设置（由 Config.cmake 统一管理，此处不再重复）
 # 注意: C++ 标准、警告级别、构建类型等已在 Config.cmake 中配置
@@ -343,9 +343,9 @@ target_include_directories(RenderxShaders PUBLIC
 # ==================== 库目标配置 ====================
 
 # 创建渲染库目标（统一入口，显式 SHARED，不依赖 BUILD_SHARED_LIBS 全局选项）
-sanyi_add_shared_library(${PROJECT_NAME}
+apr_add_shared_library(${PROJECT_NAME}
     FOLDER "Render"
-    DESCRIPTION "SanYi CAD Render Library (Industrial-Grade 2D/3D Rendering)"
+    DESCRIPTION "April CAD Render Library (Industrial-Grade 2D/3D Rendering)"
     EXPORT_MACRO "RENDER_EXPORTS"
     SOURCES ${RENDER_SOURCES}
     HEADERS ${RENDER_PUBLIC_HEADERS}
@@ -456,10 +456,10 @@ install(DIRECTORY include/render
 # CMake 内置 FindGTest.cmake，找不到 vcpkg 里的库。
 find_package(GTest CONFIG QUIET)
 if(BUILD_TESTS AND NOT GTest_FOUND AND PROJECT_IS_TOP_LEVEL)
-    # 独立构建入口没有 sanyi_find_gtest()，这里补同等的降级行为
-    sanyi_force_tests_off("GTest not found")
+    # 独立构建入口没有 apr_find_gtest()，这里补同等的降级行为
+    apr_force_tests_off("GTest not found")
 endif()
-sanyi_module_tests_enabled(RENDERX _renderx_tests)
+apr_module_tests_enabled(RENDERX _renderx_tests)
 if(_renderx_tests AND GTest_FOUND)
     add_subdirectory(Test)
 endif()
@@ -471,12 +471,12 @@ message(STATUS "========================================")
 message(STATUS "  [Single-layer: ${PROJECT_NAME}]")
 message(STATUS "========================================")
 message(STATUS "  Version:     ${PROJECT_VERSION}")
-sanyi_print_test_status()
+apr_print_test_status()
 message(STATUS "  Output:      ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
 message(STATUS "========================================")
 message(STATUS "")
 
-sanyi_export_imported_target(${PROJECT_NAME}
+apr_export_imported_target(${PROJECT_NAME}
     LIB_NAME "${PROJECT_NAME}"
     PUBLIC_INCLUDE_DIRS
         "${CMAKE_CURRENT_SOURCE_DIR}/include"

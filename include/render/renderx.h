@@ -501,7 +501,7 @@ namespace Render
          * @brief 日志回调
          *
          * DLL 不依赖宿主的日志库。此前 17 个源文件直接
-         * #include "Log/SyLogger.h"，这是 RenderX 无法独立复用的原因；
+         * #include "Log/AprLogger.h"，这是 RenderX 无法独立复用的原因；
          * 现在整个 Renderx 目录下已无该头文件的任何引用，
          * 日志一律通过本回调交回宿主。message 仅在回调期间有效。
          */

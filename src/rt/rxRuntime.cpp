@@ -8,6 +8,7 @@
 #include "shader/shaderLibrary.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -1667,6 +1668,7 @@ namespace Render::RT::detail
         static_assert(sizeof(kEntries) / sizeof(kEntries[0]) == static_cast<size_t>(DP::Count),
             "内建管线表必须覆盖 DefaultPipeline 的全部取值");
 
+        const auto batchStart = std::chrono::steady_clock::now();
         uint32_t ready = 0;
         for (const Entry& entry : kEntries)
         {
@@ -1692,9 +1694,57 @@ namespace Render::RT::detail
             }
         }
 
-        log.debug("[rt] Built-in pipelines ready %u/%u (embedded shaders: %u)",
-            ready,  // 内建管线就绪
+        // 启动只留一行汇总：单条 "pipeline created" 已降到 Debug，
+        // 这里按「相同 color/depth 格式合并计数」报告本批次的真实结果。
+        // 失败仍由循环里的 log.error 单独输出，不并入汇总。
+        struct FormatBucket
+        {
+            RHI::Format color;
+            RHI::Format depth;
+            uint32_t count;
+        };
+        FormatBucket buckets[static_cast<size_t>(DP::Count)]{};
+        size_t bucketCount = 0;
+        for (size_t i = 0; i < static_cast<size_t>(DP::Count); ++i)
+        {
+            const uint16_t index = defaults[i];
+            if (index == 0 || index >= pipelineKeys.size())
+            {
+                continue;
+            }
+            const PipelineKey& key = pipelineKeys[index];
+            size_t slot = 0;
+            while (slot < bucketCount &&
+                !(buckets[slot].color == key.colorFormat && buckets[slot].depth == key.depthFormat))
+            {
+                ++slot;
+            }
+            if (slot == bucketCount)
+            {
+                buckets[bucketCount++] = { key.colorFormat, key.depthFormat, 0 };
+            }
+            buckets[slot].count += 1;
+        }
+        std::string formats;
+        char line[96];
+        for (size_t i = 0; i < bucketCount; ++i)
+        {
+            std::snprintf(line,
+                sizeof(line),
+                "%scolorFmt=%d depthFmt=%d: %u",
+                i == 0 ? "" : ", ",
+                static_cast<int>(buckets[i].color),
+                static_cast<int>(buckets[i].depth),
+                buckets[i].count);
+            formats += line;
+        }
+        const double elapsedMs =
+            std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - batchStart).count();
+        log.info("[rt] built-in pipelines ready: %u/%u in %.1f ms (%s; embedded shaders: %u)",
+            ready,
             static_cast<uint32_t>(DP::Count),
+            elapsedMs,
+            formats.empty() ? "none" : formats.c_str(),
             shader::count());
         return ready == static_cast<uint32_t>(DP::Count);
     }
