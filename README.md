@@ -2,16 +2,16 @@
 
 面向 CAD 的 2D/3D 渲染 DLL。三条硬性目标：**跨平台**、**多窗口**、**零业务耦合**。
 
-> **当前状态（2026-08-25）**
+> **当前状态（2026-11-11）**
 >
-> - **公共 ABI**：`include/render/renderx.h` 是唯一公共头（50 个 `rx*` 导出，
+> - **公共 ABI**：`include/render/renderx.h` 是唯一公共头（64 个 `rx*` 导出，
 >   零 STL 跨界、全 POD、全 `static_assert` 锁尺寸、无 `bool`、句柄为
 >   `enum class : uint64_t`）。旧的 `render.h` / `RenderTypes.h` /
 >   `runtime_session.h` 已删除。
 > - **RHI**：后端中立的命令记录模型（`ISurface` / `IGpuDevice` / `ICommandList`，
 >   `(set, binding)` 描述符槽 + pushConstants，`Capabilities` 能力查询，
->   `RhiResult` 错误码）。**已实现后端：Null + OpenGL**。
->   Metal / Vulkan 的 `createDevice` 明确返回 `nullptr` 并报错，
+>   `RhiResult` 错误码）。**已实现后端：Null + OpenGL + Metal（仅 Apple 平台，`src/rhi/metal/`）**。
+>   Vulkan 与「非 Apple 平台的 Metal」的 `createDevice` 明确返回 `nullptr` 并报错，
 >   **不静默回退到 Null**——回退的表现是画面全黑而调用方拿不到任何错误。
 > - **RT 层**：Runtime（1 设备 + 共享资源）/ Surface（N 窗口）/ Session（N 视口）
 >   已切到 `renderx.h`。多窗口共享 GPU 资源，不再是「多窗口 = 多设备」。
@@ -205,7 +205,7 @@ renderUpdateMaterial(dev, matIdx, &newMatDesc);
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│  公共 ABI：include/render/renderx.h（48 个 rx* 导出）          │
+│  公共 ABI：include/render/renderx.h（64 个 rx* 导出）          │
 ├──────────────────────────────────────────────────────────────┤
 │  RT 层：src/rt/ + src/c_api/rxCApi.cpp                        │
 │    Runtime（1 设备 + 管线缓存 / shader / 纹理 / 瞬态环）       │
@@ -581,8 +581,8 @@ RenderPrimitiveType 枚举:
 
 | 文件 | 修改内容 |
 |------|----------|
-| `Renderx/src/core/render_world_3d.h` | 新建：3D 渲染世界声明 |
-| `Renderx/src/core/render_world_3d.cpp` | 新建：3D 渲染世界实现 |
+| `Renderx/src/core/render_world_3d.h` | 新建：3D 渲染世界声明（历史记录；`src/core/` 后续并入 `src/rt/`，该文件已不存在） |
+| `Renderx/src/core/render_world_3d.cpp` | 新建：3D 渲染世界实现（历史记录；同上） |
 | `UI3D/Src/Render/RenderWidget3D.cpp` | 3D 视图渲染器：固定管线 → 现代 GL（shader/VBO/VAO） |
 | `UI3D/Include/UI3D/Render3D/RenderWidget3D.h` | 添加现代 GL 成员与辅助方法声明 |
 
@@ -702,7 +702,7 @@ option(BUILD_SHARED_LIBS "Build shared libraries" ON)
 | macOS | `OpenGL::GL` | - |
 
 **输出配置**：
-- Debug 版本添加 `_d` 后缀（`AprRender_d.dll`）
+- Debug 版本添加 `_d` 后缀（`RenderX_d.dll`）
 - 公开头文件安装到 `include/`
 - 动态库安装到 `bin/`，静态库安装到 `lib/`
 
@@ -770,7 +770,7 @@ add_subdirectory(Test)
 
 ## API 概要
 
-`include/render/renderx.h` 是唯一公共头，共 48 个 `rx*` 导出。
+`include/render/renderx.h` 是唯一公共头，共 64 个 `rx*` 导出。
 旧的 `render.h`（62 个 `render*` 函数）与 `runtime_session.h`（26 个函数）已删除：
 前者把图元语义、几何离散化、场景图、文本排版全部塞进了渲染 DLL；
 后者与 `renderx.h` 在 `namespace Render::RT` 里有 11 个同名但不兼容的类型。
@@ -927,7 +927,8 @@ if (rxSessionBeginFrame(session) == RxResult::Ok)
 ### 当前缺口
 
 - **3D 离屏渲染**：✅ **已实现（v5.1）**。`rxTextureCreateRenderTarget` / `rxSessionSetRenderTarget` / `rxSessionReadPixelsFromTexture` 支持任意分辨率离屏渲染与读回。支持带深度附件的离屏渲染，可用于 3D 网格导出等高分辨率输出场景。
-- **Metal / Vulkan**：`RHI::createDevice` 对这两个后端返回 `nullptr` 并报错，不静默回退到 Null（回退的表现是画面全黑而调用方拿不到任何错误）。
+- **Metal**：✅ **已实现（仅 Apple 平台）**，`src/rhi/metal/` 提供设备、命令列表与资源实现。
+- **Vulkan / 非 Apple 平台的 Metal**：`RHI::createDevice` 返回 `nullptr` 并报错，不静默回退到 Null（回退的表现是画面全黑而调用方拿不到任何错误）。
 - **纹理配置**：`TextureDesc` 只有宽/高/像素三项，格式恒为 RGBA8Unorm、
   采样器恒为 `defaultSampler`（GL_LINEAR / CLAMP）。sRGB、mipmap、
   各向异性、最近邻采样都还没有表达位；需要时再扩字段，不预留空洞。
