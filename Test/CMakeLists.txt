@@ -45,7 +45,7 @@ target_include_directories(RenderxTests PRIVATE
 target_link_libraries(RenderxTests PRIVATE
     GTest::gtest
     GTest::gtest_main
-    RenderxShaders
+    ${RENDERX_SHADER_TARGET}
 )
 
 gtest_discover_tests(RenderxTests DISCOVERY_TIMEOUT 120)
@@ -143,7 +143,7 @@ endif()
 target_link_libraries(RenderxGLTests PRIVATE
     GTest::gtest
     GTest::gtest_main
-    RenderxShaders
+    ${RENDERX_SHADER_TARGET}
 )
 
 gtest_discover_tests(RenderxGLTests DISCOVERY_TIMEOUT 120)

@@ -19,6 +19,9 @@
 #ifndef GL_FRAMEBUFFER
     #define GL_FRAMEBUFFER 0x8D40
 #endif
+#ifndef GL_DRAW_FRAMEBUFFER_BINDING
+    #define GL_DRAW_FRAMEBUFFER_BINDING 0x8CA6
+#endif
 #ifndef GL_COPY_READ_BUFFER
     #define GL_COPY_READ_BUFFER 0x8F36
 #endif
@@ -136,6 +139,20 @@ namespace Render::RHI::gl
         }
 
         const GLFuncs& f = m_device->gl();
+        // 记录本 pass 之前的帧缓冲绑定，endRenderPass 时还原。
+        // 宿主（QOpenGLWidget）的默认帧缓冲是靠「当前绑定」捕获的，离屏 pass
+        // 若不还原，下一次 acquireNextImage 会把离屏 FBO 当成窗口帧缓冲，
+        // 后续所有绘制都落在离屏纹理上（还在采样同一张纹理），窗口画面冻结
+        // 成上一帧残留 —— 表现为拖动视图时整屏彩色碎片。
+        // 必须在 resolveFramebuffer 之前取：它内部的创建/完整性检查会临时
+        // 绑定 FBO 0，之后再取就只能拿到 0 了。
+        m_passSavedFramebuffer = 0;
+        if (f.GetIntegerv)
+        {
+            GLint previous = 0;
+            f.GetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &previous);
+            m_passSavedFramebuffer = static_cast<GLuint>(previous < 0 ? 0 : previous);
+        }
         // 显式附件 + FBO 解析失败（过期句柄/附件不完整）时绝不能落到默认帧缓冲：
         // 那会把本 pass 的清屏与绘制画到窗口/上一个目标上 —— 静默画错比崩溃难查得多。
         const bool hasExplicitTarget = (desc.colorAttachmentCount > 0 && desc.colorAttachments[0].texture.valid()) ||
@@ -212,6 +229,13 @@ namespace Render::RHI::gl
             return;
         }
         m_inRenderPass = false;
+        // 还原 pass 之前的帧缓冲绑定：离屏 pass 结束后必须让宿主的窗口帧缓冲
+        // 重新成为当前绑定，否则下一帧 acquireNextImage 会误捕离屏 FBO。
+        const GLFuncs& f = m_device->gl();
+        if (f.BindFramebuffer)
+        {
+            f.BindFramebuffer(GL_FRAMEBUFFER, m_passSavedFramebuffer);
+        }
     }
 
     void GlCommandList::applyPipelineState(const GlPipelineRecord& pipeline)

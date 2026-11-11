@@ -155,6 +155,8 @@ namespace Render::RHI::gl
         bool m_inRenderPass = false;
         /// 当前 RenderPass 目标尺寸：视口/裁剪的 y 翻转需要它
         ::Render::RHI::Extent2D m_passExtent{};
+        /// Pass 开始前的帧缓冲绑定，endRenderPass 时还原给宿主
+        GLuint m_passSavedFramebuffer = 0;
 
         ::Render::RHI::PipelineHandle m_pipelineHandle{};
 

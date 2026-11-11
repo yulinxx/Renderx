@@ -7,57 +7,21 @@
  * 本文件是 DLL 与调用方之间的完整契约，除本文件外不存在其他公共头。
  * 修改本文件即修改 ABI，必须同步 RENDERX_ABI_VERSION。
  *
- * 1. 零 STL、零 C++ 标准库类型跨界。
- *    唯一 include 是 <cstdint>。此前的 RenderTypes.h 同时扮演
- *    「DLL 公共 ABI 头」与「宿主内部 C++ 类型头」两个角色，含 7 个带
- *    std::vector 成员的结构（RenderCommand / RenderFrame /
- *    RenderOverlayUpdate 等）和返回 std::vector 的 inline 模板。
- *    虽然当时没有一个导出函数真的用到它们，但它们与 ABI 类型混在同一个头里、
- *    没有任何隔离标注——任何后续改动只要把它们放进导出签名，就会立刻引入
- *    allocator / _ITERATOR_DEBUG_LEVEL / MSVC Debug-vs-Release 不匹配的
- *    堆崩溃，而 code review 很难拦住。本文件通过物理隔离消除该风险。
- *
+ * 1. 零 STL、零 C++ 标准库类型跨界。唯一 include 是 <cstdint>。
  * 2. 结构体全部是 POD，且全部有 static_assert 锁定大小。
- *    此前只有 6 个结构有大小断言，而最关键的入参结构（DeviceDesc）
- *    的「校验」是一个只有注释的空 #ifdef _DEBUG 块。
- *
- * 3. ABI 面不使用 bool。
- *    C++ 标准未规定 sizeof(bool)。此前 DeviceDesc::debugLayer 用 bool，
- *    renderSetSceneEnvEx 甚至在签名里直接传 const bool* 数组。
- *    本文件统一用 uint8_t（0/1）。
- *
- * 4. 句柄是 enum class : uint64_t。
- *    既保证 8 字节的 C 布局，又让 RuntimeHandle 与 SessionHandle
- *    互不兼容——此前二者都是 uint64_t 的 typedef，可以静默互传。
- *
+ * 3. ABI 面不使用 bool，统一用 uint8_t（0/1）。
+ * 4. 句柄是 enum class : uint64_t，8 字节 C 布局 + 编译期类型隔离。
  * 5. 数组一律「指针 + 数量」，字符串一律 const char*（UTF-8, NUL 结尾）。
  *    内存所有权单向：调用方分配的内存在调用返回后 DLL 不再引用。
- *
  * 6. 不暴露任何 DLL 内部 C++ 类型。
- *    此前 RuntimeDesc::existingDevice 是 RHI::IDevice*——一个定义在
- *    未安装的私有头 src/rhi/rhiDevice.h 中的抽象类。这把虚表布局变成了
- *    跨 DLL 契约：IDevice 任何虚函数的增删或重排都要求两侧同时重编译，
- *    否则运行期静默走错 vtable slot。该字段已移除，多窗口改由
- *    「一个 Runtime + N 个 Surface」表达（见 rxSurfaceCreate）。
- *
  * 7. 所有可失败的调用返回 RxResult，不抛异常。
- *    异常不得穿越 C ABI 边界。
  *
  * ==================== 职责边界 ====================
  *
- * 本 DLL 只回答「怎么画」：接收顶点字节流 + 绘制命令描述符，
+ * 本 DLL 只负责「怎么画」：接收顶点字节流 + 绘制命令描述符，
  * 按 sortKey 排序合批后提交 GPU。
  *
- * 本 DLL 不做、也不应该做的事：
- * - 几何离散化（圆/弧/椭圆/贝塞尔 → 折线）。这是几何层职责，
- *   由应用侧的 RenderSceneBuilder 完成。此前 DLL 通过
- *   GeometryPrimitiveKind{Circle, Arc, Ellipse...} 接收解析曲线并自行
- *   细分，导致同一套离散化公式在三处重复实现，且必须靠公共头共享的
- *   inline 函数（TessParams.h）来维持一致——那是耦合，不是封装。
- * - 场景图 / 图元语义 / 图层 / 选择集 / 捕捉 / 单位制。
- * - 拾取（picking / hitTest）。
- * - 文本布局与排版（字形光栅化与图集是 GPU 资源缓存，留在 DLL 内）。
- * - 文件 IO。shader 已编入二进制，字体由调用方以内存数据注入。
+ * 本 DLL 不做的事：几何离散化、场景图、拾取、文本排版（字形光栅化除外）、文件 IO。
  */
 #ifndef RENDERX_PUBLIC_API_H
 #define RENDERX_PUBLIC_API_H
@@ -65,9 +29,6 @@
 #include <cstdint>
 
 // ==================== 导出宏 ====================
-//
-// 注：此前该宏在 render.h 与 runtime_session.h 中被完整复制了两份。
-// 现只在本文件定义一次。
 #if defined(_WIN32) || defined(_WIN64)
     #ifdef RENDER_EXPORTS
         #define RENDER_API __declspec(dllexport)
@@ -81,50 +42,14 @@
 #endif
 
 // ==================== ABI 版本 ====================
-
-// 5.0：3D 收口。三处结构体尺寸变化，故抬 major：
-//      - PipelineDesc 增加 fillMode（线框模式属于管线固定状态，
-//        Vulkan/Metal 都不能在录制期改，因此必须落到管线而非 DrawCommand）
-//      - MaterialDesc 增加 3D 材质三色与高光指数
-//      - PipelineDesc 增加 depthBiasConstant / depthBiasSlope（同理是管线固定
-//        状态：Vulkan 在 VkPipelineRasterizationStateCreateInfo，Metal 是
-//        setDepthBias:slopeScale:clamp:）
-//      - DefaultPipeline 追加 Mesh3D / Mesh3DWire / Highlight3D / Gizmo3D，
-//        Count 变化
-//      同时新增 rxSessionSetLighting3D。3D 光照放在 DLL 内：光照是渲染职责，
-//      且顶点只需上传一次——若在宿主烘焙进顶点色，相机每动一次就要重传全部顶点，
-//      并且视点相关的镜面高光根本无法正确表达。
-//
-// 5.1：离屏渲染支持。新增 rxSessionSetRenderTarget 与
-//      rxSessionReadPixelsFromTexture。Session 支持绑定自定义颜色/深度纹理
-//      作为渲染目标，实现真正的任意分辨率离屏渲染。
-//
-// 5.2：3D 视锥剔除。新增 RxAabb3 / RxFrustum 与 rxDrawListUpsert3D /
-//      rxSessionSubmitDrawList3D。原有 2D 契约（世界矩形 + 4 元组 AABB）不动：
-//      它只用到 x/y，等于把相机当成正交俯视，用在 3D 斜视角下会误裁。
-//      新增接口为纯追加，结构体尺寸未变，故只抬 minor。
-//
-// 5.5：3D 网格半透明管线。DefaultPipeline 追加 Mesh3DTransparent（枚举尾部
-//      追加、既有取值不变，Count 由 22 变 23）。与 Mesh3D 的差别仅在渲染状态：
-//      开混合、不写深度，绘制顺序由调用方排序键决定。未改任何结构体尺寸，
-//      故只抬 minor。
-//
-// 5.4：材质槽位释放。新增 rxMaterialRemove：宿主按图元创建的材质此前无处释放，
-//      每次重建渲染器都会把整张材质表留在 Runtime 上（Metal 的 Runtime 是
-//      进程级共享的，泄漏随之跨视口累积）。槽位不复用前 table 无上限，
-//      现改为「清零 + 进空闲链表，rxMaterialAdd 优先复用」。
-//      与 5.2/5.3 同样为纯追加（未动任何结构体尺寸），故只抬 minor。
-//
-// 4.0：字体接口从「递字符串、DLL 内部排版」改为「DLL 只出字形度量与图集，
-//      宿主自己拼四边形」。rxFontLoad 被 rxFontCreate 系列取代，签名不兼容，
-//      故抬 major。旧接口恒返回 ErrorUnsupportedBackend，无可用调用方。
+// 修改 ABI 时同步更新：major 对不兼容变更，minor 对纯追加（结构体尺寸不变）。
 #define RENDERX_ABI_VERSION_MAJOR 5
-#define RENDERX_ABI_VERSION_MINOR 5
+#define RENDERX_ABI_VERSION_MINOR 6
 #define RENDERX_ABI_VERSION       ((RENDERX_ABI_VERSION_MAJOR << 16) | RENDERX_ABI_VERSION_MINOR)
 
 // packed 语义版本 (major<<16)|(minor<<8)|patch
 #define RENDERX_VERSION_MAJOR 5
-#define RENDERX_VERSION_MINOR 5
+#define RENDERX_VERSION_MINOR 6
 #define RENDERX_VERSION_PATCH 0
 #define RENDERX_VERSION       ((RENDERX_VERSION_MAJOR << 16) | (RENDERX_VERSION_MINOR << 8) | RENDERX_VERSION_PATCH)
 
@@ -155,15 +80,7 @@ namespace Render
             ErrorAbiVersionMismatch = -9,
             /// 交换链尺寸失效，调用 rxSurfaceResize 后重试本帧
             ErrorSurfaceOutOfDate = -10,
-            /**
-             * 几何仓已扩容，底层缓冲句柄被替换。
-             *
-             * 这**不是失败**——分配是成功的，但调用方手里所有旧
-             * GeometryBlock 的 `buffer` 字段都已失效，必须用
-             * rxGeometryStoreGetBuffer 重新取一次。
-             * 之所以用返回码显式告知而不是静默替换：静默替换会让调用方
-             * 拿着旧句柄提交，表现为「一部分图元突然不见了」。
-             */
+            /// 几何仓扩容，底层缓冲句柄被替换（非失败）。旧 GeometryBlock::buffer 需通过 rxGeometryStoreGetBuffer 刷新。
             ErrorGeometryStoreGrown = 1,
         };
 
@@ -217,14 +134,7 @@ namespace Render
         // ==================== 后端 ====================
 
         /**
-         * @brief 后端标识
-         *
-         * **枚举取值不等于可用后端**：Renderx/src/rhi/ 下当前实现了
-         * null / gl / metal 三套 RHI；Vulkan（Phase 8）仍只是占位取值。
-         * Metal 只在 Apple 平台编译，非 Apple 平台选中它会在
-         * rxRuntimeCreate 里报错返回失败。占位取值保留是为了让 ABI 与
-         * PipelineDesc 的固定状态字段提前定型，**不做静默回退**
-         * （见 rhiFactory.cpp 的 isBackendAvailable / createDevice）。
+         * @brief 后端标识。选中不可用的后端会直接失败，不做静默回退。
          */
         enum class Backend : int32_t
         {
@@ -374,14 +284,7 @@ namespace Render
         };
 
         /**
-         * @brief 多边形填充模式
-         *
-         * 线框是**管线固定状态**，不是逐命令状态：Vulkan 的
-         * VK_POLYGON_MODE_LINE 与 Metal 的 MTLTriangleFillModeLines 都在
-         * 管线/渲染状态上，录制期无法切换。GL 虽然有 glPolygonMode 可以随时改，
-         * 但把它做成逐命令状态会导致三个后端语义不一致——因此统一落到管线。
-         *
-         * 这也是「线框模式」需要一条独立内建管线（Mesh3DWire）的原因。
+         * @brief 多边形填充模式。线框是管线固定状态，不是逐命令状态。
          */
         enum class FillMode : uint8_t
         {
@@ -410,80 +313,35 @@ namespace Render
             /// 点标记继续用 ScreenPoint 系列：点本身就是像素尺寸。
             WorldPinnedLine = 13,
             WorldPinnedTri = 14,
-            /// 字形四边形（P2T2C4 + 屏幕空间）。与 ScreenTextured 同格式同拓扑，
-            /// 差别只在片元：字形图集是 R8 覆盖率，alpha 取 .r、rgb 取顶点色；
-            /// ScreenTextured 是 RGBA 位图，直接采样四通道。二者无法由
-            /// (格式, 空间, 拓扑) 区分，所以必须由调用方显式指定 pipelineIndex。
+            /// 字形四边形（P2T2C4 + 屏幕空间）。与 ScreenTextured 格式相同但片元不同，必须显式指定 pipelineIndex。
             ScreenGlyph = 15,
-            /// 世界空间贴图（P3T2C4 + 世界空间 + 三角形）。位图图元走这条：
-            /// 顶点在 CPU 侧已完成世界变换，着色器只做 uView 投影 + 采样 RGBA。
-            /// 与 ScreenTextured 的区别是空间——后者把顶点当像素坐标，
-            /// 贴图不会随视图缩放/平移。
+            /// 世界空间贴图（P3T2C4 + 世界空间 + 三角形）。顶点已在 CPU 侧完成世界变换。
             WorldTextured = 16,
-            /// 世界空间字形（P3T2C4 + 世界空间 + 三角形）。文字图元走这条。
-            ///
-            /// 与 WorldTextured 同格式同空间同拓扑，差别只在片元：图集是 R8
-            /// **距离场**，靠 fwidth 求导得到缩放无关的抗锯齿宽度。因此和
-            /// ScreenGlyph / ScreenTextured 那一对同理，**必须显式指定
-            /// pipelineIndex** —— 让 Runtime 自行解析会命中 WorldTextured，
-            /// 把距离场当 RGBA 采样，结果是纯红色的字。
-            ///
-            /// 用它的字体必须以 FontDesc::sdfPadding > 0 创建，否则图集里是
-            /// 覆盖率而非距离场，边缘会被 smoothstep 硬阈值化。
+            /// 世界空间字形（P3T2C4 + 世界空间 + 三角形）。图集是距离场，靠 fwidth 实现缩放无关的抗锯齿。字体需以 sdfPadding > 0 创建。
             WorldGlyphSdf = 17,
             /**
-             * 3D 网格（P3N3 + 世界空间 + 三角形），带深度测试与内建光照。
-             *
-             * 顶点是**已在 CPU 侧变换到世界坐标**的位置 + 法线，因此不需要
-             * 逐命令的模型矩阵——DrawPacket::viewMatrix 直接填 proj * view。
-             * 颜色不在顶点里：材质三色与高光指数由 DrawCommand::materialIndex
-             * 选中的 MaterialDesc 提供，光照参数由 rxSessionSetLighting3D 设置。
+             * 3D 网格（P3N3 + 世界空间 + 三角形），带深度测试与内建光照。顶点已在 CPU 侧变换到世界坐标，颜色由 MaterialDesc 提供。
              */
             Mesh3D = 18,
-            /// 同 Mesh3D，但 fillMode = Wireframe。线框是管线状态，见 FillMode。
+            /// 同 Mesh3D，但 fillMode = Wireframe。
             Mesh3DWire = 19,
             /**
-             * 3D 选中高亮（P3C4 + 世界空间 + **三角形 + 线框填充**）。
-             *
-             * 顶点是网格的三角形顶点，不是线段：靠 fillMode = Wireframe 画出
-             * 每个三角面的三条边。这一点容易搞错——若改用 LineStrip 提交同一批
-             * 顶点，会在相邻三角形之间连出多余的斜线。
-             *
-             * 与 WorldLine4 的另一处区别是深度状态：需要 depthFunc = LessEqual
-             * 且 depthWrite = 0，才能贴在网格表面而不被自身深度剔除
-             * （否则线框与三角面 z-fighting，表现为闪烁的虚线）；不写深度是为了
-             * 不让后画的网格被高亮线挡住。
-             *
-             * 线宽固定 1.0：macOS 的 GL 与 Metal 上 Capabilities::maxLineWidth
-             * 就是 1.0，粗线只能靠三角化。
+             * 3D 选中高亮（P3C4 + 世界空间 + 三角形 + Wireframe fillMode）。深度 LessEqual + 不写深度，贴在模型表面。
              */
             Highlight3D = 20,
             /**
-             * 3D 变换 gizmo（P3C4 + 世界空间 + 三角形）。
-             *
-             * 与 Highlight3D 的区别：实心填充 + 深度偏移。
-             * gizmo 的手柄（箭头锥、旋转环、缩放方块、半透明平面）全部是
-             * 三角网，线段也用「相机对齐加宽四边形」三角化——因为 macOS 的
-             * maxLineWidth 是 1.0，宽线只能这么做。
-             *
-             * 深度状态：测试开、不写深度、LessEqual，外加 depthBias 1/1。
-             * 单靠 LessEqual 不足以消除与模型表面的 z-fighting，见
-             * PipelineDesc::depthBiasConstant。
-             *
-             * 半透明平面手柄与不透明手柄用同一条管线，靠提交顺序区分
-             * （先不透明后半透明），这与 2D 覆盖层的做法一致。
+             * 3D 变换 gizmo（P3C4 + 世界空间 + 三角形）。实心填充 + depthBias 1/1 消除 z-fighting。
              */
             Gizmo3D = 21,
             /**
-             * 3D 网格半透明（P3N3 + 世界空间 + 三角形）。
-             *
-             * 与 Mesh3D 的唯一差别是渲染状态：开混合（SrcAlpha / OneMinusSrcAlpha）、
-             * 关闭深度写入、深度测试仍为 LessEqual。这样后画的半透明面不会把
-             * 先画的同场景物体从深度缓冲里剔掉。绘制顺序由调用方的排序键决定，
-             * 调用方必须保证半透明命令按视距从远到近提交（排序键升序 = 先画）。
+             * 3D 网格半透明（P3N3 + 世界空间 + 三角形）。开混合、不写深度，绘制顺序由调用方保证从远到近提交。
              */
             Mesh3DTransparent = 22,
-            Count = 23,
+            /**
+             * 世界空间虚线（P3T2C4 + 世界空间 + 三角形）。dash 参数借用 material 的 diffuse 段传递。
+             */
+            WorldDash = 23,
+            Count = 24,
         };
 
         // ==================== 创建描述 ====================
@@ -498,12 +356,7 @@ namespace Render
         };
 
         /**
-         * @brief 日志回调
-         *
-         * DLL 不依赖宿主的日志库。此前 17 个源文件直接
-         * #include "Log/AprLogger.h"，这是 RenderX 无法独立复用的原因；
-         * 现在整个 Renderx 目录下已无该头文件的任何引用，
-         * 日志一律通过本回调交回宿主。message 仅在回调期间有效。
+         * @brief 日志回调。DLL 不依赖任何宿主日志库。message 仅在回调期间有效。
          */
         using rxLogCallback = void (*)(LogLevel level, const char* message, void* userData);
 
@@ -522,17 +375,7 @@ namespace Render
             void* logUserData;
             const char* applicationName;
             /**
-             * @brief GL 专用：宿主提供的 getProcAddress，签名为 `void* (*)(const char*)`
-             *
-             * 传 nullptr 时用平台默认实现（Windows: wglGetProcAddress + opengl32.dll；
-             * Linux: glXGetProcAddress；macOS: dlsym）。
-             *
-             * **Qt 宿主应当传** `QOpenGLContext::getProcAddress` 的包装：
-             * Qt 在部分平台（尤其 Windows 上的 ANGLE / EGL 后端）解析到的
-             * 实现与平台默认路径不是同一套，混用会得到「函数指针非空但调用行为
-             * 不对」——这类错误没有任何报错，只表现为画面局部异常。
-             *
-             * 其他后端忽略此字段。
+             * @brief GL 专用：宿主提供的 getProcAddress。传 nullptr 用平台默认实现；Qt 宿主应传 QOpenGLContext::getProcAddress 包装。其他后端忽略。
              */
             void* glGetProcAddress;
         };
@@ -591,15 +434,7 @@ namespace Render
             FillMode fillMode;
             uint8_t _pad0[3];
             /**
-             * 深度偏移常量项与斜率项。两者都为 0 表示关闭。
-             *
-             * 用途：让贴在模型表面上画的辅助几何（3D gizmo）不与模型 z-fighting。
-             * 单靠 depthFunc = LessEqual 不够——那只解决「同深度也要通过测试」，
-             * 而 z-fighting 的成因是两者深度值在浮点精度内来回抖动。
-             *
-             * 与线宽/填充模式同理，这是管线固定状态：Vulkan 写在
-             * VkPipelineRasterizationStateCreateInfo 里，Metal 是
-             * setDepthBias:slopeScale:clamp:，都不能在录制期逐命令改。
+             * 深度偏移常量项与斜率项，消除贴表面几何的 z-fighting。两者都为 0 表示关闭。管线固定状态。
              */
             float depthBiasConstant;
             float depthBiasSlope;
@@ -653,15 +488,11 @@ namespace Render
 
         // ---------- 字体 ----------
         //
-        // 职责切分：DLL 只做「字形光栅化 + 图集打包 + 度量查询」，
-        // 排版（UTF-8 解码、对齐、行距、旋转、世界/屏幕坐标换算）全在调用方。
-        // 这与 DrawCommand 是纯描述符的定位一致——DLL 里没有「一段文字」这个概念，
-        // 只有「一批带 UV 的四边形」。
+        // DLL 只做字形光栅化、图集打包与度量查询。排版（UTF-8 解码、对齐、行距、坐标换算）由调用方完成。
 
         struct FontDesc
         {
-            /// TTF/OTF 字节。DLL **内部拷贝一份**：stb_truetype 的 fontinfo
-            /// 持有原始数据指针，不拷贝就会在调用方释放后变成悬垂指针。
+            /// TTF/OTF 字节。DLL 内部拷贝一份，调用方释放安全。
             const void* data;
             uint64_t dataBytes;
             /// 光栅化像素高度。
@@ -675,17 +506,7 @@ namespace Render
             uint32_t atlasWidth;
             uint32_t atlasHeight;
             /**
-             * @brief SDF 模式的边缘留白（像素）。0 = 覆盖率位图模式。
-             *
-             * 大于 0 时字形用 `stbtt_GetGlyphSDF` 生成**有符号距离场**：像素值
-             * 128 表示恰好在轮廓上，每偏离 1 像素变化 `128 / sdfPadding` 级灰度。
-             * 配合片元着色器里的 `fwidth` 求导，抗锯齿宽度自动跟随屏幕上的实际
-             * 缩放 —— 这才是「一张图集服务所有缩放」的成立条件。
-             *
-             * 留白就是可表达的最大距离：太小则放大后边缘出现截断台阶，太大则
-             * 浪费图集面积并降低有效精度。8 是常用值。
-             *
-             * 本字段占用的是结构体原有的尾部填充，故 sizeof 不变。
+             * @brief SDF 模式边缘留白（像素）。0=覆盖率位图。>0 时生成有符号距离场，配合 fwidth 实现缩放无关的抗锯齿。常用值 8。
              */
             uint32_t sdfPadding;
         };
@@ -697,7 +518,7 @@ namespace Render
         {
             /// 基线以上高度（正值）
             float ascent;
-            /// 基线以下深度（**负值**，与 stb_truetype 一致）
+            /// 基线以下深度（负值）
             float descent;
             /// 行间额外间隙。行高 = ascent - descent + lineGap
             float lineGap;
@@ -708,13 +529,7 @@ namespace Render
         static_assert(sizeof(FontMetrics) == 16, "FontMetrics ABI size changed");
 
         /**
-         * @brief 单个字形在图集中的位置与排版度量
-         *
-         * 坐标约定：以**基线上的笔位置**为原点，x 向右、y 向下为正
-         * （与屏幕空间一致，见 RenderSpace::Screen）。因此四边形是
-         *   左上 = (penX + bearingX,          penY + bearingY)
-         *   右下 = (penX + bearingX + width,  penY + bearingY + height)
-         * 排完一个字形后 penX += advance。
+         * @brief 单个字形在图集中的位置与排版度量。坐标以基线上的笔位置为原点，x 向右、y 向下为正。
          */
         struct GlyphInfo
         {
@@ -737,12 +552,10 @@ namespace Render
 
         struct MaterialDesc
         {
-            /// 线宽（像素）。注意各后端上限不同，见 Capabilities::maxLineWidth；
-            /// 超出上限时应改用三角化线段
+            /// 线宽（像素）。超出 Capabilities::maxLineWidth 时应改用三角化线段。
             float lineWidth;
             float pointSize;
-            /// 漫反射色。2D 管线**不消费**此值——2D 的颜色在顶点里，
-            /// 材质只提供缺省线宽与点大小。3D 网格没有顶点色，靠这里取色。
+            /// 漫反射色。2D 管线不消费（颜色在顶点里），3D 网格没有顶点色，靠这里取色。
             float color[4];
             uint32_t flags;
             /// 环境反射色。仅 Mesh3D / Mesh3DWire 消费。
@@ -757,24 +570,13 @@ namespace Render
 
         // ==================== 3D 光照 ====================
         //
-        // 为什么光照在 DLL 内而不是宿主烘焙进顶点色：
-        //
-        // 1. 镜面高光与视点相关。烘焙进顶点色后相机一转高光就不对，
-        //    要维持正确就得每帧重算并重传全部顶点——十万面的模型上这是
-        //    每帧几 MB 的上传量，而现在顶点只需上传一次。
-        // 2. 光照是渲染职责。放在宿主意味着三个后端各自的着色差异要由
-        //    业务层消化，与「零业务耦合」相反。
-        //
-        // 2D 侧没有对应概念：2D 是平面图形，没有法线，颜色在顶点里就是最终色。
-        // 这是 2D 与 3D 唯一的本质分歧，其余环节（顶点上传、命令提交、
-        // 排序键、瞬态环、几何仓）两者完全同构。
+        // 光照在 DLL 内而非宿主烘焙：镜面高光与视点相关，烘焙后相机每动一次就要重传全部顶点，且高光无法正确表达。光照是渲染职责，放在 DLL 内让宿主免于后端着色差异。
 
         /// 单个方向光。direction 是**从表面指向光源**的方向，不需要预先归一化。
         struct DirectionalLight3D
         {
             float direction[3];
-            /// 0/1。关掉的光不参与累加，而不是把强度设 0——
-            /// 后者仍会走完一遍高光计算。
+            /// 0/1。关掉的光完全跳过计算，而非强度设 0。
             uint32_t enabled;
             float color[3];
             float intensity;
@@ -787,8 +589,7 @@ namespace Render
             float ambientColor[3];
             uint32_t ambientEnabled;
             float ambientIntensity;
-            /// 0/1。双面光照：取 |dot(N, L)| 而非 max(dot(N, L), 0)。
-            /// 导入的 OBJ/STL 绕序不可靠，单面光照会让整片三角面变黑。
+            /// 0/1。双面光照：取 |dot(N, L)| 而非 max(dot(N, L), 0)，避免绕序不可靠的模型出现黑面。
             uint32_t doubleSided;
             /// 0/1
             uint32_t specularEnabled;
@@ -798,10 +599,7 @@ namespace Render
             DirectionalLight3D fill;
             DirectionalLight3D rim;
             /**
-             * 相机世界坐标，算镜面高光用。
-             *
-             * 必须由宿主传入：DrawPacket::viewMatrix 是 proj * view 的合并结果，
-             * DLL 无法从中稳定地反解出眼点位置（投影矩阵可能是正交的）。
+             * 相机世界坐标，算镜面高光用。必须由宿主传入，DLL 只有合并矩阵无法反解眼点。
              */
             float viewPos[3];
             /// 亮度下限，避免背光面纯黑到看不出轮廓
@@ -821,10 +619,7 @@ namespace Render
         // ==================== 绘制命令 ====================
 
         /**
-         * @brief 单笔绘制命令
-         *
-         * 纯描述符：不含任何几何语义，只有「哪段缓冲、多少顶点、
-         * 什么拓扑、用哪条管线、排在哪」。
+         * @brief 单笔绘制命令，纯描述符：指定缓冲、顶点数、拓扑、管线、排序键。
          */
         struct DrawCommand
         {
@@ -858,9 +653,7 @@ namespace Render
         static_assert(sizeof(DrawCommand) == 80, "DrawCommand ABI size changed");
 
         /**
-         * @brief 一次提交的绘制批次
-         *
-         * commands 指向调用方内存，rxSessionSubmit 返回后 DLL 不再引用。
+         * @brief 一次提交的绘制批次。commands 指向调用方内存，提交后 DLL 不再引用。
          */
         struct DrawPacket
         {
@@ -901,16 +694,7 @@ namespace Render
 
         // ==================== 增量渲染：持久几何仓 ====================
         //
-        // 瞬态环（rxSessionAllocTransient）解决的是「每帧都变」的数据：
-        // 预览线、橡皮筋、覆盖层。它的代价是每帧全量重传。
-        //
-        // 但 CAD 场景的绝大多数图元**帧间不变**。10 万条线段里改动一条，
-        // 用瞬态环意味着重传 10 万条。几何仓就是为这种情况存在的：
-        // 顶点常驻显存，编辑只重写变化的那一块。
-        //
-        // 仓内按块（Block）细分配，块的释放走空闲表并合并相邻空洞。
-        // 写入不立即上传：脏区间累积到帧末合并后一次性提交，
-        // 避免「改了 1 万个小块 = 1 万次 writeBuffer」。
+        // 瞬态环解决每帧都变的数据（预览线、覆盖层），代价是每帧全量重传。几何仓解决帧间不变的数据——顶点常驻显存，编辑只重写变化的块。仓内按块细分配，脏区间累积到帧末合并后一次性上传。
 
         struct GeometryStoreDesc
         {
@@ -918,14 +702,7 @@ namespace Render
             uint64_t initialBytes;
             /// 增长上限（字节）。0 表示不限（受设备显存约束）。
             uint64_t maxBytes;
-            /// 分配粒度（字节），会向上取整到 4 的倍数。0 表示默认 256。
-            /// 粒度越大碎片越多，但空闲表越短、合并越快。
-            ///
-            /// ⚠️ 想靠 DrawList 合批把 draw call 降下来，**必须把这个值设成
-            /// 顶点步长的约数**（P3C3 步长 24 用 8）。原因：合批要求顶点区间
-            /// 字节连续，而块的占用大小是按粒度向上取整的；粒度不能整除步长时
-            /// 块之间就会出现空隙，合批一次都不会发生。默认的 256 只适合
-            /// 不在意合批的场景。
+            /// 分配粒度（字节），0 默认 256。⚠️ 想让 DrawList 合批生效，必须设为顶点步长的约数，否则块间会有空隙。
             uint32_t granularity;
             /// 0/1。是否用于索引数据（影响 RHI 的 usage 标记）。
             uint8_t forIndices;
@@ -993,11 +770,7 @@ namespace Render
         // 挨着分配。这正是几何仓与绘制列表要配合使用的原因。
 
         // ---------- 3D 剔除：世界空间包围盒与六平面视锥 ----------
-        //
-        // 2D 的剔除判据是世界空间矩形 (minX, minY, maxX, maxY)。它只用到
-        // x/y，等价于「相机正交俯视」，用在 3D 斜视角下会误裁可见图元。
-        // 3D 因此走下面两个独立结构，不改 2D 那条契约 —— 改它会波及所有
-        // 2D 调用方，而两者本来就不该共用同一个判据。
+// 3D 用 RxAabb3 + RxFrustum，2D 仍用世界矩形 AABB，契约独立。
 
         /// 世界空间轴对齐包围盒
         struct RxAabb3
@@ -1081,11 +854,7 @@ namespace Render
         static_assert(sizeof(FrameStats) == 56, "FrameStats ABI size changed");
 
         /**
-         * @brief 后端能力
-         *
-         * 调用方必须先查询再决定渲染策略。此前完全没有这一层，
-         * 上层只能靠「函数指针是否为空」推断特性，而 macOS 上
-         * GL 线宽只能是 1.0 这类差异只存在于注释里。
+         * @brief 后端能力。调用方必须先查询再决定渲染策略（如 macOS 上 maxLineWidth 通常为 1.0）。
          */
         struct Capabilities
         {
@@ -1112,8 +881,9 @@ namespace Render
         static_assert(sizeof(Capabilities) == 292, "Capabilities ABI size changed");
 
         // ==================== C API ====================
-        //
-        // 注：extern "C" 只去掉名字修饰，命名空间对链接符号没有任何隔离作用。
+        // 全部用 rx 前缀避免全局符号冲突。本头是 C++ 头，符号用 C 链接仅为跨语言绑定。
+
+        // extern "C" 只去掉名字修饰，命名空间对链接符号没有任何隔离作用。
         // 此前 API 名为裸 sessionCreate / runtimeCreate，直接污染全局 C 符号
         // 空间，并会与其他库的同名符号静默冲突。全部改用 rx 前缀。
         //
@@ -1243,18 +1013,7 @@ namespace Render
 
             // ---------- 持久几何仓：增量更新的顶点/索引存储 ----------
             //
-            // 典型用法（10 万条线段的场景，编辑一条）：
-            //
-            //   GeometryStoreHandle store = rxGeometryStoreCreate(runtime, &storeDesc);
-            //   // 建场景：每个图元一块
-            //   for (每个图元) {
-            //       GeometryBlock block{};
-            //       rxGeometryAlloc(store, bytes, &block);
-            //       rxGeometryWrite(store, block.id, 0, bytes, vertices);
-            //       记录 block;  // 之后靠它做增量更新
-            //   }
-            //   // 编辑一条：只重写那一块，其余 99999 条一个字节都不动
-            //   rxGeometryWrite(store, block.id, 0, bytes, newVertices);
+            // 典型用法：创建仓 → 每个图元分配一块并写入 → 编辑时只重写变化的块。
 
             RENDER_API GeometryStoreHandle rxGeometryStoreCreate(RuntimeHandle runtime, const GeometryStoreDesc* desc);
             RENDER_API void rxGeometryStoreDestroy(RuntimeHandle runtime, GeometryStoreHandle store);
@@ -1305,12 +1064,7 @@ namespace Render
 
             // ---------- 保留式绘制列表 ----------
             //
-            // 与几何仓配合使用：几何仓免掉重传顶点，绘制列表免掉重建命令。
-            //
-            //   DrawListHandle list = rxDrawListCreate(runtime, &listDesc);
-            //   rxDrawListUpsert(list, slot, &command, aabb);   // 只在图元变化时调
-            //   ...
-            //   rxSessionSubmitDrawList(session, list, viewBounds);  // 每帧一行
+            // 与几何仓配合使用：几何仓免掉重传顶点，绘制列表免掉每帧重建命令。
 
             RENDER_API DrawListHandle rxDrawListCreate(RuntimeHandle runtime, const DrawListDesc* desc);
             RENDER_API void rxDrawListDestroy(RuntimeHandle runtime, DrawListHandle list);

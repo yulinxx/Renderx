@@ -28,6 +28,10 @@ using namespace Render::RHI;
 #ifndef GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT
     #define GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT 0x8CD6
 #endif
+// 与 glLoader.h 一致：枚举未导出时自备兜底
+#ifndef GL_DRAW_FRAMEBUFFER_BINDING
+    #define GL_DRAW_FRAMEBUFFER_BINDING 0x8CA6
+#endif
 
 namespace GlFboCacheFixtureDetail
 {
@@ -40,6 +44,8 @@ namespace GlFboCacheFixtureDetail
         /// >0 时前 N 次 CheckFramebufferStatus 返回该值，之后恢复 COMPLETE
         int incompleteCountdown = 0;
         GLenum incompleteStatus = GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT;
+        /// 当前绑定的帧缓冲，模拟宿主的 FBO 绑定状态
+        GLuint boundFramebuffer = 0;
 
         static StubGlState& get()
         {
@@ -54,6 +60,7 @@ namespace GlFboCacheFixtureDetail
             deletedFramebuffers = 0;
             incompleteCountdown = 0;
             incompleteStatus = GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT;
+            boundFramebuffer = 0;
         }
     };
 
@@ -91,7 +98,22 @@ namespace GlFboCacheFixtureDetail
         StubGlState::get().deletedFramebuffers += n;
     }
 
-    void RENDER_GLAPI stubBindFramebuffer(GLenum, GLuint) {}
+    void RENDER_GLAPI stubBindFramebuffer(GLenum, GLuint name)
+    {
+        StubGlState::get().boundFramebuffer = name;
+    }
+
+    void RENDER_GLAPI stubGetIntegerv(GLenum pname, GLint* out)
+    {
+        if (!out)
+        {
+            return;
+        }
+        // 只有「当前绘制帧缓冲」需要真实取值，其余一律 0：本文件不依赖其它查询
+        *out = (pname == GL_DRAW_FRAMEBUFFER_BINDING)
+            ? static_cast<GLint>(StubGlState::get().boundFramebuffer)
+            : 0;
+    }
 
     void RENDER_GLAPI stubFramebufferTexture2D(GLenum, GLenum, GLenum, GLuint, GLint) {}
 
@@ -126,6 +148,7 @@ namespace GlFboCacheFixtureDetail
             funcs.BindFramebuffer = &stubBindFramebuffer;
             funcs.FramebufferTexture2D = &stubFramebufferTexture2D;
             funcs.CheckFramebufferStatus = &stubCheckFramebufferStatus;
+            funcs.GetIntegerv = &stubGetIntegerv;
 
             desc.backend = BackendKind::OpenGL;
             device = new gl::GlDevice(desc, funcs);
@@ -254,6 +277,36 @@ TEST_F(GlFboCacheFixture, IncompleteCachedFboIsDroppedAndRecreated)
     EXPECT_NE(second, first) << "旧 FBO 已被判不完整并删除，新条目必须是新对象";
     EXPECT_EQ(device->framebufferCacheSize(), 1u);
     EXPECT_EQ(StubGlState::get().deletedFramebuffers, 1);
+}
+
+TEST_F(GlFboCacheFixture, EndRenderPassRestoresHostFramebuffer)
+{
+    // 花屏根因回归：离屏 pass 结束后必须还原宿主的帧缓冲绑定。
+    // 宿主的默认帧缓冲是靠 acquireNextImage 捕获「当前绑定」得到的，未还原
+    // 就会把离屏 FBO 当成窗口帧缓冲，后续合成全落在离屏纹理上（还在采样
+    // 同一张纹理），窗口画面冻结成上一帧残留。
+    TextureHandle tex = makeColorTexture();
+    ASSERT_TRUE(tex.valid());
+
+    const GLuint hostFbo = 42;
+    StubGlState::get().boundFramebuffer = hostFbo;  // 模拟 QOpenGLWidget 绑定的 FBO
+
+    gl::GlCommandList cmd(device);
+    cmd.beginFrame(nullptr);
+
+    // 首次进入：FBO 缓存未命中，framebufferFor 内部会临时绑定 0
+    ASSERT_EQ(cmd.beginRenderPass(passFor(tex)), RhiResult::Ok);
+    const GLuint firstPassFbo = StubGlState::get().boundFramebuffer;
+    EXPECT_NE(firstPassFbo, hostFbo) << "离屏 pass 必须绑定自己的 FBO";
+    EXPECT_NE(firstPassFbo, 0u) << "离屏 pass 不得画到 0 号帧缓冲";
+    cmd.endRenderPass();
+    EXPECT_EQ(StubGlState::get().boundFramebuffer, hostFbo) << "离屏 pass 结束后必须还原宿主帧缓冲";
+
+    // 第二次进入：FBO 缓存命中
+    ASSERT_EQ(cmd.beginRenderPass(passFor(tex)), RhiResult::Ok);
+    EXPECT_EQ(StubGlState::get().boundFramebuffer, firstPassFbo);
+    cmd.endRenderPass();
+    EXPECT_EQ(StubGlState::get().boundFramebuffer, hostFbo) << "命中缓存时同样要还原宿主帧缓冲";
 }
 
 TEST_F(GlFboCacheFixture, DeviceDestructionReleasesCachedFramebuffers)

@@ -391,6 +391,17 @@ namespace Render::RT::detail
         releaseOverflowBuffers();
 
         m_segment = (m_segment + 1) % m_segmentCount;
+        // 绕回环首时，本段即将被覆写，而 GPU 可能仍在读取上一轮写进这一段的
+        // 顶点流。段数是按「一次 beginFrame 对应一次呈现」估算的，但宿主一次
+        // 绘制可以连开两帧（离屏缓存 + 合成），CPU 因此比预估更快地绕回同一
+        // 段；此时不等 GPU 完成就写，会让画面局部出现随机颜色/错位的碎片
+        // （顶点位置来自新帧、颜色来自旧帧的其他图层）。
+        // 只在绕回处等待：一次完整等待已覆盖此前提交的全部读取，因此每轮
+        // 只付一次同步代价，而不是每次 beginFrame 都等。
+        if (m_segment == 0 && m_device)
+        {
+            m_device->waitIdle();
+        }
         m_segmentBase = m_capacity * m_segment;
         m_cursor = m_segmentBase;
         m_flushed = m_cursor;
@@ -1647,6 +1658,9 @@ namespace Render::RT::detail
             // 世界空间字形（文字图元）：与 WorldTextured 同格式同空间同拓扑，
             // 只有片元不同（距离场而非 RGBA），因此同样必须显式指定片段着色器。
             { DP::WorldGlyphSdf, VF::P3T2C4, RS::World, PT::Triangles, "WorldGlyphSdf", "world_glyph_sdf_p3t2c4.frag" },
+            // 选中虚线：与 WorldTextured 同格式同空间同拓扑，只有片元不同，
+            // 因此同样必须显式指定片段着色器，否则会命中同一条缓存管线。
+            { DP::WorldDash, VF::P3T2C4, RS::World, PT::Triangles, "WorldDash", "world_dash_p3t2c4.frag" },
             // ---- 3D ----
             // 网格图元：位置 + 法线，顶点已是世界坐标，光照在 DLL 内算
             // （mesh_3d_p3n3.frag 读 FrameUniforms 的三光源 + 材质段）。

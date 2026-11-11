@@ -162,6 +162,9 @@ set(RENDERX_SHADER_SOURCES
     # 片元不同——图集是 R8 **距离场**而非覆盖率，靠 fwidth 求导做缩放无关的
     # 抗锯齿，一张图集因此能服务所有缩放（见 FontDesc::sdfPadding）。
     ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/world_glyph_sdf_p3t2c4.frag
+    # 选中虚线：顶点复用 world_tex_p3t2c4.vert（同为 P3T2C4 + 世界空间），
+    # 片元不采样贴图，而是把 UV.x 当全局弧长、用 discard 表达 dash/gap。
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/world_dash_p3t2c4.frag
 
     # ---- 点图元 ----
     # 点必须有独立的顶点着色器：尺寸是像素量、只能写 gl_PointSize，
@@ -273,7 +276,7 @@ add_custom_command(
 )
 
 # 生成的 shaderBlobs.cpp 与 shaderLibrary.cpp 不直接编进 RenderX，而是单独做成
-# OBJECT 库 RenderxShaders（见下方「Shader 对象库」段）。
+# 一个 OBJECT 库（目标名见下方「Shader 对象库」段的 RENDERX_SHADER_TARGET）。
 #
 # 原因：add_custom_command 的 OUTPUT 只能被声明它的同一目录中的目标消费。
 # Test/ 是子目录，若在那里直接引用 ${RENDERX_GENERATED_SHADER_CPP}，
@@ -313,20 +316,29 @@ endif()
 
 # ==================== Shader 对象库 ====================
 #
-# RenderxShaders 承载两个文件：
+# 目标名集中在这里定义：改名只需改这一处，避免散落多处漏改。
+set(RENDERX_SHADER_TARGET RenderxShaders)
+
+# 该 OBJECT 库承载两个文件：
 #   - 构建期生成的 shaderBlobs.cpp（shader 字节数组）
 #   - shaderLibrary.cpp（按名字+语言查表）
 # 由 RenderX 与 Test/ 下的两个测试目标共同链接，见上方 REMOVE_ITEM 处的说明。
-add_library(RenderxShaders OBJECT
+add_library(${RENDERX_SHADER_TARGET} OBJECT
     "${RENDERX_GENERATED_SHADER_CPP}"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/shader/shaderLibrary.cpp"
 )
 
-target_compile_features(RenderxShaders PRIVATE cxx_std_17)
+target_compile_features(${RENDERX_SHADER_TARGET} PRIVATE cxx_std_17)
+
+# shaderBlobs.cpp 由构建脚本嵌入 .glsl 源文件生成，含 UTF-8 中文注释且无 BOM；
+# MSVC 默认按代码页 936 解码，会报 C4819。显式 /utf-8 让 MSVC 按 UTF-8 读取。
+target_compile_options(${RENDERX_SHADER_TARGET} PRIVATE
+    $<$<CXX_COMPILER_ID:MSVC>:/utf-8>
+)
 
 # shader 表是 DLL 内部实现，绝不导出；与 RenderX 目标保持同样的 hidden 可见性。
 # POSITION_INDEPENDENT_CODE 是必须的：这些对象文件会被链进 SHARED 库。
-set_target_properties(RenderxShaders PROPERTIES
+set_target_properties(${RENDERX_SHADER_TARGET} PROPERTIES
     POSITION_INDEPENDENT_CODE ON
     CXX_VISIBILITY_PRESET hidden
     VISIBILITY_INLINES_HIDDEN ON
@@ -336,7 +348,7 @@ set_target_properties(RenderxShaders PROPERTIES
 # shaderLibrary.cpp 只需要 src/ 下的头文件。
 # 刻意不链接 Log：shader 查表是纯数据逻辑，引入业务日志库会让
 # 「RenderX 可脱离本仓库独立复用」重新失效——这是最后一处业务耦合。
-target_include_directories(RenderxShaders PUBLIC
+target_include_directories(${RENDERX_SHADER_TARGET} PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
 )
 
@@ -361,7 +373,7 @@ apr_add_shared_library(${PROJECT_NAME}
         $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wno-conversion;-Wno-float-conversion>
     PRIVATE_LINK_LIBRARIES
         ${OPENGL_LIBRARIES}
-        RenderxShaders
+        ${RENDERX_SHADER_TARGET}
         ${RENDER_LINK_LIBS}
 )
 
