@@ -22,6 +22,7 @@
 
 #import <Metal/Metal.h>
 #import <QuartzCore/QuartzCore.h>
+#import <dispatch/dispatch.h>
 
 #include "rhi/metal/metalCommon.h"
 #include "rhi/rhiCommandList.h"
@@ -40,6 +41,28 @@ namespace Render::RHI::metal
 {
 
     class MetalDevice;
+
+    /**
+     * @brief 等待 in-flight 信号量，超过 timeoutMs 返回 false。
+     *
+     * 放在头文件里 inline：测试目标只链接 DLL 的公共 C API，无法调用
+     * 隐藏可见性（-fvisibility=hidden）的导出函数；内联后测试可独立断言
+     * 「未 signal 时在超时内返回 false」，这是本后端唯一能自动验证的
+     * 「卡死可恢复」证据。
+     */
+    inline bool waitSemaphore(dispatch_semaphore_t semaphore, uint64_t timeoutMs)
+    {
+        if (semaphore == nullptr)
+        {
+            return false;
+        }
+        const dispatch_time_t deadline =
+            dispatch_time(DISPATCH_TIME_NOW, static_cast<int64_t>(timeoutMs) * NSEC_PER_MSEC);
+        return dispatch_semaphore_wait(semaphore, deadline) == 0;
+    }
+
+    /// in-flight 等待上限。GPU 卡住时宁可丢帧报错，也不能让 UI 永久阻塞。
+    constexpr uint64_t kInFlightTimeoutMs = 100;
 
     /**
      * @brief Metal 表面

@@ -19,11 +19,13 @@
 #include <gtest/gtest.h>
 
 #include "render/renderx.h"
+#include "rhi/metal/metalDevice.h"
 
 #import <AppKit/AppKit.h>
 #import <Foundation/Foundation.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -1321,4 +1323,25 @@ TEST_F(MetalOffscreenFixture, Mesh3DWireFillDrawsEdgesInsteadOfSolidArea)
     const size_t wireLit = countLit(wire);
     EXPECT_LT(wireLit, solidLit / 4)
         << "线框涂色 " << wireLit << " px，实心 " << solidLit << " px——没有拉开量级差";
+}
+
+// ==================== in-flight 等待超时 ====================
+
+TEST(MetalSurface, InFlightWaitTimesOutInsteadOfBlockingForever)
+{
+    // 永不 signal：模拟 GPU 挂起/驱动卡住。等待必须在超时后返回 false，
+    // 而不是像此前的 DISPATCH_TIME_FOREVER 那样永久阻塞 UI 线程。
+    dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
+    const auto begin = std::chrono::steady_clock::now();
+    const bool acquired = Render::RHI::metal::waitSemaphore(semaphore, 50);
+    const auto elapsedMs =
+        std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - begin).count();
+
+    EXPECT_FALSE(acquired) << "信号量从未 signal，等待却成功了";
+    EXPECT_GE(elapsedMs, 40) << "等待提前返回，超时没有真正生效（" << elapsedMs << "ms）";
+    EXPECT_LT(elapsedMs, 2000) << "等待退化成长期阻塞（" << elapsedMs << "ms）";
+
+    // 超时不得消耗计数：signal 之后同一信号量应立即可得
+    dispatch_semaphore_signal(semaphore);
+    EXPECT_TRUE(Render::RHI::metal::waitSemaphore(semaphore, 50));
 }

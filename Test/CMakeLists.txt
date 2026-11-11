@@ -195,6 +195,8 @@ if(APPLE)
         "${CMAKE_CURRENT_SOURCE_DIR}"
         "${CMAKE_CURRENT_SOURCE_DIR}/.."
         "${CMAKE_CURRENT_SOURCE_DIR}/../include"
+        # 内部头（metalDevice.h 的 inline 等待助手）：测试需要断言超时契约
+        "${CMAKE_CURRENT_SOURCE_DIR}/../src"
     )
 
     if(STB_TRUETYPE_INCLUDE_DIR)

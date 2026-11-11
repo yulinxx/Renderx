@@ -392,8 +392,17 @@ namespace Render::RHI::metal
             dispatch_semaphore_signal(m_inFlight);
         }
 
-        // 3 帧 in flight：等待最老的一帧完成，避免 CPU 无界地领先 GPU
-        dispatch_semaphore_wait(m_inFlight, DISPATCH_TIME_FOREVER);
+        // 3 帧 in flight：等待最老的一帧完成，避免 CPU 无界地领先 GPU。
+        // 不能用 DISPATCH_TIME_FOREVER：GPU 卡死或驱动挂起时会让 UI 线程
+        // 永久阻塞（表现为整窗口无响应，连错误都报不出来）。超时按设备丢失
+        // 上报，由上层决定重建或提示。
+        if (!waitSemaphore(m_inFlight, kInFlightTimeoutMs))
+        {
+            m_log.error("[metal] acquireNextImage: GPU did not retire a frame within %llu ms; "
+                        "reporting device lost",
+                static_cast<unsigned long long>(kInFlightTimeoutMs));
+            return RhiResult::ErrorDeviceLost;
+        }
 
         m_drawable = [m_layer nextDrawable];
         if (m_drawable == nil)
