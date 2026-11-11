@@ -69,6 +69,8 @@ namespace Render::RHI
         Format preferredColorFormat = Format::BGRA8Unorm;
         Format depthFormat = Format::D32Float;  ///< Unknown 表示不需要深度附件
         PresentMode presentMode = PresentMode::Fifo;
+        /// MSAA 采样数：1 = 关闭。GL 自建多重采样 FBO，Metal 自建多重采样附件并解析。
+        uint32_t sampleCount = 1;
         const char* debugName = nullptr;
     };
 

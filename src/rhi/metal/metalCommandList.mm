@@ -112,6 +112,7 @@ namespace Render::RHI::metal
         {
             const ColorAttachment& src = desc.colorAttachments[i];
             id<MTLTexture> texture = nil;
+            id<MTLTexture> resolve = nil;
             if (src.texture.valid())
             {
                 MetalTextureRecord* record = m_device->textureRecord(src.texture);
@@ -119,8 +120,17 @@ namespace Render::RHI::metal
             }
             else if (m_surface != nullptr)
             {
-                // 附件留空表示「画到表面」：Metal 侧即当前 drawable 的纹理
-                texture = m_surface->currentDrawableTexture();
+                // 附件留空表示「画到表面」：Metal 侧即当前 drawable 的纹理。
+                // 开启 MSAA 时先写多重采样纹理，endEncoding 时解析到 drawable。
+                if (m_surface->usesMsaa())
+                {
+                    texture = m_surface->msaaColorTexture();
+                    resolve = m_surface->currentDrawableTexture();
+                }
+                else
+                {
+                    texture = m_surface->currentDrawableTexture();
+                }
             }
 
             if (texture == nil)
@@ -133,7 +143,16 @@ namespace Render::RHI::metal
             MTLRenderPassColorAttachmentDescriptor* color = pass.colorAttachments[i];
             color.texture = texture;
             color.loadAction = toLoadAction(src.loadOp);
-            color.storeAction = toStoreAction(src.storeOp);
+            if (resolve != nil)
+            {
+                // MSAA 解析：渲染期写多重采样纹理，结束时一次性 resolve 到 drawable
+                color.resolveTexture = resolve;
+                color.storeAction = MTLStoreActionMultisampleResolve;
+            }
+            else
+            {
+                color.storeAction = toStoreAction(src.storeOp);
+            }
             color.clearColor = MTLClearColorMake(src.clearValue.r, src.clearValue.g,
                                                  src.clearValue.b, src.clearValue.a);
         }

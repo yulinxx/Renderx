@@ -165,6 +165,7 @@ namespace Render::RHI::metal
         , m_extent(desc.initialExtent)
         , m_colorFormat(desc.preferredColorFormat)
         , m_depthFormat(desc.depthFormat)
+        , m_sampleCount(desc.sampleCount >= 2 ? desc.sampleCount : 1)
         , m_log(logger)
     {
         m_inFlight = dispatch_semaphore_create(3);
@@ -199,6 +200,7 @@ namespace Render::RHI::metal
         [parent addSubview:m_hostView positioned:NSWindowBelow relativeTo:nil];
 
         ensureDepthTexture();
+        ensureMsaaTextures();
     }
 
     MetalSurface::~MetalSurface()
@@ -226,6 +228,8 @@ namespace Render::RHI::metal
         [m_hostView removeFromSuperview];
         m_hostView = nil;
         m_depthNative = nil;
+        m_msaaColor = nil;
+        m_msaaDepth = nil;
         m_layer = nil;
 
         // ③ 表面托管的纹理记录要随表面一起摘除，否则纹理会一直挂在设备池里
@@ -238,6 +242,10 @@ namespace Render::RHI::metal
             if (m_depthTexture.valid())
             {
                 m_device->destroyTexture(m_depthTexture);
+            }
+            if (m_msaaDepthTexture.valid())
+            {
+                m_device->destroyTexture(m_msaaDepthTexture);
             }
         }
         m_inFlight = nil;
@@ -272,6 +280,79 @@ namespace Render::RHI::metal
         depthDesc.format = m_depthFormat;
         depthDesc.usage = TextureUsage::DepthStencilAttachment;
         m_depthTexture = m_device->updateBoundTexture(m_depthTexture, m_depthNative, depthDesc);
+    }
+
+    /**
+     * @brief 建（或重建）多重采样颜色/深度纹理。
+     *
+     * Metal 的 drawable 是单采样纹理，不能直接作为 MSAA 附件；必须自建
+     * 2DMultisample 纹理，在 RenderPass 结束时用 MultisampleResolve 解析到
+     * drawable。采样数写进 MTLTextureDescriptor 后就固定了，resize 必须重建。
+     */
+    void MetalSurface::ensureMsaaTextures()
+    {
+        m_msaaColor = nil;
+        m_msaaDepth = nil;
+        if (m_sampleCount <= 1 || m_extent.width == 0 || m_extent.height == 0)
+        {
+            return;
+        }
+
+        MTLTextureDescriptor* colorDesc = [MTLTextureDescriptor new];
+        colorDesc.textureType = MTLTextureType2DMultisample;
+        colorDesc.sampleCount = m_sampleCount;
+        colorDesc.pixelFormat = toMetalFormat(m_colorFormat);
+        colorDesc.width = m_extent.width;
+        colorDesc.height = m_extent.height;
+        colorDesc.usage = MTLTextureUsageRenderTarget;
+        colorDesc.storageMode = MTLStorageModePrivate;
+        m_msaaColor = [m_device->nativeDevice() newTextureWithDescriptor:colorDesc];
+        if (m_msaaColor == nil)
+        {
+            m_log.warn("[metal] MSAA color texture creation failed (%ux%u, %u samples); MSAA disabled",
+                m_extent.width,
+                m_extent.height,
+                m_sampleCount);
+            m_sampleCount = 1;
+            return;
+        }
+
+        if (m_depthFormat == Format::Unknown)
+        {
+            return;
+        }
+
+        MTLTextureDescriptor* depthDesc = [MTLTextureDescriptor new];
+        depthDesc.textureType = MTLTextureType2DMultisample;
+        depthDesc.sampleCount = m_sampleCount;
+        depthDesc.pixelFormat = toMetalFormat(m_depthFormat);
+        depthDesc.width = m_extent.width;
+        depthDesc.height = m_extent.height;
+        depthDesc.usage = MTLTextureUsageRenderTarget;
+        depthDesc.storageMode = MTLStorageModePrivate;
+        m_msaaDepth = [m_device->nativeDevice() newTextureWithDescriptor:depthDesc];
+        if (m_msaaDepth == nil)
+        {
+            m_log.warn("[metal] MSAA depth texture creation failed (%ux%u, %u samples); MSAA disabled",
+                m_extent.width,
+                m_extent.height,
+                m_sampleCount);
+            m_msaaColor = nil;
+            m_sampleCount = 1;
+            return;
+        }
+
+        TextureDesc msaaDepthDesc{};
+        msaaDepthDesc.width = m_extent.width;
+        msaaDepthDesc.height = m_extent.height;
+        msaaDepthDesc.format = m_depthFormat;
+        msaaDepthDesc.usage = TextureUsage::DepthStencilAttachment;
+        m_msaaDepthTexture = m_device->updateBoundTexture(m_msaaDepthTexture, m_msaaDepth, msaaDepthDesc);
+
+        m_log.info("[metal] MSAA attachments ready: %u samples, %ux%u",
+            m_sampleCount,
+            m_extent.width,
+            m_extent.height);
     }
 
     void MetalSurface::releaseDrawable()
@@ -389,6 +470,8 @@ namespace Render::RHI::metal
         if (extent.width != 0 && extent.height != 0)
         {
             ensureDepthTexture();
+            // 采样数烘在纹理描述符里，尺寸变化必须重建多重采样附件
+            ensureMsaaTextures();
         }
         return RhiResult::Ok;
     }
@@ -450,6 +533,21 @@ namespace Render::RHI::metal
 
         // Metal 与 macOS 上的 GL CoreProfile 一样不支持宽线，粗线必须三角化
         m_caps.maxLineWidth = 1.0f;
+
+        // 采样数上限由设备决定：按 8/4/2 依次探测，都不支持则关闭
+        m_caps.maxSampleCount = 1;
+        if ([m_device supportsTextureSampleCount:8])
+        {
+            m_caps.maxSampleCount = 8;
+        }
+        else if ([m_device supportsTextureSampleCount:4])
+        {
+            m_caps.maxSampleCount = 4;
+        }
+        else if ([m_device supportsTextureSampleCount:2])
+        {
+            m_caps.maxSampleCount = 2;
+        }
 
         // M3 已实现：compute shaders 和 indirect draw
         m_caps.computeShaders = true;
@@ -650,6 +748,10 @@ namespace Render::RHI::metal
         }
         native.vertexFunction = vsFunction;
         native.fragmentFunction = fsFunction;
+        // MSAA：管线创建时就把采样数烘进 MTLRenderPipelineState，必须与
+        // RenderPass 的所有附件采样数一致，否则 setRenderPipelineState 失败
+        // （录制期不报错，表现为整帧空白）。
+        native.rasterSampleCount = desc.sampleCount >= 1 ? desc.sampleCount : 1;
 
         // ---- 顶点布局：RHI 的 attributes/bufferLayouts 直接映射为 MTLVertexDescriptor ----
         MTLVertexDescriptor* vertexDescriptor = [[MTLVertexDescriptor alloc] init];

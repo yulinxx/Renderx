@@ -78,8 +78,147 @@ namespace Render::RHI::gl
         , m_colorFormat(desc.preferredColorFormat)
         , m_depthFormat(desc.depthFormat)
         , m_presentMode(desc.presentMode)
+        , m_sampleCount(desc.sampleCount >= 2 ? desc.sampleCount : 1)
         , m_log(logger)
     {
+    }
+
+    GlSurface::~GlSurface()
+    {
+        releaseMsaaTarget();
+    }
+
+    void GlSurface::releaseMsaaTarget()
+    {
+        const GLFuncs& f = m_device->gl();
+        if (m_msaaFbo != 0 && f.DeleteFramebuffers)
+        {
+            f.DeleteFramebuffers(1, &m_msaaFbo);
+        }
+        if (m_msaaColorRb != 0 && f.DeleteRenderbuffers)
+        {
+            f.DeleteRenderbuffers(1, &m_msaaColorRb);
+        }
+        if (m_msaaDepthRb != 0 && f.DeleteRenderbuffers)
+        {
+            f.DeleteRenderbuffers(1, &m_msaaDepthRb);
+        }
+        m_msaaFbo = 0;
+        m_msaaColorRb = 0;
+        m_msaaDepthRb = 0;
+    }
+
+    /**
+     * @brief 建（或复用）多重采样离屏目标。
+     *
+     * 失败时把 m_sampleCount 降为 1 并告警，渲染退回宿主默认帧缓冲 ——
+     * 没有抗锯齿总比「附件与预期不符导致整屏黑」好。
+     */
+    bool GlSurface::ensureMsaaTarget()
+    {
+        if (m_sampleCount <= 1)
+        {
+            return false;
+        }
+        if (m_msaaFbo != 0)
+        {
+            return true;
+        }
+        if (m_extent.width == 0 || m_extent.height == 0)
+        {
+            return false;
+        }
+
+        const GLFuncs& f = m_device->gl();
+        if (!f.GenFramebuffers || !f.BindFramebuffer || !f.GenRenderbuffers || !f.BindRenderbuffer ||
+            !f.RenderbufferStorageMultisample || !f.FramebufferRenderbuffer || !f.CheckFramebufferStatus ||
+            !f.BlitFramebuffer)
+        {
+            m_log.warn("[gl] MSAA requested (%u samples) but GL 3.0 renderbuffer/blit entry points are "
+                       "unavailable; MSAA disabled",
+                m_sampleCount);
+            m_sampleCount = 1;
+            return false;
+        }
+
+        GLuint fbo = 0;
+        GLuint colorRb = 0;
+        GLuint depthRb = 0;
+        f.GenFramebuffers(1, &fbo);
+        f.BindFramebuffer(GL_FRAMEBUFFER, fbo);
+
+        f.GenRenderbuffers(1, &colorRb);
+        f.BindRenderbuffer(GL_RENDERBUFFER, colorRb);
+        f.RenderbufferStorageMultisample(GL_RENDERBUFFER,
+            static_cast<GLsizei>(m_sampleCount),
+            GL_RGBA8,
+            static_cast<GLsizei>(m_extent.width),
+            static_cast<GLsizei>(m_extent.height));
+        f.FramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, colorRb);
+
+        if (m_depthFormat != ::Render::RHI::Format::Unknown)
+        {
+            GLenum internalFormat = GL_DEPTH_COMPONENT24;
+            GLenum attachment = GL_DEPTH_ATTACHMENT;
+            if (m_depthFormat == ::Render::RHI::Format::D24UnormS8Uint)
+            {
+                internalFormat = GL_DEPTH24_STENCIL8;
+                attachment = GL_DEPTH_STENCIL_ATTACHMENT;
+            }
+            else if (m_depthFormat == ::Render::RHI::Format::D32FloatS8Uint)
+            {
+                internalFormat = GL_DEPTH32F_STENCIL8;
+                attachment = GL_DEPTH_STENCIL_ATTACHMENT;
+            }
+            else if (m_depthFormat == ::Render::RHI::Format::D32Float)
+            {
+                internalFormat = GL_DEPTH_COMPONENT32F;
+            }
+            f.GenRenderbuffers(1, &depthRb);
+            f.BindRenderbuffer(GL_RENDERBUFFER, depthRb);
+            f.RenderbufferStorageMultisample(GL_RENDERBUFFER,
+                static_cast<GLsizei>(m_sampleCount),
+                internalFormat,
+                static_cast<GLsizei>(m_extent.width),
+                static_cast<GLsizei>(m_extent.height));
+            f.FramebufferRenderbuffer(GL_FRAMEBUFFER, attachment, GL_RENDERBUFFER, depthRb);
+        }
+
+        const GLenum status = f.CheckFramebufferStatus(GL_FRAMEBUFFER);
+        // 恢复宿主帧缓冲：本函数在 acquireNextImage 里调用，调用方随后会
+        // 通过 beginRenderPass 重新绑定目标；但 Qt 在 paintGL 返回后仍按
+        // 自己的 FBO 绑定状态收尾，不能把它留在我们的 FBO 上。
+        f.BindFramebuffer(GL_FRAMEBUFFER, m_defaultFramebuffer);
+
+        if (status != GL_FRAMEBUFFER_COMPLETE)
+        {
+            m_log.warn("[gl] MSAA framebuffer incomplete (status=0x%04X, %u samples); MSAA disabled",
+                status,
+                m_sampleCount);
+            if (f.DeleteFramebuffers)
+            {
+                f.DeleteFramebuffers(1, &fbo);
+            }
+            if (f.DeleteRenderbuffers)
+            {
+                f.DeleteRenderbuffers(1, &colorRb);
+                if (depthRb)
+                {
+                    f.DeleteRenderbuffers(1, &depthRb);
+                }
+            }
+            m_sampleCount = 1;
+            return false;
+        }
+
+        m_msaaFbo = fbo;
+        m_msaaColorRb = colorRb;
+        m_msaaDepthRb = depthRb;
+        m_log.info("[gl] MSAA target ready: %u samples, %ux%u",
+            m_sampleCount,
+            m_extent.width,
+            m_extent.height);
+        return true;
     }
 
     ::Render::RHI::RhiResult GlSurface::acquireNextImage()
@@ -101,6 +240,8 @@ namespace Render::RHI::gl
             m_defaultFramebuffer = static_cast<GLuint>(current < 0 ? 0 : current);
         }
 
+        ensureMsaaTarget();
+
         m_acquired = true;
         return ::Render::RHI::RhiResult::Ok;
     }
@@ -118,6 +259,18 @@ namespace Render::RHI::gl
         // ForeignGlContext：交换缓冲由宿主负责（Qt 在 paintGL 返回后自行 swap）。
         // 这里只保证命令已提交给驱动，避免宿主在未 flush 的情况下 swap。
         const GLFuncs& f = m_device->gl();
+        if (m_msaaFbo != 0 && f.BlitFramebuffer && f.BindFramebuffer)
+        {
+            // 解析：把多重采样 FBO 的内容 blit 到宿主的窗口帧缓冲。
+            // 颜色用 NEAREST（同尺寸 1:1），深度无需解析（每帧 Clear）。
+            const GLint w = static_cast<GLint>(m_extent.width);
+            const GLint h = static_cast<GLint>(m_extent.height);
+            f.BindFramebuffer(GL_READ_FRAMEBUFFER, m_msaaFbo);
+            f.BindFramebuffer(GL_DRAW_FRAMEBUFFER, m_defaultFramebuffer);
+            f.BlitFramebuffer(0, 0, w, h, 0, 0, w, h, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+            // 还原：宿主与后续命令都期望窗口帧缓冲处于绑定状态
+            f.BindFramebuffer(GL_FRAMEBUFFER, m_defaultFramebuffer);
+        }
         if (f.Flush)
         {
             f.Flush();
@@ -127,6 +280,12 @@ namespace Render::RHI::gl
 
     ::Render::RHI::RhiResult GlSurface::resize(::Render::RHI::Extent2D extent)
     {
+        if (extent.width != m_extent.width || extent.height != m_extent.height)
+        {
+            // 多重采样 renderbuffer 的尺寸在创建时固定，尺寸变化必须重建。
+            // 下一帧 acquireNextImage 会按新尺寸重新创建。
+            releaseMsaaTarget();
+        }
         m_extent = extent;
         // GL 默认帧缓冲的尺寸由窗口系统/宿主管理，这里只记录，
         // 供 beginRenderPass 设置默认视口。
@@ -293,6 +452,11 @@ namespace Render::RHI::gl
         m_caps.uniformBufferOffsetAlignment = queryInt(GL_UNIFORM_BUFFER_OFFSET_ALIGNMENT, 256);
         m_caps.storageBufferOffsetAlignment = queryInt(GL_SHADER_STORAGE_BUFFER_OFFSET_ALIGNMENT, 256);
         m_caps.maxPushConstantBytes = kMaxPushConstantBytes;
+
+        // MSAA：GL_MAX_SAMPLES 是驱动支持的上限，取不超过它的最大常用档位。
+        // 取不到（老驱动/ES 头无此枚举）时按不支持处理，渲染保持单采样。
+        const uint32_t maxSamples = queryInt(GL_MAX_SAMPLES, 1);
+        m_caps.maxSampleCount = maxSamples >= 8 ? 8 : (maxSamples >= 4 ? 4 : (maxSamples >= 2 ? 2 : 1));
 
         // 能力按「函数指针是否解析成功」判定，而不是解析 version 字符串：
         // 驱动/上下文配置千差万别，指针存在与否才是能不能调用的唯一依据。

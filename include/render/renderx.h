@@ -369,6 +369,15 @@ namespace Render
             /// 0/1。开启 GL debug output / Vulkan validation layer
             uint8_t enableValidation;
             uint8_t _pad0[3];
+            /**
+             * @brief MSAA 采样数（0/1 = 关闭，合法值 2/4/8）。
+             *
+             * 占用原对齐填充位，结构体大小不变（仍为 56 字节），旧调用方零初始化
+             * 即 0 → 关闭，行为与引入前完全一致。采样数在 Runtime 级别生效：
+             * Metal 的 rasterSampleCount 与交换链附件必须一致，而管线对象在
+             * Runtime 内共享，因此同一 Runtime 的所有表面使用同一采样数。
+             */
+            uint32_t sampleCount;
             /// 瞬态环形缓冲容量（字节）。0 表示使用默认 64MB
             uint64_t transientBufferBytes;
             rxLogCallback logCallback;
@@ -393,7 +402,14 @@ namespace Render
             /// 0/1。是否需要深度附件
             uint8_t enableDepth;
             uint8_t _pad0[3];
-            uint32_t _pad1;
+            /**
+             * @brief 表面 MSAA 采样数（0/1 = 关闭）。
+             *
+             * 占用原填充位，结构体大小不变（仍为 40 字节）。Runtime 会把它
+             * 与 RuntimeDesc::sampleCount 对齐：不一致时以 Runtime 为准
+             * （Metal 管线对象在 Runtime 内共享，采样数必须全局一致）。
+             */
+            uint32_t sampleCount;
         };
 
         static_assert(sizeof(SurfaceDesc) == 40, "SurfaceDesc ABI size changed");
@@ -552,7 +568,9 @@ namespace Render
 
         struct MaterialDesc
         {
-            /// 线宽（像素）。超出 Capabilities::maxLineWidth 时应改用三角化线段。
+            /// 线宽，单位：**设备像素**（不是 pt）。Retina 下调用方需先乘以
+            /// devicePixelRatio，否则 1pt 会被画成 1 物理像素（等效半个点）。
+            /// 超出 Capabilities::maxLineWidth 时应改用三角化线段。
             float lineWidth;
             float pointSize;
             /// 漫反射色。2D 管线不消费（颜色在顶点里），3D 网格没有顶点色，靠这里取色。
@@ -645,7 +663,7 @@ namespace Render
             IndexType indexType;
             uint16_t pipelineIndex;
             uint16_t materialIndex;
-            /// 0 表示沿用材质的线宽
+            /// 0 表示沿用材质的线宽。单位：**设备像素**，语义同 MaterialDesc::lineWidth。
             float lineWidth;
             float pointSize;
         };
@@ -869,8 +887,15 @@ namespace Render
             uint8_t wireframeFill;
             uint8_t persistentMapping;
             uint8_t timestampQueries;
-            uint8_t _pad1[2];
-            /// macOS GL 与 Metal 上通常为 1.0
+            /**
+             * @brief 后端支持的最大 MSAA 采样数（1 = 不支持）。
+             *
+             * 占用原填充位，结构体大小不变。RuntimeDesc::sampleCount 超过
+             * 该值时会降级并记录告警。
+             */
+            uint8_t maxSampleCount;
+            uint8_t _pad1;
+            /// 线宽上限，单位：设备像素。macOS GL 与 Metal 上通常为 1.0
             float maxLineWidth;
             uint32_t maxTextureSize;
             uint32_t maxColorAttachments;

@@ -70,7 +70,15 @@ namespace Render::RHI::metal
         Format depthFormat() const override { return m_depthFormat; }
 
         TextureHandle currentColorTexture() const override { return m_colorTexture; }
-        TextureHandle depthTexture() const override { return m_depthTexture; }
+        /// 开启 MSAA 时返回多重采样深度纹理：管线与 RenderPass 的采样数必须一致。
+        TextureHandle depthTexture() const override
+        {
+            return m_msaaDepthTexture.valid() ? m_msaaDepthTexture : m_depthTexture;
+        }
+
+        /// 多重采样颜色纹理；未开启 MSAA 时为 nil（此时直接用 drawable）
+        id<MTLTexture> msaaColorTexture() const { return m_msaaColor; }
+        bool usesMsaa() const { return m_msaaColor != nil; }
 
         /// 本帧取得的 drawable 纹理；未 acquire 时为 nil
         id<MTLTexture> currentDrawableTexture() const
@@ -91,6 +99,7 @@ namespace Render::RHI::metal
 
     private:
         void ensureDepthTexture();
+        void ensureMsaaTextures();
         void releaseDrawable();
 
         MetalDevice* m_device = nullptr;
@@ -111,6 +120,12 @@ namespace Render::RHI::metal
         TextureHandle m_colorTexture{};
         TextureHandle m_depthTexture{};
         id<MTLTexture> m_depthNative = nil;
+        /// MSAA 采样数（1 = 关闭）。运行时归一化后的值由 SurfaceDesc 传入。
+        uint32_t m_sampleCount = 1;
+        /// 多重采样颜色/深度附件。RenderPass 先写它们，endEncoding 时解析到 drawable。
+        id<MTLTexture> m_msaaColor = nil;
+        id<MTLTexture> m_msaaDepth = nil;
+        TextureHandle m_msaaDepthTexture{};
         bool m_acquired = false;
         uint64_t m_presentCount = 0;
         RhiLogger m_log;

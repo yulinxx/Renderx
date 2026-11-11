@@ -160,6 +160,9 @@ extern "C" bool gl_loader_load(GLFuncs* out, void* getProcAddress)
     f.RenderbufferStorage = (PFNGLRENDERBUFFERSTORAGEPROC)getProc("glRenderbufferStorage");
     f.FramebufferRenderbuffer = (PFNGLFRAMEBUFFERRENDERBUFFERPROC)getProc("glFramebufferRenderbuffer");
     f.CheckFramebufferStatus = (PFNGLCHECKFRAMEBUFFERSTATUSPROC)getProc("glCheckFramebufferStatus");
+    f.RenderbufferStorageMultisample =
+        (PFNGLRENDERBUFFERSTORAGEMULTISAMPLEPROC)getProc("glRenderbufferStorageMultisample");
+    f.BlitFramebuffer = (PFNGLBLITFRAMEBUFFERPROC)getProc("glBlitFramebuffer");
 
     f.CreateBuffers = (PFNGLCREATEBUFFERSPROC)getProc("glCreateBuffers");
     f.NamedBufferData = (PFNGLNAMEDBUFFERDATAPROC)getProc("glNamedBufferData");

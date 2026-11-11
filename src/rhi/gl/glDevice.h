@@ -52,6 +52,7 @@ namespace Render::RHI::gl
     {
     public:
         GlSurface(GlDevice* device, const ::Render::RHI::SurfaceDesc& desc, const ::Render::RHI::RhiLogger& logger);
+        ~GlSurface() override;
 
         ::Render::RHI::RhiResult acquireNextImage() override;
         ::Render::RHI::RhiResult present() override;
@@ -69,12 +70,20 @@ namespace Render::RHI::gl
         /// acquireNextImage 时捕获的当前帧缓冲。QOpenGLWidget 渲染到自己的
         /// FBO 而非 0 号帧缓冲，因此不能写死 0。
         GLuint defaultFramebuffer() const { return m_defaultFramebuffer; }
+        /// 本帧的渲染目标：开启 MSAA 时是多重采样 FBO，否则就是宿主帧缓冲。
+        /// 解析（blit）在 present 里完成。
+        GLuint renderTargetFramebuffer() const { return m_msaaFbo != 0 ? m_msaaFbo : m_defaultFramebuffer; }
+        /// 1 = 关闭；>1 表示多重采样目标已就绪
+        uint32_t msaaSamples() const { return m_sampleCount; }
         uint64_t presentCount() const { return m_presentCount; }
         /// 请求的呈现模式。ForeignGlContext 下实际 vsync 由宿主设置
         /// （Qt: QSurfaceFormat::setSwapInterval），此值仅供诊断。
         ::Render::RHI::PresentMode presentMode() const { return m_presentMode; }
 
     private:
+        bool ensureMsaaTarget();
+        void releaseMsaaTarget();
+
         GlDevice* m_device = nullptr;
         ::Render::RHI::NativeWindow m_window{};
         ::Render::RHI::Extent2D m_extent{};
@@ -82,6 +91,14 @@ namespace Render::RHI::gl
         ::Render::RHI::Format m_depthFormat = ::Render::RHI::Format::Unknown;
         ::Render::RHI::PresentMode m_presentMode = ::Render::RHI::PresentMode::Fifo;
         GLuint m_defaultFramebuffer = 0;
+        /**
+         * 多重采样离屏目标。GL 的默认帧缓冲不能直接做 MSAA（采样数由上下文
+         * 决定且 Qt 不保证），因此自建 FBO，present 时 blit 解析到 m_defaultFramebuffer。
+         */
+        uint32_t m_sampleCount = 1;
+        GLuint m_msaaFbo = 0;
+        GLuint m_msaaColorRb = 0;
+        GLuint m_msaaDepthRb = 0;
         bool m_acquired = false;
         uint64_t m_presentCount = 0;
         ::Render::RHI::RhiLogger m_log;

@@ -583,6 +583,14 @@ namespace Render::RHI
         ColorBlendState blend[kMaxColorAttachments]{};
         Format colorFormats[kMaxColorAttachments]{};
         uint32_t colorAttachmentCount = 1;
+        /**
+         * @brief MSAA 采样数（1 = 关闭）。
+         *
+         * Metal 把 rasterSampleCount 烘进 MTLRenderPipelineState，必须与
+         * RenderPass 实际挂的附件采样数一致，否则 setRenderPipelineState
+         * 被校验层拒绝。GL 不使用该字段（采样数由 FBO 决定）。
+         */
+        uint32_t sampleCount = 1;
 
         const char* debugName = nullptr;
     };
@@ -721,7 +729,10 @@ namespace Render::RHI
         bool persistentMapping = false;  ///< 支持长期映射的 CPU 可写缓冲
         bool timestampQueries = false;
 
-        float maxLineWidth = 1.0f;       ///< macOS GL 与 Metal 上通常为 1.0
+        float maxLineWidth = 1.0f;       ///< 设备像素，macOS GL 与 Metal 上通常为 1.0
+        /// 后端支持的最大 MSAA 采样数（1 = 不支持）。渲染目标的附件与管线
+        /// 采样数必须一致，上层据此归一化 Runtime 级采样数。
+        uint32_t maxSampleCount = 1;
         uint32_t maxTextureSize = 2048;
         uint32_t maxVertexAttributes = kMaxVertexAttributes;
         uint32_t maxColorAttachments = 1;

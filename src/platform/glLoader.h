@@ -302,6 +302,16 @@ typedef long long GLint64;
 #ifndef GL_DEPTH_COMPONENT24
     #define GL_DEPTH_COMPONENT24 0x81A6
 #endif
+// MSAA / blit（GL 3.0 核心）：多重采样渲染缓冲与解析 blit
+#ifndef GL_MAX_SAMPLES
+    #define GL_MAX_SAMPLES 0x8D57
+#endif
+#ifndef GL_SAMPLES
+    #define GL_SAMPLES 0x80A9
+#endif
+#ifndef GL_DEPTH32F_STENCIL8
+    #define GL_DEPTH32F_STENCIL8 0x8CAD
+#endif
 // GL_DEPTH_COMPONENT32F 的正确枚举值是 0x8CAC。
 // 此前误写为 0x8C29（那是 GL_MAX_GEOMETRY_TEXTURE_IMAGE_UNITS），
 // 导致 glTexImage2D 申请 D32Float 纹理时报 GL_INVALID_OPERATION、
@@ -485,6 +495,18 @@ typedef void(RENDER_GLAPI* PFNGLRENDERBUFFERSTORAGEPROC)(
 typedef void(RENDER_GLAPI* PFNGLFRAMEBUFFERRENDERBUFFERPROC)(
     GLenum target, GLenum attachment, GLenum renderbuffertarget, GLuint renderbuffer);
 typedef GLenum(RENDER_GLAPI* PFNGLCHECKFRAMEBUFFERSTATUSPROC)(GLenum target);
+typedef void(RENDER_GLAPI* PFNGLRENDERBUFFERSTORAGEMULTISAMPLEPROC)(
+    GLenum target, GLsizei samples, GLenum internalformat, GLsizei width, GLsizei height);
+typedef void(RENDER_GLAPI* PFNGLBLITFRAMEBUFFERPROC)(GLint srcX0,
+    GLint srcY0,
+    GLint srcX1,
+    GLint srcY1,
+    GLint dstX0,
+    GLint dstY0,
+    GLint dstX1,
+    GLint dstY1,
+    GLbitfield mask,
+    GLenum filter);
 
 typedef void(RENDER_GLAPI* PFNGLCREATEBUFFERSPROC)(GLsizei n, GLuint* buffers);
 typedef void(RENDER_GLAPI* PFNGLNAMEDBUFFERDATAPROC)(GLuint buffer, GLsizeiptr size, const void* data, GLenum usage);
@@ -637,6 +659,8 @@ struct GLFuncs
     PFNGLRENDERBUFFERSTORAGEPROC RenderbufferStorage;
     PFNGLFRAMEBUFFERRENDERBUFFERPROC FramebufferRenderbuffer;
     PFNGLCHECKFRAMEBUFFERSTATUSPROC CheckFramebufferStatus;
+    PFNGLRENDERBUFFERSTORAGEMULTISAMPLEPROC RenderbufferStorageMultisample;
+    PFNGLBLITFRAMEBUFFERPROC BlitFramebuffer;
 
     // GL 3.0+ framebuffer binding query
     #ifndef GL_DRAW_FRAMEBUFFER_BINDING

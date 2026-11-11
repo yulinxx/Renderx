@@ -42,6 +42,32 @@ namespace Render::RT::detail
 {
 
     /**
+     * @brief MSAA 采样数归一化：只接受 1/2/4/8，且不超过后端上限。
+     *
+     * 0（旧调用方的零初始化）与任何非法值都按 1 处理，即「关闭 MSAA」，
+     * 保证引入采样数前的行为完全不变。上限不是 2 的幂（或 < 2）时按
+     * 关闭处理——宁可没有抗锯齿，也不要附件与管线采样数不一致。
+     */
+    constexpr uint32_t normalizeSampleCount(uint32_t requested, uint32_t maxSupported) noexcept
+    {
+        const uint32_t valid = (requested == 2 || requested == 4 || requested == 8) ? requested : 1;
+        if (valid <= 1)
+        {
+            return 1;
+        }
+        if (maxSupported < 2)
+        {
+            return 1;
+        }
+        // 上限本身可能不是 2/4/8（例如 16）：取不超过上限的最大合法档位
+        if (valid > maxSupported)
+        {
+            return maxSupported >= 8 ? 8 : (maxSupported >= 4 ? 4 : 2);
+        }
+        return valid;
+    }
+
+    /**
      * @brief 所有 RT shader 共用的 pushConstant 块（std140 布局）
      *
      * 与 shader 里的 `layout(std140) uniform PushConstants` 逐字段对应。
@@ -382,6 +408,16 @@ namespace Render::RT::detail
 
         std::vector<Surface*> surfaces;
         std::vector<Session*> sessions;
+
+        /**
+         * MSAA 采样数（1 = 关闭）。
+         *
+         * 取 RuntimeDesc::sampleCount 并归一化（只接受 1/2/4/8）。
+         * 必须 Runtime 级而不是 Surface 级：Metal 的 rasterSampleCount 烘在
+         * 管线对象里，而管线缓存在 Runtime 内共享；两条采样数不同的表面
+         * 会用同一条管线，附件与管线不匹配会被校验层拒绝。
+         */
+        uint32_t sampleCount = 1;
 
         /// 公共 BufferHandle → RHI 缓冲。世代式，销毁后旧句柄立即失效。
         SlotMap<uint64_t, RHI::BufferHandle> buffers;

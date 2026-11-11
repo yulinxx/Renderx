@@ -545,10 +545,23 @@ namespace Render::RT::detail
         caps.persistentMapping = rhiCaps.persistentMapping ? 1 : 0;
         caps.timestampQueries = rhiCaps.timestampQueries ? 1 : 0;
         caps.maxLineWidth = rhiCaps.maxLineWidth;
+        caps.maxSampleCount = static_cast<uint8_t>(rhiCaps.maxSampleCount > 255 ? 255 : rhiCaps.maxSampleCount);
         caps.maxTextureSize = rhiCaps.maxTextureSize;
         caps.maxColorAttachments = rhiCaps.maxColorAttachments;
         caps.uniformBufferOffsetAlignment = rhiCaps.uniformBufferOffsetAlignment;
         caps.maxFramesInFlight = rhiCaps.maxFramesInFlight;
+
+        // MSAA 采样数：Runtime 级设置（管线对象共享，采样数必须与所有附件一致）。
+        // 0（旧调用方零初始化）→ 关闭，与引入前行为完全一致；
+        // 非法值或超出后端上限时降级并记录告警，绝不把不一致的值传给后端。
+        sampleCount = normalizeSampleCount(desc.sampleCount, rhiCaps.maxSampleCount);
+        if (sampleCount != (desc.sampleCount == 0 ? 1 : desc.sampleCount))
+        {
+            log.warn("[rt] sampleCount=%u requested, using %u (backend max=%u)",
+                desc.sampleCount,
+                sampleCount,
+                rhiCaps.maxSampleCount);
+        }
 
         // 采样器：文本图集与位图都用线性过滤 + 边缘钳制
         RHI::SamplerDesc samplerDesc{};
@@ -1292,6 +1305,9 @@ namespace Render::RT::detail
         // Metal 建出一条 MTLPixelFormatInvalid 的管线——setRenderPipelineState
         // 被拒，而录制期不报错，表现为「管线建出来了、绘制也提交了，画面全空」。
         desc.colorFormats[0] = key.colorFormat;
+        // MSAA 采样数必须与附件一致，Metal 把它烘进 MTLRenderPipelineState；
+        // GL 忽略该字段（由 FBO 决定）。
+        desc.sampleCount = sampleCount;
         desc.debugName = pair.vertex;
 
         const RHI::PipelineHandle handle = device->createGraphicsPipeline(desc);
@@ -1808,6 +1824,16 @@ namespace Render::RT::detail
             ? RHI::PresentMode::Immediate
             : (desc.presentMode == PresentMode::Mailbox ? RHI::PresentMode::Mailbox : RHI::PresentMode::Fifo);
         rhiDesc.depthFormat = desc.enableDepth ? RHI::Format::D32Float : RHI::Format::Unknown;
+        // 采样数以 Runtime 为准：Metal 的管线对象共享，同 Runtime 内的附件
+        // 采样数必须与管线一致，否则校验层拒绝整帧绘制。
+        if (desc.sampleCount > 1 && desc.sampleCount != sampleCount)
+        {
+            log.warn("[rt] rxSurfaceCreate: requested sampleCount=%u but runtime uses %u; using %u",
+                desc.sampleCount,
+                sampleCount,
+                sampleCount);
+        }
+        rhiDesc.sampleCount = sampleCount;
         rhiDesc.debugName = "RxSurface";
 
         RHI::ISurface* rhi = device->createSurface(rhiDesc);

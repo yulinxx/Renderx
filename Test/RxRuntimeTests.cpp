@@ -207,6 +207,52 @@ TEST(RxRuntime, CapabilitiesReportNullBackend)
     rxRuntimeDestroy(runtime);
 }
 
+// ==================== MSAA 采样数 ====================
+
+TEST(RxRuntime, SampleCountNormalizationRejectsUnsupportedValues)
+{
+    using Render::RT::detail::normalizeSampleCount;
+
+    // 0（旧调用方零初始化）必须等价于关闭，保证引入采样数前的行为不变
+    EXPECT_EQ(normalizeSampleCount(0, 8), 1u);
+    EXPECT_EQ(normalizeSampleCount(1, 8), 1u);
+    EXPECT_EQ(normalizeSampleCount(2, 8), 2u);
+    EXPECT_EQ(normalizeSampleCount(4, 8), 4u);
+    EXPECT_EQ(normalizeSampleCount(8, 8), 8u);
+
+    // 非 2/4/8 一律关闭：管线与附件采样数不一致会让整帧空白
+    EXPECT_EQ(normalizeSampleCount(3, 8), 1u);
+    EXPECT_EQ(normalizeSampleCount(16, 8), 1u);
+
+    // 后端能力不足时降级
+    EXPECT_EQ(normalizeSampleCount(8, 4), 4u);
+    EXPECT_EQ(normalizeSampleCount(4, 2), 2u);
+    EXPECT_EQ(normalizeSampleCount(4, 1), 1u);
+}
+
+TEST(RxRuntime, NullBackendClampsSampleCountButKeepsSurfaceUsable)
+{
+    LogSink sink;
+    RuntimeDesc desc = makeRuntimeDesc(&sink);
+    desc.sampleCount = 4;
+    const RuntimeHandle runtime = rxRuntimeCreate(&desc);
+    ASSERT_TRUE(rxValid(runtime));
+
+    Capabilities caps{};
+    ASSERT_EQ(rxRuntimeGetCapabilities(runtime, &caps), RxResult::Ok);
+    // Null 后端没有真实附件，声明不支持 MSAA；请求被降级为 1
+    EXPECT_EQ(caps.maxSampleCount, 1u);
+
+    // 表面也声明 4：实现按 Runtime 归一化后的 1 建表面，不得失败
+    SurfaceDesc sd = makeSurfaceDesc(64, 64);
+    sd.sampleCount = 4;
+    const SurfaceHandle surface = rxSurfaceCreate(runtime, &sd);
+    ASSERT_TRUE(rxValid(surface));
+
+    rxSurfaceDestroy(runtime, surface);
+    rxRuntimeDestroy(runtime);
+}
+
 // ==================== 内建管线 ====================
 
 TEST(RxRuntime, AllDefaultPipelinesAreAvailable)

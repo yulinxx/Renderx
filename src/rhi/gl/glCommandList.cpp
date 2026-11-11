@@ -118,7 +118,8 @@ namespace Render::RHI::gl
         {
             // 附件为空 = 画到表面。GL 的「表面」就是 acquireNextImage 时
             // 捕获的当前帧缓冲（Qt 下是 widget 自己的 FBO，不是 0）。
-            return m_surface ? m_surface->defaultFramebuffer() : 0;
+            // 开启 MSAA 时先画到自建的多重采样 FBO，present 时再解析。
+            return m_surface ? m_surface->renderTargetFramebuffer() : 0;
         }
         return m_device->framebufferFor(desc);
     }
