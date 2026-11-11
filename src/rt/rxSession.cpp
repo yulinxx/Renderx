@@ -140,10 +140,10 @@ namespace Render::RT::detail
 
         surface->boundSession = this;
         runtime->sessions.push_back(this);
-        runtime->log.debug("[rt] Session ready: surface=%ux%u depth=%s",
-            surface->width,
-            surface->height,  // Session 就绪
-            surface->hasDepth ? "on" : "off");
+        // runtime->log.debug("[rt] Session ready: surface=%ux%u depth=%s",
+        //     surface->width,
+        //     surface->height,  // Session 就绪
+        //     surface->hasDepth ? "on" : "off");
         return true;
     }
 
@@ -1099,11 +1099,11 @@ namespace Render::RT::detail
         offscreenWidth = width;
         offscreenHeight = height;
 
-        runtime->log.debug("[rt] Session render target set: color=%s depth=%s %ux%u",
-            colorTexture.valid() ? "valid" : "swapchain",
-            depthTexture.valid() ? "valid" : "none",
-            width,
-            height);
+        // runtime->log.debug("[rt] Session render target set: color=%s depth=%s %ux%u",
+        //     colorTexture.valid() ? "valid" : "swapchain",
+        //     depthTexture.valid() ? "valid" : "none",
+        //     width,
+        //     height);
         return RxResult::Ok;
     }
 
