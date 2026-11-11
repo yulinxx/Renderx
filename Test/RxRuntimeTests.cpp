@@ -797,6 +797,21 @@ TEST_F(RxSessionFixture, FrameMustBePaired)
     EXPECT_EQ(rxSessionEndFrame(session), RxResult::Ok);
 }
 
+TEST_F(RxSessionFixture, GpuFrameTimeIsQueryableAndZeroOnNullBackend)
+{
+    // 空后端没有 GPU：接口必须可用（Ok）且返回 0，而不是报错或编造数值
+    uint64_t ns = 12345;  // 先填非零，确认实现确实覆写了输出
+    EXPECT_EQ(rxSessionGetGpuFrameTimeNs(session, &ns), RxResult::Ok);
+    EXPECT_EQ(ns, 0u);
+
+    // 参数契约：输出参数为空是调用方错误
+    EXPECT_EQ(rxSessionGetGpuFrameTimeNs(session, nullptr), RxResult::ErrorInvalidArgument);
+
+    // 句柄契约：无效句柄必须拒绝，不能解引用
+    SessionHandle invalid{};
+    EXPECT_EQ(rxSessionGetGpuFrameTimeNs(invalid, &ns), RxResult::ErrorInvalidHandle);
+}
+
 TEST_F(RxSessionFixture, TransientAllocOnlyValidInsideFrame)
 {
     TransientAlloc alloc{};

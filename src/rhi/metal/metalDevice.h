@@ -31,6 +31,8 @@
 #include "rhi/rhiResourcePool.h"
 #include "rhi/rhiSurface.h"
 
+#include <atomic>
+#include <memory>
 #include <vector>
 
 /// CAMetalLayer 的专属 layer-hosting 宿主视图，定义在 metalDevice.mm；
@@ -98,6 +100,12 @@ namespace Render::RHI::metal
         {
             return m_msaaDepthTexture.valid() ? m_msaaDepthTexture : m_depthTexture;
         }
+        /// 由 command buffer 的 GPUStartTime/GPUEndTime 得到；尚无已完成帧或
+        /// GPU 不提供时间戳（部分 Intel 机型）时为 0。
+        uint64_t lastGpuFrameTimeNs() const override
+        {
+            return m_gpuFrameTimeNs->load(std::memory_order_relaxed);
+        }
 
         /// 多重采样颜色纹理；未开启 MSAA 时为 nil（此时直接用 drawable）
         id<MTLTexture> msaaColorTexture() const { return m_msaaColor; }
@@ -151,6 +159,12 @@ namespace Render::RHI::metal
         TextureHandle m_msaaDepthTexture{};
         bool m_acquired = false;
         uint64_t m_presentCount = 0;
+        /**
+         * 最近一帧的 GPU 耗时。完成回调在驱动线程触发，可能晚于 surface
+         * 析构，因此用 shared_ptr 让回调自己持有一份，而不是捕获 this。
+         */
+        std::shared_ptr<std::atomic<uint64_t>> m_gpuFrameTimeNs =
+            std::make_shared<std::atomic<uint64_t>>(0);
         RhiLogger m_log;
     };
 

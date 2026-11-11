@@ -456,8 +456,20 @@ namespace Render::RHI::metal
         // 「呈现」无法像 GL 那样拆成两步：commit 与 present 在这里一起完成。
         // rxSession 的调用顺序（submitFrame 之后必然 present）保证了等价语义。
         dispatch_semaphore_t inFlight = m_inFlight;
+        // 完成回调可能晚于 surface 析构，因此捕获 shared_ptr 而不是 this
+        auto gpuFrameTimeNs = m_gpuFrameTimeNs;
         [commandBuffer addCompletedHandler:^(id<MTLCommandBuffer> buffer) {
-            (void)buffer;
+            if (@available(macOS 10.15, *))
+            {
+                // GPUStartTime/GPUEndTime 由驱动打点；部分 Intel 机型不提供，保持 0
+                const CFTimeInterval start = buffer.GPUStartTime;
+                const CFTimeInterval end = buffer.GPUEndTime;
+                if (start > 0.0 && end > start)
+                {
+                    gpuFrameTimeNs->store(static_cast<uint64_t>((end - start) * 1e9),
+                        std::memory_order_relaxed);
+                }
+            }
             dispatch_semaphore_signal(inFlight);
         }];
         [commandBuffer presentDrawable:m_drawable];
@@ -575,7 +587,9 @@ namespace Render::RHI::metal
         m_caps.wireframeFill = true;
         m_caps.baseVertexOffset = true;
         m_caps.persistentMapping = true;
-        m_caps.timestampQueries = false;
+        // 用 command buffer 的 GPUStartTime/GPUEndTime 计时：接口始终可用，
+        // 但个别 Intel 机型不提供时间戳，此时样本为 0（上层显示为不可用）。
+        m_caps.timestampQueries = true;
 
         m_caps.maxTextureSize = 16384;
         m_caps.maxVertexAttributes = kMaxVertexAttributes;

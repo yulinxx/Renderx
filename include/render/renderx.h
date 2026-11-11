@@ -1240,6 +1240,16 @@ namespace Render
             RENDER_API RxResult rxSessionGetStats(SessionHandle session, FrameStats* out);
 
             /**
+             * @brief 最近一帧的 GPU 耗时（纳秒）
+             *
+             * 只返回**已经可用**的样本，不阻塞等待 GPU：刚结束的帧通常还没
+             * 跑完，读它等于同步等 GPU。后端不支持计时、尚无样本或没有 GPU
+             * （空后端）时 *outNs = 0，返回值仍为 Ok ——「测不到」不是错误，
+             * 调用方不应据此停止渲染。
+             */
+            RENDER_API RxResult rxSessionGetGpuFrameTimeNs(SessionHandle session, uint64_t* outNs);
+
+            /**
              * @brief 读回当前后备缓冲的像素（视图导出/截图）
              *
              * 必须在 rxSessionEndFrame **之前**调用——EndFrame 之后后备缓冲已交给

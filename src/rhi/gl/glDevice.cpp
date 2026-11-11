@@ -86,6 +86,95 @@ namespace Render::RHI::gl
     GlSurface::~GlSurface()
     {
         releaseMsaaTarget();
+        const GLFuncs& f = m_device->gl();
+        if (m_gpuTimerQueries[0] != 0 && f.DeleteQueries)
+        {
+            f.DeleteQueries(kGpuTimerQueryCount, m_gpuTimerQueries);
+        }
+    }
+
+    void GlSurface::beginGpuTimer()
+    {
+        const GLFuncs& f = m_device->gl();
+        if (!f.GenQueries || !f.BeginQuery || !f.EndQuery || !f.GetQueryObjectuiv)
+        {
+            return;
+        }
+        if (m_gpuTimerActive)
+        {
+            // 上一帧在 acquire 之后失败、没走到 present：先把查询收尾，
+            // 否则它永远不结束，后续帧都拿不到新样本。
+            endGpuTimer();
+        }
+        if (m_gpuTimerQueries[0] == 0)
+        {
+            f.GenQueries(kGpuTimerQueryCount, m_gpuTimerQueries);
+            if (m_gpuTimerQueries[0] == 0)
+            {
+                return;
+            }
+        }
+        // 先回收旧结果；槽位用尽时强制读取，保证总能拿到一个可写的查询对象
+        collectGpuTimer(false);
+        if (m_gpuTimerPending >= kGpuTimerQueryCount)
+        {
+            collectGpuTimer(true);
+        }
+        if (m_gpuTimerPending >= kGpuTimerQueryCount)
+        {
+            return;
+        }
+        f.BeginQuery(GL_TIME_ELAPSED, m_gpuTimerQueries[m_gpuTimerWriteSlot]);
+        m_gpuTimerActive = true;
+    }
+
+    void GlSurface::endGpuTimer()
+    {
+        if (!m_gpuTimerActive)
+        {
+            return;
+        }
+        const GLFuncs& f = m_device->gl();
+        f.EndQuery(GL_TIME_ELAPSED);
+        m_gpuTimerActive = false;
+        if (m_gpuTimerPending < kGpuTimerQueryCount)
+        {
+            ++m_gpuTimerPending;
+        }
+        m_gpuTimerWriteSlot = (m_gpuTimerWriteSlot + 1) % kGpuTimerQueryCount;
+    }
+
+    void GlSurface::collectGpuTimer(bool force)
+    {
+        const GLFuncs& f = m_device->gl();
+        if (!f.GetQueryObjectuiv)
+        {
+            m_gpuTimerPending = 0;
+            return;
+        }
+        while (m_gpuTimerPending > 0)
+        {
+            // 保留最近一帧不读：它的结果通常还没好，读它等于同步等 GPU
+            if (!force && m_gpuTimerPending < 2)
+            {
+                break;
+            }
+            const uint32_t oldest =
+                (m_gpuTimerWriteSlot + kGpuTimerQueryCount - m_gpuTimerPending) % kGpuTimerQueryCount;
+            GLuint available = 0;
+            f.GetQueryObjectuiv(m_gpuTimerQueries[oldest], GL_QUERY_RESULT_AVAILABLE, &available);
+            if (available == 0 && !force)
+            {
+                break;
+            }
+            GLuint elapsedNs = 0;
+            f.GetQueryObjectuiv(m_gpuTimerQueries[oldest], GL_QUERY_RESULT, &elapsedNs);
+            if (available != 0)
+            {
+                m_lastGpuFrameTimeNs.store(static_cast<uint64_t>(elapsedNs), std::memory_order_relaxed);
+            }
+            --m_gpuTimerPending;
+        }
     }
 
     void GlSurface::releaseMsaaTarget()
@@ -241,6 +330,7 @@ namespace Render::RHI::gl
         }
 
         ensureMsaaTarget();
+        beginGpuTimer();
 
         m_acquired = true;
         return ::Render::RHI::RhiResult::Ok;
@@ -271,6 +361,8 @@ namespace Render::RHI::gl
             // 还原：宿主与后续命令都期望窗口帧缓冲处于绑定状态
             f.BindFramebuffer(GL_FRAMEBUFFER, m_defaultFramebuffer);
         }
+        // MSAA 解析 blit 也算本帧 GPU 工作，结束标记放在它之后
+        endGpuTimer();
         if (f.Flush)
         {
             f.Flush();
@@ -465,7 +557,9 @@ namespace Render::RHI::gl
         m_caps.multiDrawIndirect = m_gl.MultiDrawArraysIndirect != nullptr && m_gl.MultiDrawElementsIndirect != nullptr;
         m_caps.storageBuffers = m_gl.BindBufferRange != nullptr && m_caps.computeShaders;
         m_caps.persistentMapping = m_gl.BufferStorage != nullptr && m_gl.MapBufferRange != nullptr;
-        m_caps.timestampQueries = false;
+        // GPU 计时：GL_TIME_ELAPSED 是 GL 3.3 核心；指针齐了才能调用
+        m_caps.timestampQueries = m_gl.GenQueries != nullptr && m_gl.BeginQuery != nullptr &&
+            m_gl.EndQuery != nullptr && m_gl.GetQueryObjectuiv != nullptr;
         m_caps.wireframeFill = m_gl.PolygonMode != nullptr;  // GLES 没有 glPolygonMode
         m_caps.baseVertexOffset = false;                     // glDrawElementsBaseVertex 未纳入函数表
         m_caps.maxFramesInFlight = 1;                        // GL 没有显式的帧内飞行概念

@@ -1253,6 +1253,25 @@ namespace Render
                 });
             }
 
+            RxResult rxSessionGetGpuFrameTimeNs(SessionHandle handle, uint64_t* outNs)
+            {
+                return rxAbiGuard<RxResult>([handle, outNs] {
+                    Session* session = checkedSession(handle);
+                    if (!session)
+                    {
+                        return RxResult::ErrorInvalidHandle;
+                    }
+                    if (!outNs)
+                    {
+                        return RxResult::ErrorInvalidArgument;
+                    }
+                    *outNs = (session->surface && session->surface->rhi)
+                        ? session->surface->rhi->lastGpuFrameTimeNs()
+                        : 0;
+                    return RxResult::Ok;
+                });
+            }
+
             // ==================== 工具 ====================
 
             uint64_t rxMakeSortKey(uint8_t layer, uint8_t transparent, uint16_t depth, uint16_t seq)

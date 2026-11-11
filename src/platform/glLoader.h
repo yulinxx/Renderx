@@ -347,6 +347,17 @@ typedef long long GLint64;
     #define GL_NUM_EXTENSIONS 0x821D
 #endif
 
+// GPU 计时（GL 3.3 核心）：GL_TIME_ELAPSED 查询返回两标记之间的 GPU 纳秒数
+#ifndef GL_TIME_ELAPSED
+    #define GL_TIME_ELAPSED 0x88BF
+#endif
+#ifndef GL_QUERY_RESULT
+    #define GL_QUERY_RESULT 0x8866
+#endif
+#ifndef GL_QUERY_RESULT_AVAILABLE
+    #define GL_QUERY_RESULT_AVAILABLE 0x8867
+#endif
+
 #ifdef _WIN32
     #define RENDER_GLAPI __stdcall
 #else
@@ -750,6 +761,19 @@ struct GLFuncs
     PFNGLVERTEXATTRIBDIVISORPROC VertexAttribDivisor;
     PFNGLDEBUGMESSAGECALLBACKPROC DebugMessageCallback;
     PFNGLDEBUGMESSAGECONTROLPROC DebugMessageControl;
+
+    // GPU 计时查询（GL 3.3 核心）。缺失时 Capabilities::timestampQueries 为 false，
+    // 帧循环不做任何计时调用。
+    typedef void(RENDER_GLAPI* PFNGLGENQUERIESPROC)(GLsizei n, GLuint* ids);
+    typedef void(RENDER_GLAPI* PFNGLDELETEQUERIESPROC)(GLsizei n, const GLuint* ids);
+    typedef void(RENDER_GLAPI* PFNGLBEGINQUERYPROC)(GLenum target, GLuint id);
+    typedef void(RENDER_GLAPI* PFNGLENDQUERYPROC)(GLenum target);
+    typedef void(RENDER_GLAPI* PFNGLGETQUERYOBJECTUIVPROC)(GLuint id, GLenum pname, GLuint* params);
+    PFNGLGENQUERIESPROC GenQueries;
+    PFNGLDELETEQUERIESPROC DeleteQueries;
+    PFNGLBEGINQUERYPROC BeginQuery;
+    PFNGLENDQUERYPROC EndQuery;
+    PFNGLGETQUERYOBJECTUIVPROC GetQueryObjectuiv;
 };
 
 #ifndef GL_DEBUG_OUTPUT

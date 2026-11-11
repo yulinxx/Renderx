@@ -211,6 +211,13 @@ extern "C" bool gl_loader_load(GLFuncs* out, void* getProcAddress)
     f.DebugMessageCallback = (GLFuncs::PFNGLDEBUGMESSAGECALLBACKPROC)getProc("glDebugMessageCallback");
     f.DebugMessageControl = (GLFuncs::PFNGLDEBUGMESSAGECONTROLPROC)getProc("glDebugMessageControl");
 
+    // GPU 计时查询：缺失时按不支持处理（Capabilities 里降级），不是加载失败
+    f.GenQueries = (GLFuncs::PFNGLGENQUERIESPROC)getProc("glGenQueries");
+    f.DeleteQueries = (GLFuncs::PFNGLDELETEQUERIESPROC)getProc("glDeleteQueries");
+    f.BeginQuery = (GLFuncs::PFNGLBEGINQUERYPROC)getProc("glBeginQuery");
+    f.EndQuery = (GLFuncs::PFNGLENDQUERYPROC)getProc("glEndQuery");
+    f.GetQueryObjectuiv = (GLFuncs::PFNGLGETQUERYOBJECTUIVPROC)getProc("glGetQueryObjectuiv");
+
     // 关键入口缺失即视为加载失败：后续所有绘制都会静默无效，
     // 早失败比在渲染期空指针崩溃好。
     if (!f.GenBuffers || !f.BindVertexArray || !f.UseProgram)

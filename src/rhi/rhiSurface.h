@@ -112,6 +112,14 @@ namespace Render::RHI
         virtual TextureHandle currentColorTexture() const = 0;
         /// 深度附件纹理；depthFormat 为 Unknown 时返回无效句柄。
         virtual TextureHandle depthTexture() const = 0;
+
+        /**
+         * @brief 最近一帧的 GPU 耗时（纳秒）
+         *
+         * 只返回**已经可用**的样本，绝不阻塞等待查询结果：刚结束的帧通常
+         * 还没跑完，读它等于同步等 GPU。后端不支持计时或尚无样本时返回 0。
+         */
+        virtual uint64_t lastGpuFrameTimeNs() const = 0;
     };
 
 }  // namespace Render::RHI

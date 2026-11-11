@@ -343,6 +343,12 @@ namespace Render::RHI
                 return m_depthTexture;
             }
 
+            /// 空后端没有 GPU：计时永远不可用，返回 0 而不是编造数值
+            uint64_t lastGpuFrameTimeNs() const override
+            {
+                return 0;
+            }
+
             uint64_t presentCount() const
             {
                 return m_presentCount;

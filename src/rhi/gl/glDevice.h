@@ -30,6 +30,7 @@
 #include "rhi/rhiResourcePool.h"
 #include "rhi/rhiSurface.h"
 
+#include <atomic>
 #include <vector>
 
 namespace Render::RHI::gl
@@ -66,6 +67,7 @@ namespace Render::RHI::gl
         /// RenderPassBeginDesc 的附件留空即表示「画到表面」。
         ::Render::RHI::TextureHandle currentColorTexture() const override { return ::Render::RHI::TextureHandle{}; }
         ::Render::RHI::TextureHandle depthTexture() const override { return ::Render::RHI::TextureHandle{}; }
+        uint64_t lastGpuFrameTimeNs() const override { return m_lastGpuFrameTimeNs.load(std::memory_order_relaxed); }
 
         /// acquireNextImage 时捕获的当前帧缓冲。QOpenGLWidget 渲染到自己的
         /// FBO 而非 0 号帧缓冲，因此不能写死 0。
@@ -83,6 +85,21 @@ namespace Render::RHI::gl
     private:
         bool ensureMsaaTarget();
         void releaseMsaaTarget();
+
+        /// GL_TIME_ELAPSED 查询的槽数。3 个槽让「刚结束的一帧」留在飞行中，
+        /// 只读更老的结果，避免 glGetQueryObject 同步等待 GPU。
+        static constexpr uint32_t kGpuTimerQueryCount = 3;
+        void beginGpuTimer();
+        void endGpuTimer();
+        void collectGpuTimer(bool force);
+
+        GLuint m_gpuTimerQueries[kGpuTimerQueryCount]{};
+        /// 下一帧 BeginQuery 使用的槽；同时用于推导最老的待读槽
+        uint32_t m_gpuTimerWriteSlot = 0;
+        /// 已 EndQuery 但尚未读取结果的槽数
+        uint32_t m_gpuTimerPending = 0;
+        bool m_gpuTimerActive = false;
+        std::atomic<uint64_t> m_lastGpuFrameTimeNs{ 0 };
 
         GlDevice* m_device = nullptr;
         ::Render::RHI::NativeWindow m_window{};
