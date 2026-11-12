@@ -4,9 +4,14 @@
 // 的差别只在片元：这里不采样贴图，而是把弧长当作相位坐标，用 discard 表达
 // dash/gap。这样每次动画帧只更新一次 material 参数，不需要在 CPU 上重新切段。
 //
+// 当前状态：宿主虚线实际走 CPU 按弧长离散（OverlayScene::appendSelectionDash
+// → emitWorld(...Lines) → WorldLine4），本 shader 是备选实现，暂无调用方。
+// 若要接 GPU 虚线，注意 DrawInstruction::pipelineIndex 不能留 0：0 会按
+// (格式, 空间, 拓扑) 解析成 WorldTextured，dash 参数不生效，画出来就是实线。
+//
 // dash 参数不走上层 uniform（本 DLL 没有通用 uniform 接口），而是借用
 // material 的 diffuse 段：x=相位（世界弧长）、y=实线长、z=空档长、
-// w=半宽（物理像素）。宿主侧见 OverlayScene 的虚线 GPU 分支。
+// w=半宽（物理像素）。
 #version 330 core
 
 #include "rx_push_constants.glsl"
