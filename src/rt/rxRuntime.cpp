@@ -1696,7 +1696,7 @@ namespace Render::RT::detail
                 nullptr, &kMesh3DTransparentState },
         };
         static_assert(sizeof(kEntries) / sizeof(kEntries[0]) == static_cast<size_t>(DP::Count),
-            "内建管线表必须覆盖 DefaultPipeline 的全部取值");
+            "The built-in pipeline table must cover every DefaultPipeline value");
 
         const auto batchStart = std::chrono::steady_clock::now();
         uint32_t ready = 0;

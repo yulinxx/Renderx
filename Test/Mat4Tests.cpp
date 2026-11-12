@@ -70,13 +70,13 @@ TEST(Mat4Composition, IdentityIsNeutralOnBothSides)
     multiply4x4(kIdentity4x4, translate, out);
     for (int i = 0; i < 16; ++i)
     {
-        EXPECT_FLOAT_EQ(translate[i], out[i]) << "单位矩阵在左侧应等价于不乘，下标 " << i;
+        EXPECT_FLOAT_EQ(translate[i], out[i]) << "The identity matrix on the left must be equivalent to not multiplying, index " << i;
     }
 
     multiply4x4(translate, kIdentity4x4, out);
     for (int i = 0; i < 16; ++i)
     {
-        EXPECT_FLOAT_EQ(translate[i], out[i]) << "单位矩阵在右侧应等价于不乘，下标 " << i;
+        EXPECT_FLOAT_EQ(translate[i], out[i]) << "The identity matrix on the right must be equivalent to not multiplying, index " << i;
     }
 }
 
@@ -165,6 +165,6 @@ TEST(Mat4Composition, OutputMayAliasAnOperand)
 
     for (int i = 0; i < 16; ++i)
     {
-        EXPECT_FLOAT_EQ(reference[i], a[i]) << "out 与操作数别名时下标 " << i << " 被破坏";
+        EXPECT_FLOAT_EQ(reference[i], a[i]) << "Index " << i << " is corrupted when out aliases an operand";
     }
 }

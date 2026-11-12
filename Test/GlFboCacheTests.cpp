@@ -199,7 +199,7 @@ TEST_F(GlFboCacheFixture, SameAttachmentComboHitsCache)
     const GLuint b = device->framebufferFor(passFor(tex));
 
     ASSERT_NE(a, 0u);
-    EXPECT_EQ(a, b) << "同一附件组合必须命中缓存，不得重复创建 FBO";
+    EXPECT_EQ(a, b) << "The same attachment combination must hit the cache and must not create a duplicate FBO";
     EXPECT_EQ(device->framebufferCacheSize(), 1u);
     EXPECT_EQ(StubGlState::get().deletedFramebuffers, 0);
 }
@@ -215,8 +215,8 @@ TEST_F(GlFboCacheFixture, DestroyTexturePurgesReferencingCacheEntries)
 
     device->destroyTexture(tex);
 
-    EXPECT_EQ(device->framebufferCacheSize(), 0u) << "销毁纹理后引用它的缓存项必须一起清掉";
-    EXPECT_EQ(StubGlState::get().deletedFramebuffers, 1) << "被清掉的缓存项其 FBO 对象也要还给驱动";
+    EXPECT_EQ(device->framebufferCacheSize(), 0u) << "Destroying a texture must also purge cache entries that reference it";
+    EXPECT_EQ(StubGlState::get().deletedFramebuffers, 1) << "The FBO object of a purged cache entry must be returned to the driver";
     EXPECT_EQ(StubGlState::get().deletedTextures, 1);
 }
 
@@ -230,7 +230,7 @@ TEST_F(GlFboCacheFixture, UnreferencedCacheEntriesSurviveTextureDestroy)
 
     device->destroyTexture(texA);
 
-    EXPECT_EQ(device->framebufferCacheSize(), 1u) << "只清引用被删纹理的条目，其余缓存不受影响";
+    EXPECT_EQ(device->framebufferCacheSize(), 1u) << "Only entries referencing the destroyed texture are purged; other cache entries are unaffected";
 }
 
 TEST_F(GlFboCacheFixture, CacheSizeIsBounded)
@@ -242,7 +242,7 @@ TEST_F(GlFboCacheFixture, CacheSizeIsBounded)
         TextureHandle tex = makeColorTexture();
         ASSERT_TRUE(tex.valid());
         textures.push_back(tex);
-        ASSERT_NE(device->framebufferFor(passFor(tex)), 0u) << "第 " << i << " 个附件组合创建失败";
+        ASSERT_NE(device->framebufferFor(passFor(tex)), 0u) << "Attachment combination " << i << " failed to create";
     }
 
     EXPECT_EQ(device->framebufferCacheSize(), gl::GlDevice::kMaxCachedFramebuffers);
@@ -260,7 +260,7 @@ TEST_F(GlFboCacheFixture, StaleColorAttachmentHandleReturnsZeroAndLogs)
     device->destroyTexture(tex);
     const GLuint fbo = device->framebufferFor(passFor(tex));
 
-    EXPECT_EQ(fbo, 0u) << "过期句柄必须返回 0，绝不静默建空附件 FBO";
+    EXPECT_EQ(fbo, 0u) << "A stale handle must return 0 and never silently build an FBO with empty attachments";
 }
 
 TEST_F(GlFboCacheFixture, IncompleteCachedFboIsDroppedAndRecreated)
@@ -273,8 +273,8 @@ TEST_F(GlFboCacheFixture, IncompleteCachedFboIsDroppedAndRecreated)
     StubGlState::get().incompleteCountdown = 1;
     const GLuint second = device->framebufferFor(passFor(tex));
 
-    EXPECT_NE(second, 0u) << "复查不完整后应重建出可用 FBO";
-    EXPECT_NE(second, first) << "旧 FBO 已被判不完整并删除，新条目必须是新对象";
+    EXPECT_NE(second, 0u) << "An incomplete check should rebuild a usable FBO";
+    EXPECT_NE(second, first) << "The old FBO was judged incomplete and deleted; the new entry must be a new object";
     EXPECT_EQ(device->framebufferCacheSize(), 1u);
     EXPECT_EQ(StubGlState::get().deletedFramebuffers, 1);
 }
@@ -297,16 +297,16 @@ TEST_F(GlFboCacheFixture, EndRenderPassRestoresHostFramebuffer)
     // 首次进入：FBO 缓存未命中，framebufferFor 内部会临时绑定 0
     ASSERT_EQ(cmd.beginRenderPass(passFor(tex)), RhiResult::Ok);
     const GLuint firstPassFbo = StubGlState::get().boundFramebuffer;
-    EXPECT_NE(firstPassFbo, hostFbo) << "离屏 pass 必须绑定自己的 FBO";
-    EXPECT_NE(firstPassFbo, 0u) << "离屏 pass 不得画到 0 号帧缓冲";
+    EXPECT_NE(firstPassFbo, hostFbo) << "An offscreen pass must bind its own FBO";
+    EXPECT_NE(firstPassFbo, 0u) << "An offscreen pass must not draw to framebuffer 0";
     cmd.endRenderPass();
-    EXPECT_EQ(StubGlState::get().boundFramebuffer, hostFbo) << "离屏 pass 结束后必须还原宿主帧缓冲";
+    EXPECT_EQ(StubGlState::get().boundFramebuffer, hostFbo) << "The host framebuffer must be restored after an offscreen pass";
 
     // 第二次进入：FBO 缓存命中
     ASSERT_EQ(cmd.beginRenderPass(passFor(tex)), RhiResult::Ok);
     EXPECT_EQ(StubGlState::get().boundFramebuffer, firstPassFbo);
     cmd.endRenderPass();
-    EXPECT_EQ(StubGlState::get().boundFramebuffer, hostFbo) << "命中缓存时同样要还原宿主帧缓冲";
+    EXPECT_EQ(StubGlState::get().boundFramebuffer, hostFbo) << "The host framebuffer must also be restored on a cache hit";
 }
 
 TEST_F(GlFboCacheFixture, DeviceDestructionReleasesCachedFramebuffers)
@@ -317,6 +317,6 @@ TEST_F(GlFboCacheFixture, DeviceDestructionReleasesCachedFramebuffers)
     delete device;
     device = nullptr;
 
-    EXPECT_EQ(StubGlState::get().deletedFramebuffers, 1) << "设备销毁时缓存的 FBO 也要还给驱动";
+    EXPECT_EQ(StubGlState::get().deletedFramebuffers, 1) << "Cached FBOs must be returned to the driver when the device is destroyed";
 }
 }  // namespace RenderxFboCacheTestDetail

@@ -334,7 +334,7 @@ namespace Render
                             char message[192];
                             std::snprintf(message,
                                 sizeof(message),
-                                "[rt] rxRuntimeCreate: ABI 版本不匹配（调用方 %u.%u，DLL %u.%u）",
+                                "[rt] rxRuntimeCreate: ABI version mismatch (caller %u.%u, DLL %u.%u)",
                                 desc->abiVersion >> 16,
                                 desc->abiVersion & 0xFFFF,
                                 RENDERX_ABI_VERSION_MAJOR,

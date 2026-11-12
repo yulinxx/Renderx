@@ -1,21 +1,19 @@
 /**
  * @file RenderxMetalTests.mm
- * @brief Offscreen rendering correctness tests for the Metal backend (no window, no host)
+ * @brief Metal 后端的离屏渲染正确性测试（无窗口、无宿主）
  *
- * Why .mm: offscreen rendering still needs an ISurface at the RT layer
- * (Session::beginFrame requires a non-null surface belonging to that device), and
- * Metal's createSurface only accepts a CocoaNsView (handleA = NSView*). The tests
- * therefore create an NSView that is not attached to a window to host a CAMetalLayer --
- * this is Objective-C code and must live in a .mm file.
+ * 为什么是 .mm：离屏渲染在 RT 层仍需要一个 ISurface（Session::beginFrame
+ * 要求 surface 非空且属于该 device），而 Metal 的 createSurface 只接受
+ * CocoaNsView（handleA = NSView*）。测试因此要直接创建一个不挂进窗口的
+ * NSView 来承载 CAMetalLayer —— 这是 Objective-C 代码，只能写在 .mm 里。
  *
- * Why no window: the offscreen path (rxSessionSetRenderTarget) does not call
- * acquireNextImage, so it never touches nextDrawable; whether the NSView is in a window
- * and whether WindowSystem is available do not affect this file.
+ * 为什么不需要窗口：离屏路径（rxSessionSetRenderTarget）不调用
+ * acquireNextImage，因此不会碰 nextDrawable；NSView 是否在窗口里、
+ * WindowSystem 是否可用都不影响本文件。
  *
- * The assertions check **pixel results**, not "did anything report an error". Earlier
- * suites (RhiCoreTests / RxRuntimeTests) only covered handle lifetimes and frame pairing,
- * and stayed green even if Metal submitted zero commands. This file is the first proof
- * that the Metal backend actually draws correctly.
+ * 断言的是**像素结果**，而不是「有没有报错」。此前的用例（RhiCoreTests /
+ * RxRuntimeTests）只覆盖了句柄生命周期与帧配对契约，即使 Metal 一条命令
+ * 都没提交也全绿。本文件是 Metal 后端第一次被证明「真的画对了」。
  */
 
 #include <gtest/gtest.h>
@@ -45,8 +43,7 @@ namespace
     constexpr uint32_t kWidth = 64;
     constexpr uint32_t kHeight = 64;
 
-    /// Collects DLL logs: Metal failure paths explain themselves through logs, and
-    /// assertions need to surface them.
+    /// 收集 DLL 日志：Metal 的失败路径都靠日志说明原因，断言里要能看到
     struct LogSink
     {
         std::vector<std::string> errors;
@@ -77,9 +74,8 @@ namespace
             return joined;
         }
 
-        /// Print warnings together with failures: DLL degradation paths (for example
-        /// "3D pipeline bound but lighting is unavailable, meshes will be unlit") only
-        /// emit a warning, so looking at errors alone misses the real cause.
+        /// 失败时一并打印警告：DLL 的降级路径（如「3D 管线绑了但光照不可用，
+        /// 网格将无光照」）只发 warn，只看 errors 会漏掉真正的成因。
         std::string allWarnings() const
         {
             std::string joined;
@@ -92,7 +88,7 @@ namespace
         }
     };
 
-    /// Screen-space P3C3 vertex: pixel coordinates (top-left origin) + vertex color
+    /// 屏幕空间 P3C3 顶点：像素坐标（左上原点）+ 顶点色
     struct ScreenP3C3Vertex
     {
         float x, y, z;
@@ -100,7 +96,7 @@ namespace
     };
     static_assert(sizeof(ScreenP3C3Vertex) == 24, "P3C3 stride must be 24");
 
-    /// Screen-space P2T2C4 vertex: pixel coordinates + UV + color modulation
+    /// 屏幕空间 P2T2C4 顶点：像素坐标 + UV + 颜色调制
     struct ScreenP2T2C4Vertex
     {
         float x, y;
@@ -109,7 +105,7 @@ namespace
     };
     static_assert(sizeof(ScreenP2T2C4Vertex) == 32, "P2T2C4 stride must be 32");
 
-    /// World-space P3T2C4 vertex: world coordinates + UV + color modulation
+    /// 世界空间 P3T2C4 顶点：世界坐标 + UV + 颜色调制
     struct WorldP3T2C4Vertex
     {
         float x, y, z;
@@ -118,7 +114,7 @@ namespace
     };
     static_assert(sizeof(WorldP3T2C4Vertex) == 36, "P3T2C4 stride must be 36");
 
-    /// World-space P3N3 vertex: position + normal, 24 bytes (matches rxVertexStride(P3N3))
+    /// 世界空间 P3N3 顶点：位置 + 法线，24 字节（与 rxVertexStride(P3N3) 一致）
     struct WorldP3N3Vertex
     {
         float x, y, z;
@@ -126,7 +122,7 @@ namespace
     };
     static_assert(sizeof(WorldP3N3Vertex) == 24, "P3N3 stride must be 24");
 
-    /// World-space P3C4 vertex: position + RGBA (the 2D overlay format), 28 bytes
+    /// 世界空间 P3C4 顶点：位置 + RGBA（2D 覆盖层的格式），28 字节
     struct WorldP3C4Vertex
     {
         float x, y, z;
@@ -134,25 +130,24 @@ namespace
     };
     static_assert(sizeof(WorldP3C4Vertex) == 28, "P3C4 stride must be 28");
 
-    /// Ink statistics inside a rectangle (pixels brighter than the threshold count as ink)
+    /// 某个矩形区域内的墨色统计（亮度超过阈值的像素视为「有字」）
     struct InkStats
     {
         uint32_t ink = 0;
         uint32_t total = 0;
-        /// Per-channel sums over ink pixels.
+        /// 墨色像素的通道累加值。
         ///
-        /// Ink = vertex color x (alpha x coverage). Coverage varies per pixel across a
-        /// glyph, but it is the **same factor** for all channels, so the ratios between
-        /// the sums equal the channel ratios of the vertex color. Ratio assertions can
-        /// therefore pin down two things without knowing coverage: whether the R8 atlas
-        /// was treated as color (g/b would be constantly 0), and whether channel order
-        /// was swapped (BGRA pipeline bound to an RGBA attachment).
+        /// 墨色 = 顶点色 × (alpha × 覆盖率)，同一个字形上覆盖率逐像素不同，
+        /// 但它对各通道是**同一个因子**，因此累加值之间的比值恒等于顶点色的
+        /// 通道比。用比值断言可以在不知道覆盖率的情况下同时锁住两件事：
+        /// R8 图集是否被当成了颜色（那样 g/b 会恒为 0）、通道顺序是否被
+        /// 交换（BGRA 管线绑到 RGBA 附件上）。
         uint64_t sumR = 0;
         uint64_t sumG = 0;
         uint64_t sumB = 0;
     };
 
-    /// Minimal offscreen Metal setup: Runtime + NSView surface + Session + color attachment
+    /// 离屏 Metal 渲染的最小装配：Runtime + NSView 表面 + Session + 颜色附件
     class MetalOffscreenFixture : public ::testing::Test
     {
     protected:
@@ -166,9 +161,8 @@ namespace
 
         void SetUp() override
         {
-            // Skip instead of failing when the backend is not compiled in or this machine
-            // has no Metal device: this test's job is "does it render correctly", not
-            // "is there a GPU".
+            // 后端没编译进来 / 本机没有 Metal 设备时跳过，而不是失败：
+            // 这条用例的职责是「画得对不对」，不是「有没有 GPU」。
             if (rxIsBackendAvailable(Backend::Metal) == 0)
             {
                 GTEST_SKIP() << "Metal backend is not available in this build";
@@ -221,14 +215,12 @@ namespace
 
         void TearDown() override
         {
-            // DLL failure paths only explain themselves through logs. If a test fails
-            // without these logs, the only option is guessing -- print them to the
-            // failure output.
+            // DLL 的失败路径只通过日志说明原因。测试失败时如果看不到这些
+            // 日志，就只能靠猜——把它打到失败输出里。
             //
-            // Only print on failure: built-in pipelines such as ScreenGlyph / Mesh3D
-            // (5 of them miss shaders) each emit one error while every test creates its
-            // Runtime, which is a known gap (M2 adds glyphs, M5 adds 3D); printing on
-            // every passing test would flood the output.
+            // 只在失败时打印：内建管线里 ScreenGlyph / Mesh3D 等 5 条缺 shader
+            // 的会在每个用例的 Runtime 创建期各报一条 error，那属于已知缺口
+            // （M2 补字形、M5 补 3D），不该把每一条通过用例的输出都刷满。
             if (::testing::Test::HasFailure() && !sink.errors.empty())
             {
                 std::fprintf(stderr, "[metal-dll-errors]\n%s\n", sink.allErrors().c_str());
@@ -262,7 +254,7 @@ namespace
             view = nil;
         }
 
-        /// Read back the whole offscreen color attachment: RGBA8, top-left origin, tightly packed
+        /// 读回整张离屏颜色附件：RGBA8、左上原点、逐行紧凑
         std::vector<uint8_t> readback()
         {
             std::vector<uint8_t> pixels(static_cast<size_t>(kWidth) * kHeight * 4u, 0xAB);
@@ -277,7 +269,7 @@ namespace
             return pixels.data() + (static_cast<size_t>(y) * kWidth + x) * 4u;
         }
 
-        /// Assert that a pixel matches the expected RGBA. Tolerance 2 covers float->unorm8 rounding
+        /// 断言某像素等于期望 RGBA。容差 2 覆盖 float→unorm8 的取整差异
         static void expectPixel(const std::vector<uint8_t>& pixels, uint32_t x, uint32_t y,
                                 int r, int g, int b, int a, const char* what)
         {
@@ -288,7 +280,7 @@ namespace
             EXPECT_NEAR(px[3], a, 2) << what << " A at (" << x << "," << y << ")";
         }
 
-        /// Submit a draw containing a single DrawCommand, with the viewport covering the whole target
+        /// 提交只含一条 DrawCommand 的绘制，viewport 取整张离屏目标
         static RxResult submitSingleCommand(SessionHandle handle, DrawCommand& command)
         {
             DrawPacket packet{};
@@ -307,10 +299,10 @@ namespace
         }
 
         /**
-         * Draw a screen-space triangle covering the left half of the offscreen target.
+         * 在离屏目标上画一个盖住左半边的屏幕空间三角形。
          *
-         * Vertices (pixels, top-left origin): (0,0) (32,0) (0,64). The hypotenuse is
-         * x/32 + y/64 = 1, so interior points satisfy x/32 + y/64 < 1.
+         * 顶点（像素，左上原点）：(0,0) (32,0) (0,64)，斜边为
+         * x/32 + y/64 = 1，因此内部点满足 x/32 + y/64 < 1。
          */
         void drawLeftHalfTriangle(float r, float g, float b)
         {
@@ -339,11 +331,10 @@ namespace
         }
 
         /**
-         * Create a font from the test font file.
+         * 从测试字体文件建一个字体。
          *
-         * Uses the real rxFontCreate path (the DLL does no file IO itself, the test can),
-         * so atlas textures, lazy rasterization and dirty-region uploads all follow
-         * production logic.
+         * 走真实的 rxFontCreate 路径（DLL 自己不做文件 IO，测试可以），
+         * 因此图集纹理、懒光栅化、脏区上传都按生产逻辑走。
          */
         FontHandle loadTestFont(float pixelHeight, uint32_t sdfPadding)
         {
@@ -373,8 +364,7 @@ namespace
             return font;
         }
 
-        /// Count ink inside a rectangle. The luminance threshold is 40/255, well above
-        /// cleared black and well below anti-aliased edges.
+        /// 统计某矩形内的墨色。亮度阈值取 40/255，远高于清屏黑、远低于抗锯齿边缘
         static InkStats scanInk(const std::vector<uint8_t>& pixels, uint32_t x0, uint32_t y0,
                                 uint32_t x1, uint32_t y1)
         {
@@ -399,11 +389,10 @@ namespace
         }
 
         /**
-         * Assert that ink really is "vertex color x coverage".
+         * 断言墨色确实是「顶点色 × 覆盖率」。
          *
-         * vertexRgb is the vertex color supplied at draw time; its channel ratios must
-         * appear unchanged in the ink sums -- coverage is the same factor for all three
-         * channels and cancels out.
+         * vertexRgb 是绘制时给的顶点色，其通道比必须原样出现在墨色的累加值上
+         * ——覆盖率对三通道是同一因子，会被约掉。
          */
         void expectInkMatchesVertexColor(const InkStats& ink, float vertexR, float vertexG,
                                         float vertexB, const char* what)
@@ -412,8 +401,7 @@ namespace
             ASSERT_GT(ink.sumG, 0u) << what << ": green channel sum is zero; the R8 atlas was treated as color";
             ASSERT_GT(ink.sumB, 0u) << what << ": blue channel sum is zero; the R8 atlas was treated as color";
 
-            // Compare channel ratios against green; 5% tolerance covers unorm8 quantization
-            // and edge pixels.
+            // 以绿通道为基准比对通道比；容差 5% 覆盖 unorm8 量化与边缘像素
             const double rRatio = static_cast<double>(ink.sumR) / static_cast<double>(ink.sumG);
             const double bRatio = static_cast<double>(ink.sumB) / static_cast<double>(ink.sumG);
             const double expectedR = static_cast<double>(vertexR) / static_cast<double>(vertexG);
@@ -425,10 +413,9 @@ namespace
                 << what << ": blue/green ratio mismatch; channel order may be swapped (BGRA pipeline bound to an RGBA attachment)";
         }
 
-        // ---- Shared setup for 3D cases ----
+        // ---- 3D 用例共用装配 ----
 
-        /// Create a "pure diffuse" material: ambient/specular terms are 0 so the fragment
-        /// color is determined solely by the directional light.
+        /// 建一个「纯漫反射」材质：环境/高光系数留 0，让片元色只由方向光决定
         uint16_t addSolidMaterial(float r, float g, float b)
         {
             MaterialDesc mat{};
@@ -447,11 +434,10 @@ namespace
             return index;
         }
 
-        /// A single white directional light (default along +Z, i.e. directly in front of a
-        /// face whose normal is +Z, Lambert factor 1), ambient off, specular off, exposure
-        /// 1, minimum brightness 0: the fragment color equals the material diffuse color.
-        /// Passing another direction verifies that "direction is really read" -- if the
-        /// field offset is wrong, changing the direction will not change the image.
+        /// 单个白色方向光（默认沿 +Z，即位于法线 +Z 的面的正前方，Lambert 因子为 1），
+        /// 关环境项、关高光、曝光 1、亮度下限 0：片元色恒等于材质漫反射色。
+        /// 传入别的方向即可验证「direction 真的被读取」——若字段偏移错位，
+        /// 切换方向不会改变画面。
         void applyKeyLight3D(float dirX = 0.0f, float dirY = 0.0f, float dirZ = 1.0f,
                              uint32_t doubleSided = 1)
         {
@@ -464,25 +450,24 @@ namespace
             lighting.specularIntensity = 0.0f;
             lighting.key.direction[0] = dirX;
             lighting.key.direction[1] = dirY;
-            lighting.key.direction[2] = dirZ;  // from surface toward light
+            lighting.key.direction[2] = dirZ;  // 从表面指向光源
             lighting.key.enabled = 1;
             lighting.key.color[0] = lighting.key.color[1] = lighting.key.color[2] = 1.0f;
             lighting.key.intensity = 1.0f;
             lighting.viewPos[2] = 2.0f;
             lighting.minBrightness = 0.0f;
             lighting.exposure = 1.0f;
-            rxSessionSetLighting3D(session, &lighting);  // this API returns void by contract
+            rxSessionSetLighting3D(session, &lighting);  // 该接口按契约返回 void
         }
 
-        /// Pixel coordinates -> NDC (top-left origin, y down, same as screen_p3c3.vert)
+        /// 像素坐标 → NDC（左上原点、y 向下，与 screen_p3c3.vert 一致）
         static float ndcX(float px) { return px / static_cast<float>(kWidth) * 2.0f - 1.0f; }
         static float ndcY(float py) { return 1.0f - py / static_cast<float>(kHeight) * 2.0f; }
 
-        /// Fill a counter-clockwise quad facing +Z (two triangles).
-        /// Winding must be counter-clockwise: RasterState::frontFace defaults to
-        /// CounterClockwise, and clockwise would be classified as back-facing; with
-        /// doubleSided the normal is then flipped to (0,0,-1) facing away from the light,
-        /// and lighting drops to zero (observed symptom: the whole mesh is black).
+        /// 填一个面向 +Z 的逆时针四边形（两个三角形）。
+        /// 绕序必须是逆时针：RasterState::frontFace 默认 CounterClockwise，
+        /// 顺时针会被判成背面，doubleSided 据此把法线翻成背向光源的 (0,0,-1)，
+        /// 光照随即归零（实测症状：整个网格全黑）。
         static void fillQuadCCW(WorldP3N3Vertex* v, float leftPx, float topPx, float rightPx,
                                 float bottomPx, float z, float normalZ = 1.0f)
         {
@@ -499,10 +484,9 @@ namespace
             v[5] = { leftX, topY, z, n[0], n[1], n[2] };
         }
 
-        /// Fill a clockwise quad (classified as back-facing from this viewpoint), normal -Z.
-        /// Used to simulate "imported mesh with outward normals and unreliable winding":
-        /// the normal points away from the visible face, and only doubleSided flips the
-        /// normal in the fragment to rescue it.
+        /// 填一个顺时针四边形（在该视角下被判为背面），法线朝 -Z。
+        /// 用来模拟「导入网格法线朝外、绕序不可靠」：法线与可见面朝向相反，
+        /// 只有 doubleSided 打开时片元才会翻转法线把它救回来。
         static void fillQuadCW(WorldP3N3Vertex* v, float leftPx, float topPx, float rightPx,
                                float bottomPx, float z)
         {
@@ -519,8 +503,8 @@ namespace
             v[5] = { rightX, topY, z, n[0], n[1], n[2] };
         }
 
-        /// Create a depth-only offscreen attachment (createRenderTargetTexture fixes
-        /// D32Float for DepthStencilAttachment usage).
+        /// 建一个纯深度离屏附件（createRenderTargetTexture 对
+        /// DepthStencilAttachment 用法固定给 D32Float）
         TextureHandle createDepthTarget()
         {
             RenderTargetDesc depthDesc{};
@@ -533,8 +517,8 @@ namespace
             return depth;
         }
 
-        /// Draw a single P3N3 primitive on a quad covering (8,8)-(56,56).
-        /// With backFacing=true, use clockwise winding and a normal pointing -Z (back face).
+        /// 在一个覆盖 (8,8)-(56,56) 的四边形上画单个 P3N3 图元。
+        /// backFacing=true 时改用顺时针绕序 + 朝 -Z 的法线（背面）。
         void drawSingleQuad(uint16_t materialIndex, uint16_t pipeline, float z, uint64_t sortKey,
                             bool backFacing = false)
         {
@@ -569,12 +553,9 @@ namespace
             ASSERT_EQ(rxSessionEndFrame(session), RxResult::Ok) << sink.allErrors();
         }
 
-        /// Draw two overlapping quads with the same vertex batch ("near red submitted
-        /// first, far blue submitted later" -- the wrong painter order). pipeline decides
-        /// whether depth testing is on: with it, near red wins; without it, the later far
-        /// blue covers red.
-        /// Output is a reference rather than a return value so ASSERT_* can abort inside
-        /// this void function.
+        /// 用同一批顶点画「近红先提交、远蓝后提交」的两个重叠四边形（错误画家
+        /// 顺序）。pipeline 决定深度测试开不开：开了近红胜出，关了后画的远蓝盖住红。
+        /// 出参用引用而不是返回值，是为了能在这个 void 函数里用 ASSERT_* 中断。
         void drawOverlappingQuadsFarLast(uint16_t pipeline, uint16_t redMaterial,
                                         uint16_t blueMaterial, std::vector<uint8_t>& outPixels)
         {
@@ -585,8 +566,8 @@ namespace
             ASSERT_EQ(rxSessionAllocTransient(session, rxVertexStride(VertexFormat::P3N3) * 12, &alloc),
                       RxResult::Ok);
             auto* vertices = static_cast<WorldP3N3Vertex*>(alloc.cpuPtr);
-            fillQuadCCW(vertices + 0, 24.0f, 24.0f, 40.0f, 40.0f, 0.3f);  // near red
-            fillQuadCCW(vertices + 6, 8.0f, 8.0f, 56.0f, 56.0f, 0.7f);    // far blue
+            fillQuadCCW(vertices + 0, 24.0f, 24.0f, 40.0f, 40.0f, 0.3f);  // 近红
+            fillQuadCCW(vertices + 6, 8.0f, 8.0f, 56.0f, 56.0f, 0.7f);    // 远蓝
 
             DrawCommand commands[2]{};
             for (DrawCommand& command : commands)
@@ -601,10 +582,10 @@ namespace
             }
             commands[0].vertexOffset = alloc.offset;
             commands[0].materialIndex = redMaterial;
-            commands[0].sortKey = rxMakeSortKey(10, 0, 0, 0);  // small key first: near is submitted first
+            commands[0].sortKey = rxMakeSortKey(10, 0, 0, 0);  // 小键先画：近的反而先提交
             commands[1].vertexOffset = alloc.offset + rxVertexStride(VertexFormat::P3N3) * 6;
             commands[1].materialIndex = blueMaterial;
-            commands[1].sortKey = rxMakeSortKey(20, 0, 0, 0);  // large key later: far is drawn later (wrong order)
+            commands[1].sortKey = rxMakeSortKey(20, 0, 0, 0);  // 大键后画：远的后画（错误顺序）
 
             DrawPacket packet{};
             packet.commands = commands;
@@ -624,7 +605,7 @@ namespace
     };
 }  // namespace
 
-// ==================== Capabilities ====================
+// ==================== 能力位 ====================
 
 TEST_F(MetalOffscreenFixture, MetalBackendIsAvailableAndReportsItself)
 {
@@ -637,26 +618,24 @@ TEST_F(MetalOffscreenFixture, MetalBackendIsAvailableAndReportsItself)
     EXPECT_GE(caps.maxFramesInFlight, 1u);
     EXPECT_GT(std::string(caps.deviceName).size(), 0u);
 
-    // Capability bits must match the call paths that are actually available: M3 implements compute / indirect
+    // 能力位必须与「实际可用的调用路径」一致：M3 已实现 compute / indirect
     EXPECT_EQ(caps.computeShaders, 1u);
     EXPECT_EQ(caps.indirectDraw, 1u);
-    // M3 isolation (2025-09-15): the public ABI Capabilities (renderx.h) has no
-    // multiDrawIndirect field yet (only the internal RHI::Capabilities does). This
-    // milestone cannot add one without breaking ABI, so the assertion is removed to
-    // restore compilation of the test target; it will be restored when the multiDraw
-    // milestone extends the public Capabilities.
+    // M3 隔离（2025-09-15）：公共 ABI 的 Capabilities（renderx.h）暂无
+    // multiDrawIndirect 字段（只有内部 RHI::Capabilities 有），本里程碑
+    // ABI 零破坏不能新增，先移除该断言以恢复测试目标编译；待 multiDraw
+    // 里程碑扩展公共 Capabilities 后由其恢复。
     // EXPECT_EQ(caps.multiDrawIndirect, 1u);
-    // macOS Metal supports polygon wireframe through encoder state MTLTriangleFillModeLines
-    // (not a pipeline descriptor property, see MetalCommandList::bindPipeline)
+    // macOS 的 Metal 通过编码器状态 MTLTriangleFillModeLines 支持多边形线框
+    // （不是管线描述符属性，见 MetalCommandList::bindPipeline）
     EXPECT_EQ(caps.wireframeFill, 1u);
 }
 
-// ==================== Clear ====================
+// ==================== 清屏 ====================
 
 TEST_F(MetalOffscreenFixture, ClearColorIsReadBackVerbatim)
 {
-    // Clearing covers the whole attachment: all four corners and the center must be
-    // covered regardless of the viewport.
+    // 清屏是整附件操作：四角与中心都必须被覆盖，不受 viewport 影响
     rxSessionSetClearColor(session, 0.25f, 0.5f, 0.75f, 1.0f);
     ASSERT_EQ(rxSessionBeginFrame(session), RxResult::Ok);
     ASSERT_EQ(rxSessionEndFrame(session), RxResult::Ok);
@@ -671,7 +650,7 @@ TEST_F(MetalOffscreenFixture, ClearColorIsReadBackVerbatim)
     }
 }
 
-// ==================== Geometry: screen-space triangle ====================
+// ==================== 几何：屏幕空间三角形 ====================
 
 TEST_F(MetalOffscreenFixture, ScreenSpaceTriangleCoversOnlyItsOwnArea)
 {
@@ -680,17 +659,17 @@ TEST_F(MetalOffscreenFixture, ScreenSpaceTriangleCoversOnlyItsOwnArea)
 
     const std::vector<uint8_t> pixels = readback();
 
-    // Interior: x/32 + y/64 < 1
+    // 内部：x/32 + y/64 < 1
     expectPixel(pixels, 4, 8, 255, 0, 0, 255, "triangle interior");
     expectPixel(pixels, 4, 32, 255, 0, 0, 255, "triangle interior");
 
-    // Exterior: the right half and bottom-right corner must still be the clear color
+    // 外部：右半边与右下角必须仍是清屏色
     expectPixel(pixels, 56, 8, 0, 0, 0, 255, "outside triangle");
     expectPixel(pixels, 48, 48, 0, 0, 0, 255, "outside triangle");
     expectPixel(pixels, kWidth - 1, kHeight - 1, 0, 0, 0, 255, "outside triangle");
 }
 
-// ==================== Geometry: screen-space textured quad ====================
+// ==================== 几何：屏幕空间带纹理四边形 ====================
 
 TEST_F(MetalOffscreenFixture, ScreenSpaceTexturedQuadMultipliesVertexColor)
 {
@@ -699,7 +678,7 @@ TEST_F(MetalOffscreenFixture, ScreenSpaceTexturedQuadMultipliesVertexColor)
     for (size_t i = 0; i < texels.size(); i += 4)
     {
         texels[i + 0] = 0;    // R
-        texels[i + 1] = 255;  // G: pure green texture
+        texels[i + 1] = 255;  // G：纯绿纹理
         texels[i + 2] = 0;    // B
         texels[i + 3] = 255;  // A
     }
@@ -719,8 +698,7 @@ TEST_F(MetalOffscreenFixture, ScreenSpaceTexturedQuadMultipliesVertexColor)
     ASSERT_EQ(rxSessionAllocTransient(session, rxVertexStride(VertexFormat::P2T2C4) * 6, &alloc),
               RxResult::Ok);
     auto* vertices = static_cast<ScreenP2T2C4Vertex*>(alloc.cpuPtr);
-    // Cover the whole target; vertex color is white, so the result should equal the
-    // texture itself (see screen_tex_p2t2c4.frag).
+    // 铺满整张目标；顶点色为白，因此结果应等于纹理本身（见 screen_tex_p2t2c4.frag）
     const float w = static_cast<float>(kWidth);
     const float h = static_cast<float>(kHeight);
     vertices[0] = { 0.0f, 0.0f, 0.0f, 0.0f, 1, 1, 1, 1 };
@@ -751,13 +729,12 @@ TEST_F(MetalOffscreenFixture, ScreenSpaceTexturedQuadMultipliesVertexColor)
     rxTextureDestroy(runtime, texture);
 }
 
-// ==================== Frame-to-frame consistency ====================
+// ==================== 帧间一致性 ====================
 
 TEST_F(MetalOffscreenFixture, OffscreenFramesAreRepeatable)
 {
-    // The same input on two consecutive frames must produce byte-identical results.
-    // Unsubmitted command buffers, leftover content from the previous frame, or a wrong
-    // loadOp (Load instead of Clear) all make this fail.
+    // 同样的输入连续两帧必须得到逐字节相同的结果。未提交的命令缓冲、
+    // 上一帧的残留内容、写错的 loadOp（Load 而非 Clear）都会让这一条失败。
     rxSessionSetClearColor(session, 0.0f, 0.0f, 0.0f, 1.0f);
     drawLeftHalfTriangle(0.0f, 1.0f, 0.0f);
     const std::vector<uint8_t> first = readback();
@@ -769,13 +746,12 @@ TEST_F(MetalOffscreenFixture, OffscreenFramesAreRepeatable)
     EXPECT_EQ(std::memcmp(first.data(), second.data(), first.size()), 0)
         << "Two offscreen frames differ: residual state exists between frames";
 
-    // Also confirm this frame actually drew something (otherwise "both frames are black"
-    // would pass the comparison above).
+    // 顺带确认这一帧确实画出了东西（否则「两帧都全黑」也会通过上面的比较）
     expectPixel(first, 4, 8, 0, 255, 0, 255, "triangle interior");
     expectPixel(first, 56, 8, 0, 0, 0, 255, "outside triangle");
 }
 
-// ==================== Glyph: R8 coverage (ScreenGlyph) ====================
+// ==================== 字形：R8 覆盖率（ScreenGlyph）====================
 
 TEST_F(MetalOffscreenFixture, ScreenGlyphDrawsCoverageAsAlphaAndKeepsVertexColor)
 {
@@ -787,13 +763,12 @@ TEST_F(MetalOffscreenFixture, ScreenGlyphDrawsCoverageAsAlphaAndKeepsVertexColor
     ASSERT_GT(glyph.width, 0.0f) << "Glyph bitmap is empty; sampling cannot be verified";
     ASSERT_GT(glyph.height, 0.0f);
 
-    // Same bitmap format and topology as the glyph, only the fragment differs, so the
-    // caller must select the pipeline explicitly; letting the Runtime resolve it would
-    // hit ScreenTextured and sample R8 coverage as RGBA.
+    // 字形与位图同格式同拓扑，只有片元不同，必须由调用方显式指定管线；
+    // 让 Runtime 自行解析会命中 ScreenTextured，把 R8 覆盖率当 RGBA 采样。
     const uint16_t pipeline = rxPipelineGetDefault(runtime, DefaultPipeline::ScreenGlyph);
     ASSERT_NE(pipeline, 0u) << "ScreenGlyph pipeline was not created (missing screen_glyph_p2t2c4_frag.metallib)";
 
-    // The atlas dirty region must be uploaded before submitting a draw that references it
+    // 图集脏区必须在提交引用它的绘制之前上传
     ASSERT_EQ(rxFontFlushAtlas(runtime, testFont), RxResult::Ok);
 
     const float x0 = 4.0f;
@@ -810,9 +785,8 @@ TEST_F(MetalOffscreenFixture, ScreenGlyphDrawsCoverageAsAlphaAndKeepsVertexColor
     ASSERT_EQ(rxSessionAllocTransient(session, rxVertexStride(VertexFormat::P2T2C4) * 6, &alloc),
               RxResult::Ok);
     auto* v = static_cast<ScreenP2T2C4Vertex*>(alloc.cpuPtr);
-    // Deliberately non-gray vertex color (0.25, 0.5, 1.0): the final glyph color is
-    // "vertex color x coverage", and only a non-uniform vertex color reveals swapped
-    // channels in pixels -- pure white text cannot.
+    // 顶点色刻意取非灰（0.25, 0.5, 1.0）：字形最终颜色是「顶点色 × 覆盖率」，
+    // 用带比例的顶点色才能在像素上分辨通道是否被交换——纯白字做不到这一点。
     const float glyphColor[4] = { 0.25f, 0.5f, 1.0f, 1.0f };
     v[0] = { x0, y0, glyph.u0, glyph.v0, glyphColor[0], glyphColor[1], glyphColor[2], glyphColor[3] };
     v[1] = { x1, y0, glyph.u1, glyph.v0, glyphColor[0], glyphColor[1], glyphColor[2], glyphColor[3] };
@@ -840,22 +814,21 @@ TEST_F(MetalOffscreenFixture, ScreenGlyphDrawsCoverageAsAlphaAndKeepsVertexColor
     const InkStats ink = scanInk(pixels, 0, 0, kWidth, kHeight);
 
     EXPECT_LT(ink.ink, ink.total) << "The whole attachment is inked; this does not look like a glyph";
-    // Ink must be "vertex color x coverage": green must not be 0 (the R8-atlas-as-color
-    // trap), and channel ratios must match the vertex color ratios (the swapped-channel trap).
+    // 墨色必须是「顶点色 × 覆盖率」：绿通道不得为 0（R8 图集当颜色的坑），
+    // 通道比必须等于顶点色的通道比（通道顺序被交换的坑）
     expectInkMatchesVertexColor(ink, glyphColor[0], glyphColor[1], glyphColor[2], "ScreenGlyph");
 
-    // Outside the quad must still be the clear color
+    // 四边形之外必须仍是清屏色
     expectPixel(pixels, kWidth - 1, 0, 0, 0, 0, 255, "outside glyph quad");
     expectPixel(pixels, 0, kHeight - 1, 0, 0, 0, 255, "outside glyph quad");
 }
 
-// ==================== Glyph: distance field (WorldGlyphSdf) ====================
+// ==================== 字形：距离场（WorldGlyphSdf）====================
 
 TEST_F(MetalOffscreenFixture, WorldGlyphSdfRendersSolidInteriorWithCorrectSign)
 {
-    // sdfPadding = 8: the atlas stores a distance field, and the glyph bitmap has 8
-    // pixels of padding on each side. The padding lies outside the outline with negative
-    // distance -- this is the basis for "the border must contain no ink" below.
+    // sdfPadding = 8：图集存距离场，字形位图四周各带 8 像素留白。
+    // 留白区在轮廓之外，距离为负——这正是下面「边框不得有墨」的依据。
     testFont = loadTestFont(32.0f, /*sdfPadding*/ 8);
     ASSERT_TRUE(rxValid(testFont));
 
@@ -869,9 +842,8 @@ TEST_F(MetalOffscreenFixture, WorldGlyphSdfRendersSolidInteriorWithCorrectSign)
 
     ASSERT_EQ(rxFontFlushAtlas(runtime, testFont), RxResult::Ok);
 
-    // World space: with a unit view matrix, vertices are NDC directly. Lay the glyph on
-    // a rectangle starting at pixel (4,4); the conversion matches screen_p3c3.vert
-    // (top-left origin, y down).
+    // 世界空间：单位视图矩阵下顶点直接给 NDC。把字形铺在像素 (4,4) 起的矩形上，
+    // 换算公式与 screen_p3c3.vert 一致（左上原点、y 向下）。
     const float px0 = 4.0f;
     const float py0 = 4.0f;
     const float px1 = px0 + glyph.width;
@@ -893,7 +865,7 @@ TEST_F(MetalOffscreenFixture, WorldGlyphSdfRendersSolidInteriorWithCorrectSign)
     ASSERT_EQ(rxSessionAllocTransient(session, rxVertexStride(VertexFormat::P3T2C4) * 6, &alloc),
               RxResult::Ok);
     auto* v = static_cast<WorldP3T2C4Vertex*>(alloc.cpuPtr);
-    // Same non-gray vertex color as the coverage case; see the reason there
+    // 与覆盖率用例同一个非灰顶点色，理由见那里
     const float gR = 0.25f;
     const float gG = 0.5f;
     const float gB = 1.0f;
@@ -914,8 +886,7 @@ TEST_F(MetalOffscreenFixture, WorldGlyphSdfRendersSolidInteriorWithCorrectSign)
     command.indexType = IndexType::None;
     command.texture = rxFontAtlas(runtime, testFont);
     command.pipelineIndex = pipeline;
-    // Same triple as WorldTextured; must be specified explicitly, otherwise the distance
-    // field is sampled as RGBA.
+    // 与 WorldTextured 三元组相同，必须显式指定；否则距离场会被当 RGBA 采样
     command.sortKey = rxMakeSortKey(10, 0, 0, 0);
 
     ASSERT_EQ(submitSingleCommand(session, command), RxResult::Ok);
@@ -927,9 +898,8 @@ TEST_F(MetalOffscreenFixture, WorldGlyphSdfRendersSolidInteriorWithCorrectSign)
     EXPECT_LT(ink.ink, ink.total) << "The whole attachment is inked; this does not look like a glyph";
     expectInkMatchesVertexColor(ink, gR, gG, gB, "WorldGlyphSdf");
 
-    // Sign correctness: the padding lies outside the outline with negative distance ->
-    // alpha must be 0. If written as 0.5 - r (inverted sign), the glyph inverts and the
-    // whole border becomes ink.
+    // 符号正确性：留白区在轮廓之外，距离为负 → alpha 必为 0。
+    // 若写成 0.5 - r（符号反相），字形会被反相，整圈边框反而全是墨。
     const uint32_t qx0 = static_cast<uint32_t>(px0);
     const uint32_t qy0 = static_cast<uint32_t>(py0);
     const uint32_t qx1 = static_cast<uint32_t>(px1);
@@ -941,32 +911,29 @@ TEST_F(MetalOffscreenFixture, WorldGlyphSdfRendersSolidInteriorWithCorrectSign)
     EXPECT_EQ(borderInk, 0u) << "Ink appeared in the SDF padding: the SDF sign may be inverted";
 }
 
-// ==================== 2D overlay: world-space lines (P3C4 + Lines) ====================
+// ==================== 2D 覆盖层：世界空间线段（P3C4 + Lines）====================
 
 /**
- * Equivalent setup for the 2D viewport "selected polyline dashed stroke": vertex format
- * P3C4, space World, topology Lines, and vertex z passes through the same way as the 2D
- * view matrix (the host's mat3ToMat4 sets out[10] = 1, so world z becomes NDC z
- * unchanged); the host always supplies z = 0.
+ * 2D 视口「选中流水虚线」的等价装配：顶点格式 P3C4、空间 World、拓扑 Lines，
+ * 且顶点 z 与 2D 视图矩阵一样是**直通**的（宿主 mat3ToMat4 把 out[10] 置 1，
+ * world z 原样成为 NDC z），宿主给的 z 恒为 0。
  *
- * Why this case exists: in the field, "after selecting an entity the body disappears and
- * the dashed outline never appears", while runtime logs showed the host did generate
- * overlay commands (overlay commands=8) and did create pipeline #26 on demand
- * (vfmt=1 space=0 topo=1). Static reading of resolvePipeline and metalCommandList found
- * nothing, so this combination is pinned down on offscreen pixels:
- * failure = Renderx cannot draw this combination; pass = the problem is in the host's
- * geometry data.
+ * 这条用例存在的理由：产品实测「选中图元后本体消失、虚线轮廓不出现」，而运行
+ * 日志显示宿主确实生成了覆盖层命令（overlay commands=8），并按需建出了
+ * pipeline #26（vfmt=1 space=0 topo=1）。静态阅读 resolvePipeline 与
+ * metalCommandList 都看不出问题，因此把这一组合单独钉在离屏像素上：
+ * 失败 = Renderx 侧这条组合画不出来；通过 = 问题在宿主的几何数据。
  *
- * z is deliberately 0: Metal NDC z is [0,1] (GL is [-1,1]), so z = 0 sits exactly on the
- * **near-plane boundary**, the most suspicious value along this path.
+ * z 刻意取 0：Metal 的 NDC z 是 [0,1]（GL 是 [-1,1]），z=0 落在**近平面
+ * 边界**上，是这条路径上最可疑的一个取值。
  */
 TEST_F(MetalOffscreenFixture, WorldP3C4LineBatchIsVisible)
 {
     rxSessionSetClearColor(session, 0.0f, 0.0f, 0.0f, 1.0f);
     ASSERT_EQ(rxSessionBeginFrame(session), RxResult::Ok);
 
-    // 8 horizontal lines, y at pixel-row centers (1 - (2r+1)/64): this guarantees they
-    // rasterize onto whole rows instead of landing exactly on pixel boundaries.
+    // 8 条横线，y 取像素行中心（1 - (2r+1)/64）：保证一定光栅化到整行像素，
+    // 而不是恰好压在像素边界上。
     constexpr int kRows[8] = { 4, 12, 20, 28, 36, 44, 52, 60 };
     constexpr uint32_t kVertexCount = 16;
     TransientAlloc alloc{};
@@ -993,8 +960,7 @@ TEST_F(MetalOffscreenFixture, WorldP3C4LineBatchIsVisible)
     command.space = RenderSpace::World;
     command.vertexFormat = VertexFormat::P3C4;
     command.indexType = IndexType::None;
-    // pipelineIndex stays 0: same as the 2D overlay, the Runtime resolves it from
-    // (format, space, topology).
+    // pipelineIndex 留 0：与 2D 覆盖层一致，由 Runtime 按 (格式, 空间, 拓扑) 解析
     command.sortKey = rxMakeSortKey(200, 1, 0, 0);
 
     ASSERT_EQ(submitSingleCommand(session, command), RxResult::Ok);
@@ -1003,14 +969,12 @@ TEST_F(MetalOffscreenFixture, WorldP3C4LineBatchIsVisible)
     const std::vector<uint8_t> pixels = readback();
     const InkStats ink = scanInk(pixels, 0, 0, kWidth, kHeight);
 
-    // 8 rows x about 58 columns ~= 464 ink pixels; the lower bound absorbs anti-aliasing
-    // and endpoint differences.
+    // 8 行 × 约 58 列 ≈ 464 个墨色像素；抗锯齿与端点差异用下限卡住
     EXPECT_GT(ink.ink, 300u) << "P3C4/World/Lines drew nothing at all\n"
                              << sink.allErrors() << sink.allWarnings();
     expectInkMatchesVertexColor(ink, lineR, lineG, lineB, "WorldP3C4Line");
 
-    // Check each row: all 8 row centers must have ink, so "only one row was drawn" does
-    // not pass.
+    // 逐行核对：8 行中心必须都有墨，避免「只画出一行也算通过」
     for (int i = 0; i < 8; ++i)
     {
         const uint32_t row = static_cast<uint32_t>(kRows[i]);
@@ -1019,23 +983,20 @@ TEST_F(MetalOffscreenFixture, WorldP3C4LineBatchIsVisible)
     }
 }
 
-// ==================== 3D: depth occlusion (P3N3 + D32Float offscreen depth attachment) ====================
+// ==================== 3D：深度遮挡（P3N3 + D32Float 离屏深度附件）====================
 
 /**
- * The "wrong painter order" case for depth testing:
- * the near red small quad has a smaller sortKey (drawn first), the far blue large quad
- * has a larger sortKey (drawn later). Without a depth buffer, the later blue covers the
- * whole screen; with depth testing on (Mesh3D defaults depthTest/write = 1, LessEqual),
- * blue fragments in the overlap region are rejected because 0.7 > 0.3 and the center must
- * stay red; the ring only covered by blue stays blue, proving blue really went through
- * rasterization and was only rejected by depth -- rather than the whole pipeline doing
- * nothing.
+ * 深度测试的「错误画家顺序」用例：
+ * 近的红色小四边形 sortKey 更小（先画），远的蓝色大四边形 sortKey 更大
+ * （后画）。没有深度缓冲时后画的蓝会盖满全屏；开启深度测试（Mesh3D
+ * 默认 depthTest/write=1、LessEqual）后，蓝片在重叠区因 0.7 > 0.3 被丢弃，
+ * 中心必须仍是红色；蓝片独有的外环区域保持蓝色，证明蓝片确实走完了
+ * 光栅化、只是被深度拒绝——而不是整条管线没工作。
  *
- * This also verifies the depth dimension of the Task 4 pipeline key: the built-in Mesh3D
- * pipeline is prewarmed for (BGRA8, Unknown), while this test's offscreen target is
- * (RGBA8, D32Float); pipelineWithFormats must create a variant matching both formats
- * here, otherwise MTL_DEBUG_LAYER reports a pixel-format mismatch during binding or
- * encoding.
+ * 这同时验证了 Task 4 的管线键深度维度：内建 Mesh3D 管线按
+ * （BGRA8、Unknown）预热，本用例的离屏目标是（RGBA8、D32Float），
+ * pipelineWithFormats 必须在这里补建出双格式都匹配的变体，否则
+ * MTL_DEBUG_LAYER 会在绑定/录制期报像素格式不匹配。
  */
 TEST_F(MetalOffscreenFixture, Mesh3DDepthTestRejectsFarQuadDrawnAfterNearQuad)
 {
@@ -1056,19 +1017,18 @@ TEST_F(MetalOffscreenFixture, Mesh3DDepthTestRejectsFarQuadDrawnAfterNearQuad)
     ASSERT_EQ(pixels.size(), static_cast<size_t>(kWidth) * kHeight * 4u)
         << "Readback failed; cannot assert pixels";
 
-    // Overlap region: the later far blue must be rejected by the depth buffer; the center is near red
+    // 重叠区：后画的远蓝必须被深度缓冲拒绝，中心是近红
     expectPixel(pixels, 32, 32, 255, 0, 0, 255, "near red wins over later far blue");
     expectPixel(pixels, 26, 26, 255, 0, 0, 255, "near red overlap edge");
     expectPixel(pixels, 38, 38, 255, 0, 0, 255, "near red overlap edge");
-    // Blue-only outer ring: blue really was rasterized, just rejected by depth in the overlap
+    // 蓝片独有外环：蓝片确实被光栅化，只是在重叠区被深度丢弃
     expectPixel(pixels, 12, 12, 0, 0, 255, 255, "far blue visible outside red quad");
     expectPixel(pixels, 52, 52, 0, 0, 255, 255, "far blue visible outside red quad");
-    // Corners not covered by either quad are still cleared black
+    // 两片都没覆盖的角落仍是清屏黑
     expectPixel(pixels, 2, 2, 0, 0, 0, 255, "background untouched");
     expectPixel(pixels, 62, 62, 0, 0, 0, 255, "background untouched");
 
-    // Restore the no-depth offscreen target before destroying the depth texture (an
-    // out-of-frame operation, see the setRenderTarget contract)
+    // 恢复无深度离屏目标后再销毁深度纹理（帧外操作，见 setRenderTarget 契约）
     EXPECT_EQ(rxSessionSetRenderTarget(session, colorTarget, TextureHandle::Invalid, kWidth,
                                        kHeight),
               RxResult::Ok);
@@ -1076,14 +1036,13 @@ TEST_F(MetalOffscreenFixture, Mesh3DDepthTestRejectsFarQuadDrawnAfterNearQuad)
 }
 
 /**
- * Control group for the previous case: same geometry, same submission order, but the
- * pipeline disables depth testing (a custom P3N3 pipeline with depthTest = 0). The later
- * far blue now covers the near red in painter order, and the center turns blue.
+ * 上一条用例的对照组：同样的几何、同样的提交顺序，但管线关掉深度测试
+ * （自建 P3N3 管线，depthTest=0）。此时「后画的远蓝」按画家顺序盖住近红，
+ * 中心变成蓝色。
  *
- * Only both cases together form a complete attribution: "red won at the center" alone
- * cannot distinguish "depth testing works" from "the second quad was never drawn"; this
- * case proves blue can indeed cover red, so the red in the previous case was stopped by
- * depth testing, not lost blue.
+ * 两条用例合起来才构成完整归因：单看「中心的红赢了」无法区分「深度测试
+ * 生效」与「第二个四边形压根没画」；这里证明蓝片确实能盖住红片，说明
+ * 上一条用例的红是深度测试拦下来的，而不是蓝片丢失。
  */
 TEST_F(MetalOffscreenFixture, Mesh3DWithoutDepthTestLetsLaterQuadWin)
 {
@@ -1091,8 +1050,7 @@ TEST_F(MetalOffscreenFixture, Mesh3DWithoutDepthTestLetsLaterQuadWin)
     const uint16_t blueMaterial = addSolidMaterial(0.0f, 0.0f, 1.0f);
     applyKeyLight3D();
 
-    // Create a custom "same format, depth test off" P3N3 pipeline (no such combination
-    // exists in the built-in table).
+    // 自建一条「同格式、关深度测试」的 P3N3 管线（内建表里没有这种组合）
     PipelineDesc desc{};
     desc.topology = PrimitiveTopology::Triangles;
     desc.vertexFormat = VertexFormat::P3N3;
@@ -1101,7 +1059,7 @@ TEST_F(MetalOffscreenFixture, Mesh3DWithoutDepthTestLetsLaterQuadWin)
     desc.blendEnable = 0;
     desc.depthFunc = DepthFunc::LessEqual;
     desc.fillMode = FillMode::Solid;
-    desc.shaderName = nullptr;  // use the default mesh_3d_p3n3 for vertexFormat + space
+    desc.shaderName = nullptr;  // 按 vertexFormat + space 取默认 mesh_3d_p3n3
     const uint16_t noDepthPipeline = rxPipelineCreate(runtime, &desc);
     ASSERT_NE(noDepthPipeline, 0u) << "Failed to create the P3N3 no-depth pipeline:\n" << sink.allErrors();
 
@@ -1110,22 +1068,20 @@ TEST_F(MetalOffscreenFixture, Mesh3DWithoutDepthTestLetsLaterQuadWin)
     ASSERT_EQ(pixels.size(), static_cast<size_t>(kWidth) * kHeight * 4u)
         << "Readback failed; cannot assert pixels";
 
-    // No depth testing: the later far blue covers the near red (painter order applies)
+    // 没有深度测试：后画的远蓝盖住近红（画家顺序生效）
     expectPixel(pixels, 32, 32, 0, 0, 255, 255, "later far blue covers near red (no depth test)");
     expectPixel(pixels, 26, 26, 0, 0, 255, 255, "later far blue covers near red (no depth test)");
-    // The red quad is fully covered: it spans 24..40, inside the blue quad's 8..56
+    // 红片完全被盖住：它只覆盖 24..40，落在蓝片 8..56 之内
     expectPixel(pixels, 12, 12, 0, 0, 255, 255, "far blue outside red quad");
 }
 
 /**
- * End-to-end verification of lighting fields: the same quad with normal +Z, only the key
- * light direction changes.
+ * 光照字段的端到端验证：同一个法线朝 +Z 的四边形，只切换主光方向。
  *
- * With the light along +Z (directly in front of the face), the Lambert factor is 1 and
- * the fragment color equals the material diffuse color; when the light turns to -Z
- * (behind), the factor is 0 and fragments are black. If FrameUniforms field offsets were
- * wrong (for example the "read the neighboring field" class of bugs fixed in Task 3),
- * changing direction would not change the image -- this case exists precisely for that.
+ * 光在 +Z（正面正前方）时 Lambert 因子为 1，片元色等于材质漫反射色；
+ * 光转到 -Z（背后）时因子为 0，片元全黑。若 FrameUniforms 的字段偏移
+ * 错位（例如 Task 3 修过的那类「读成邻字段」），切换 direction 不会改变
+ * 画面——这条用例正是为此设的。
  */
 TEST_F(MetalOffscreenFixture, Mesh3DLightingFollowsLightDirection)
 {
@@ -1133,35 +1089,31 @@ TEST_F(MetalOffscreenFixture, Mesh3DLightingFollowsLightDirection)
     const uint16_t meshPipeline = rxPipelineGetDefault(runtime, DefaultPipeline::Mesh3D);
     ASSERT_NE(meshPipeline, 0u) << "Mesh3D pipeline was not created (missing mesh_3d_p3n3 metallib)";
 
-    // Light in front: lit, fragment color = material color (red)
+    // 光在正面：受光，片元色 = 材质色（红）
     applyKeyLight3D(0.0f, 0.0f, 1.0f);
     drawSingleQuad(redMaterial, meshPipeline, 0.5f, rxMakeSortKey(10, 0, 0, 0));
     const std::vector<uint8_t> lit = readback();
     expectPixel(lit, 32, 32, 255, 0, 0, 255, "key light in front: surface lit");
 
-    // Light directly behind: dot(N, L) = -1, max(.,0) = 0 -> no lighting contribution, all black
+    // 光转到正后方：dot(N, L) = -1，max(.,0) = 0 → 无光照贡献，全黑
     applyKeyLight3D(0.0f, 0.0f, -1.0f);
     drawSingleQuad(redMaterial, meshPipeline, 0.5f, rxMakeSortKey(10, 0, 0, 0));
     const std::vector<uint8_t> unlit = readback();
     expectPixel(unlit, 32, 32, 0, 0, 0, 255, "key light behind: surface unlit");
 
-    // Also confirm the two frames are not "both black" (otherwise the failure message
-    // above would point in the wrong direction)
+    // 顺带确认两帧不是「都黑」（否则上面的失败信息会指向错误的方向）
     EXPECT_NE(std::memcmp(lit.data(), unlit.data(), lit.size()), 0)
         << "The image did not change at all after switching the key light direction: the shader may not read direction";
 }
 
 /**
- * Two-sided lighting: simulates the typical case of imported meshes with "outward normals
- * and unreliable winding".
+ * 双面光照：模拟导入网格「法线朝外、绕序不可靠」的典型情况。
  *
- * Geometry is submitted clockwise (classified as back-facing from this viewpoint), and
- * the vertex normal supplied is (0,0,-1) pointing away from the viewer, while the key
- * light is along +Z. With doubleSided=1 the fragment flips the normal via
- * [[front_facing]], so it becomes (0,0,1) facing the light -> lit; with doubleSided=0 it
- * is not flipped, the normal and light oppose each other -> Lambert factor 0 -> all
- * black. That is exactly why this switch exists (with inconsistent OBJ/STL winding,
- * single-sided lighting turns entire triangle fans black).
+ * 几何按顺时针提交（该视角下被判为背面），顶点法线给的是背向观察者的
+ * (0,0,-1)，而主光在 +Z。doubleSided=1 时片元按 [[front_facing]] 翻转法线，
+ * 法线变成 (0,0,1) 面向光源 → 受光；doubleSided=0 时不翻，法线与光相背
+ * → Lambert 因子 0 → 全黑。这正是该开关存在的意义（OBJ/STL 绕序不一致时
+ * 单面光照会让整片三角面变黑）。
  */
 TEST_F(MetalOffscreenFixture, Mesh3DDoubleSidedLightsBackFacingQuad)
 {
@@ -1169,15 +1121,14 @@ TEST_F(MetalOffscreenFixture, Mesh3DDoubleSidedLightsBackFacingQuad)
     const uint16_t meshPipeline = rxPipelineGetDefault(runtime, DefaultPipeline::Mesh3D);
     ASSERT_NE(meshPipeline, 0u) << "Mesh3D pipeline was not created (missing mesh_3d_p3n3 metallib)";
 
-    // Double-sided on: the flipped back-face normal is lit
+    // 双面开启：背面法线翻转后受光
     applyKeyLight3D(0.0f, 0.0f, 1.0f, /*doubleSided*/ 1);
     drawSingleQuad(redMaterial, meshPipeline, 0.5f, rxMakeSortKey(10, 0, 0, 0),
                    /*backFacing*/ true);
     const std::vector<uint8_t> doubled = readback();
     expectPixel(doubled, 32, 32, 255, 0, 0, 255, "doubleSided=1: back face is lit");
 
-    // Double-sided off: the normal is not flipped and the back face is black (control
-    // group proving the red above came from the flip)
+    // 双面关闭：法线不翻，背面全黑（对照组，证明上一条的红来自翻转）
     applyKeyLight3D(0.0f, 0.0f, 1.0f, /*doubleSided*/ 0);
     drawSingleQuad(redMaterial, meshPipeline, 0.5f, rxMakeSortKey(10, 0, 0, 0),
                    /*backFacing*/ true);
@@ -1186,31 +1137,35 @@ TEST_F(MetalOffscreenFixture, Mesh3DDoubleSidedLightsBackFacingQuad)
 }
 
 /**
- * The depth format must be part of the pipeline cache key (the core of Task 4).
+ * 深度格式必须进管线缓存键（Task 4 的核心）。
  *
- * Observation point: instead of matching a debug log line, this asserts the Runtime's own
- * pipeline table (Runtime::pipelines / Runtime::pipelineKeys). That table is what the
- * renderer actually uses, it cannot be silenced by log throttling, and its size directly
- * answers "was a variant created or reused".
+ * 历史版本断言「第一帧无深度 → 第二帧 D32Float，必须各建一条变体」。
+ * 5906c49 之后 Session::beginFrame 会给**每一个**离屏目标自动挂一张
+ * D32Float 深度纹理（修离屏导出穿模），于是两帧的深度格式本来就相同：
+ * 第二帧理应命中缓存、一条新管线都不建。旧断言因此恒定失败，并不是产品
+ * 退化，不能用放宽断言或跳过糊过去，得按新语义重写。
  *
- * Three assertions:
- *   1. The first offscreen frame targets RGBA8 plus the D32Float depth attachment that
- *      beginFrame attaches automatically. Prewarmed built-in keys use the swapchain color
- *      format with Unknown depth, so exactly one variant must be appended and its key
- *      must record D32Float (not the prewarmed Unknown).
- *   2. Requesting the same (RGBA8, D32Float) pair again returns the existing variant and
- *      appends nothing.
- *   3. Requesting the same color format with a different depth format (Unknown) must
- *      append a second variant with a distinct index; repeating that request returns the
- *      same index and appends nothing.
+ * 观测点：不再匹配 debug 日志文本，而是直接断言 Runtime 自己的管线表
+ * （Runtime::pipelines / Runtime::pipelineKeys）。这张表就是渲染器实际
+ * 使用的表，日志被降噪/节流也不会让它失效，表的大小直接回答「是补建了
+ * 变体还是复用了旧变体」。
  *
- * If the variant key ignored depthFormat, step 1 would keep the base index (no append)
- * and step 3 would return the existing variant index -- both assertions fail. That is the
- * required failure direction for this case.
+ * 三段断言：
+ *   1. 内建管线在 Runtime 创建期按 Unknown 深度 + 交换链颜色格式预热；
+ *      第一帧离屏目标是 RGBA8，且 beginFrame 自动挂 D32Float 深度附件，
+ *      因此必须恰好追加一条变体，且变体键里的深度格式必须是 D32Float
+ *      （而不是沿用预热时的 Unknown）。若 depthFormat 没进键，变体会沿用
+ *      Unknown 深度，Metal 校验层会判 depthAttachmentPixelFormat 不匹配。
+ *   2. 再次请求同一组（RGBA8、D32Float）必须返回已有变体，不追加新管线，
+ *      证明缓存键稳定、不泄漏变体。
+ *   3. 同颜色格式、不同深度格式（Unknown）必须追加第二条变体且索引不同；
+ *      重复请求该组合仍返回同一索引、不再追加。若变体键忽略 depthFormat，
+ *      第 1 段会停在基础索引（不追加）、第 3 段会返回已有变体索引——两处
+ *      断言都会失败，这就是本用例要求的失败方向。
  *
- * The pure-logic part "depthFormat participates in equality/hash" is separately guarded
- * by PipelineKeyDepthFormatIsPartOfCacheKey in RxRuntimeTests.cpp, which does not depend
- * on GPU, logs or run order.
+ * 「depthFormat 参与 equality/hash」这条纯逻辑另有
+ * RxRuntimeTests.cpp 的 PipelineKeyDepthFormatIsPartOfCacheKey 直接把关，
+ * 不依赖 GPU、日志或运行顺序。
  */
 TEST_F(MetalOffscreenFixture, Mesh3DPipelineVariantIsKeyedByDepthFormat)
 {
@@ -1225,13 +1180,13 @@ TEST_F(MetalOffscreenFixture, Mesh3DPipelineVariantIsKeyedByDepthFormat)
     ASSERT_NE(meshPipeline, 0u) << "Mesh3D pipeline was not created (missing mesh_3d_p3n3 metallib)";
     ASSERT_LT(static_cast<size_t>(meshPipeline), rt->pipelineKeys.size());
 
-    // Baseline: the prewarmed built-in variant. Runtime creation builds pipelines for the
-    // swapchain color format with Unknown depth; record the count instead of hard-coding.
+    // 基准：预热出来的内建变体。Runtime 创建期按交换链颜色格式 + Unknown
+    // 深度建管线；这里只记录条数、不硬编码 Format 枚举值。
     const size_t baseCount = rt->pipelines.size();
     EXPECT_EQ(rt->pipelineKeys[meshPipeline].depthFormat, Render::RHI::Format::Unknown)
         << "The prewarmed Mesh3D pipeline should not have a depth attachment";
 
-    // ---- (1) First offscreen frame: RGBA8 + auto-attached D32Float must append one variant ----
+    // ---- 第 1 段：离屏首帧，RGBA8 + 自动挂载的 D32Float 必须追加一条变体 ----
     rxSessionSetClearColor(session, 0.0f, 0.0f, 0.0f, 1.0f);
     drawSingleQuad(redMaterial, meshPipeline, 0.5f, rxMakeSortKey(10, 0, 0, 0));
     expectPixel(readback(), 32, 32, 255, 0, 0, 255, "auto-depth target: quad is drawn");
@@ -1243,14 +1198,14 @@ TEST_F(MetalOffscreenFixture, Mesh3DPipelineVariantIsKeyedByDepthFormat)
     EXPECT_EQ(rt->pipelineKeys[autoDepthVariant].depthFormat, Render::RHI::Format::D32Float)
         << "Depth format is not part of the pipeline key: the offscreen variant kept the prewarmed Unknown depth";
 
-    // ---- (2) Same formats again: reuse, no new pipeline ----
+    // ---- 第 2 段：同格式再次请求，必须复用而不是重复建 ----
     EXPECT_EQ(rxPipelineEnsureVariant(runtime, meshPipeline, /*offscreenColor*/ 1,
                                       /*depthAttached*/ 1),
               autoDepthVariant);
     EXPECT_EQ(rt->pipelines.size(), baseCount + 1)
         << "Requesting the same formats created a duplicate pipeline; the cache key is unstable";
 
-    // ---- (3) Same color, different depth: must append a distinct variant ----
+    // ---- 第 3 段：同颜色、不同深度，必须追加一条独立变体 ----
     const uint16_t noDepthVariant =
         rxPipelineEnsureVariant(runtime, meshPipeline, /*offscreenColor*/ 1, /*depthAttached*/ 0);
     ASSERT_NE(noDepthVariant, 0u);
@@ -1259,17 +1214,18 @@ TEST_F(MetalOffscreenFixture, Mesh3DPipelineVariantIsKeyedByDepthFormat)
     EXPECT_EQ(rt->pipelineKeys[noDepthVariant].colorFormat, Render::RHI::Format::RGBA8Unorm);
     EXPECT_EQ(rt->pipelineKeys[noDepthVariant].depthFormat, Render::RHI::Format::Unknown);
 
-    // Repeating the second depth format also hits its own entry instead of appending.
+    // 重复请求第二种深度格式同样命中自己的条目，不再追加。
     EXPECT_EQ(rxPipelineEnsureVariant(runtime, meshPipeline, /*offscreenColor*/ 1,
                                       /*depthAttached*/ 0),
               noDepthVariant);
     EXPECT_EQ(rt->pipelines.size(), baseCount + 2);
 
-    // ---- Explicit D32Float depth attachment reuses the first variant and still draws ----
+    // ---- 显式 D32Float 深度附件：复用第 1 段那条变体，且仍能正确画出蓝色 ----
     const TextureHandle depthTarget = createDepthTarget();
     ASSERT_TRUE(rxValid(depthTarget));
     ASSERT_EQ(rxSessionSetRenderTarget(session, colorTarget, depthTarget, kWidth, kHeight),
               RxResult::Ok);
+
     drawSingleQuad(blueMaterial, meshPipeline, 0.5f, rxMakeSortKey(10, 0, 0, 0));
     expectPixel(readback(), 32, 32, 0, 0, 255, 255, "explicit depth target: quad is drawn");
     EXPECT_EQ(rt->pipelines.size(), baseCount + 2)
@@ -1282,24 +1238,18 @@ TEST_F(MetalOffscreenFixture, Mesh3DPipelineVariantIsKeyedByDepthFormat)
 }
 
 /**
- * Wireframe fill: Metal's triangleFillMode is **encoder state**, not a pipeline descriptor
- * property (unlike Vulkan's VK_POLYGON_MODE_LINE), so it can only be issued when binding
- * the pipeline. Without that step the pipeline still builds and the capability bit may
- * still claim support, but the image stays solid -- what the host observes is "switching
- * to wireframe does nothing".
+ * 线框填充：Metal 的 triangleFillMode 是**编码器状态**而不是管线描述符属性
+ * （与 Vulkan 的 VK_POLYGON_MODE_LINE 不同），所以它只能在绑定管线时下发。
+ * 一旦少了这一步，管线照样建得出来、能力位也可以声明支持，但画面永远是
+ * 实心——宿主侧看到的就是「切到线框没反应」。
  *
- * Attribution requires two frames; a single frame cannot distinguish "wireframe works"
- * from "the whole pipeline does nothing":
- *   frame 1: Mesh3D solid -- the interior is filled (proving geometry, lighting and
- *            material registration all work)
- *   frame 2: Mesh3DWire -- same geometry and material, the interior returns to cleared
- *            black with only edges visible
- * Then assert "has ink" on a small strip of the border to ensure the interior turning
- * black in frame 2 is not because nothing was drawn.
+ * 归因必须用两帧对照，单看一帧无法区分「线框生效」与「整条管线没工作」：
+ *   帧一 Mesh3D  实心：内部被涂满（证明几何、光照、材质注册都是通的）
+ *   帧二 Mesh3DWire：同样的几何与材质，内部回到清屏黑，只剩边线
+ * 再对边上一小块做「有墨」断言，确保帧二的内部变黑不是因为什么都没画。
  *
- * Sample points (20,20)/(44,44) are more than 12px from all four edges and the diagonal,
- * so a 1px line width cannot touch them -- the solid pipeline must be bright at these
- * points, making them clean discriminators.
+ * 采样点 (20,20)/(44,44) 到四条边与对角线的距离都超过 12px，不会被
+ * 1px 线宽擦到——实心管线在这两点上必然亮，是干净的判别点。
  */
 TEST_F(MetalOffscreenFixture, Mesh3DWireFillDrawsEdgesInsteadOfSolidArea)
 {
@@ -1311,7 +1261,7 @@ TEST_F(MetalOffscreenFixture, Mesh3DWireFillDrawsEdgesInsteadOfSolidArea)
     ASSERT_NE(solidPipeline, 0u) << "Mesh3D pipeline was not created (missing mesh_3d_p3n3 metallib)";
     ASSERT_NE(wirePipeline, 0u) << "Mesh3DWire pipeline was not created (missing mesh_3d_p3n3 metallib)";
 
-    // Threshold 24 is set against cleared black (0,0,0): a lit white material is far above it
+    // 阈值 24 对着清屏黑 (0,0,0) 定：受光后的白材质远高于它
     const auto isLit = [](const std::vector<uint8_t>& pixels, uint32_t x, uint32_t y) {
         const uint8_t* px = pixelAt(pixels, x, y);
         return static_cast<int>(px[0]) + static_cast<int>(px[1]) + static_cast<int>(px[2]) > 24;
@@ -1331,7 +1281,7 @@ TEST_F(MetalOffscreenFixture, Mesh3DWireFillDrawsEdgesInsteadOfSolidArea)
         return n;
     };
 
-    // ---- Frame 1: solid control. The quad covers (8,8)-(56,56) ----
+    // ---- 帧一：实心对照。四边形覆盖 (8,8)-(56,56) ----
     rxSessionSetClearColor(session, 0.0f, 0.0f, 0.0f, 1.0f);
     drawSingleQuad(whiteMaterial, solidPipeline, 0.5f, rxMakeSortKey(10, 0, 0, 0));
     const std::vector<uint8_t> solid = readback();
@@ -1340,7 +1290,7 @@ TEST_F(MetalOffscreenFixture, Mesh3DWireFillDrawsEdgesInsteadOfSolidArea)
     ASSERT_TRUE(isLit(solid, 44, 44)) << "Solid control interior (44,44) is not filled: the geometry/lighting chain itself is broken";
     const size_t solidLit = countLit(solid);
 
-    // ---- Frame 2: same geometry and material, only the fillMode = Wireframe pipeline changes ----
+    // ---- 帧二：同几何、同材质，只换成 fillMode = Wireframe 的管线 ----
     drawSingleQuad(whiteMaterial, wirePipeline, 0.5f, rxMakeSortKey(10, 0, 0, 0));
     const std::vector<uint8_t> wire = readback();
     ASSERT_EQ(wire.size(), static_cast<size_t>(kWidth) * kHeight * 4u);
@@ -1348,8 +1298,7 @@ TEST_F(MetalOffscreenFixture, Mesh3DWireFillDrawsEdgesInsteadOfSolidArea)
     EXPECT_FALSE(isLit(wire, 20, 20)) << "Wireframe interior (20,20) is still filled: triangleFillMode was not issued";
     EXPECT_FALSE(isLit(wire, 44, 44)) << "Wireframe interior (44,44) is still filled: triangleFillMode was not issued";
 
-    // The left border (x ~= 8) must have ink, otherwise "interior turned black" above
-    // only means nothing was drawn.
+    // 左边框（x≈8）一带必须有墨，否则上面的「内部变黑」只说明什么都没画
     size_t edgeInk = 0;
     for (uint32_t y = 16; y < 48; ++y)
     {
@@ -1363,20 +1312,18 @@ TEST_F(MetalOffscreenFixture, Mesh3DWireFillDrawsEdgesInsteadOfSolidArea)
     }
     EXPECT_GT(edgeInk, 0u) << "The left border has no ink: the wireframe drew nothing";
 
-    // Magnitude: wireframe has only 4 edges + 1 diagonal, so it must be an order of
-    // magnitude smaller than solid.
+    // 面积量级：线框只剩 4 条边 + 1 条对角线，必须比实心小一个量级
     const size_t wireLit = countLit(wire);
     EXPECT_LT(wireLit, solidLit / 4)
         << "Wireframe covers " << wireLit << " px and solid covers " << solidLit << " px -- no order-of-magnitude gap";
 }
 
-// ==================== in-flight wait timeout ====================
+// ==================== in-flight 等待超时 ====================
 
 TEST(MetalSurface, InFlightWaitTimesOutInsteadOfBlockingForever)
 {
-    // Never signal: simulate a hung GPU / stuck driver. The wait must return false after
-    // the timeout instead of blocking the UI thread forever like DISPATCH_TIME_FOREVER
-    // used to.
+    // 永不 signal：模拟 GPU 挂起/驱动卡住。等待必须在超时后返回 false，
+    // 而不是像此前的 DISPATCH_TIME_FOREVER 那样永久阻塞 UI 线程。
     dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
     const auto begin = std::chrono::steady_clock::now();
     const bool acquired = Render::RHI::metal::waitSemaphore(semaphore, 50);
@@ -1387,8 +1334,7 @@ TEST(MetalSurface, InFlightWaitTimesOutInsteadOfBlockingForever)
     EXPECT_GE(elapsedMs, 40) << "The wait returned early; the timeout did not actually take effect (" << elapsedMs << "ms)";
     EXPECT_LT(elapsedMs, 2000) << "The wait degenerated into a long block (" << elapsedMs << "ms)";
 
-    // A timeout must not consume the count: after signal, the same semaphore must be
-    // immediately available.
+    // 超时不得消耗计数：signal 之后同一信号量应立即可得
     dispatch_semaphore_signal(semaphore);
     EXPECT_TRUE(Render::RHI::metal::waitSemaphore(semaphore, 50));
 }

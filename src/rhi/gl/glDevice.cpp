@@ -736,8 +736,8 @@ namespace Render::RHI::gl
         {
             m_log.error(
                 "[gl] createGraphicsPipeline: vertex or fragment shader handle invalid (vs=%s fs=%s)",
-                vs ? "ok" : "无效",
-                fs ? "ok" : "无效");
+                vs ? "ok" : "invalid",
+                fs ? "ok" : "invalid");
             return PipelineHandle{};
         }
         if (desc.attributeCount > kMaxVertexAttributes || desc.bufferLayoutCount > kMaxVertexBufferSlots)

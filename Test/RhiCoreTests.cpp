@@ -112,7 +112,7 @@ TEST(RhiFactory, UnimplementedBackendsReturnNullptrInsteadOfFallingBack)
         desc.logUserData = &sink;
 
         EXPECT_EQ(createDevice(desc), nullptr) << backendName(backend);
-        EXPECT_FALSE(sink.errors.empty()) << "失败必须报告原因：" << backendName(backend);
+        EXPECT_FALSE(sink.errors.empty()) << "Failure must report a reason: " << backendName(backend);
         EXPECT_FALSE(isBackendAvailable(backend));
     }
 }
@@ -178,7 +178,7 @@ TEST_F(NullDeviceFixture, DoubleDestroyIsReportedNotSilent)
 
     const size_t warnsBefore = sink.warns.size();
     device->destroyBuffer(buffer);
-    EXPECT_GT(sink.warns.size(), warnsBefore) << "重复销毁应留下告警";
+    EXPECT_GT(sink.warns.size(), warnsBefore) << "Destroying twice must leave a warning";
 }
 
 // ==================== 缓冲区数据 ====================
@@ -358,7 +358,7 @@ TEST_F(NullDeviceFixture, FrameBeginSubmitMustBePaired)
     ASSERT_EQ(device->submitFrame(), RhiResult::ErrorInvalidArgument);
 
     ASSERT_NE(device->beginFrame(surface), nullptr);
-    EXPECT_EQ(device->beginFrame(surface), nullptr) << "重入 beginFrame 必须失败";
+    EXPECT_EQ(device->beginFrame(surface), nullptr) << "Re-entering beginFrame must fail";
     EXPECT_EQ(device->submitFrame(), RhiResult::Ok);
 
     device->destroySurface(surface);
@@ -419,7 +419,7 @@ TEST_F(NullDeviceFixture, StatsResetEachFrame)
         ASSERT_EQ(cmd->beginRenderPass(pass), RhiResult::Ok);
         cmd->draw(3, 1, 0, 0);
         cmd->endRenderPass();
-        EXPECT_EQ(cmd->stats().drawCalls, 1u) << "第 " << frame << " 帧统计未重置";
+        EXPECT_EQ(cmd->stats().drawCalls, 1u) << "Frame " << frame << " statistics were not reset";
         ASSERT_EQ(device->submitFrame(), RhiResult::Ok);
     }
 
@@ -434,10 +434,10 @@ TEST_F(NullDeviceFixture, PushConstantsRejectOverflow)
     std::vector<uint8_t> payload(kMaxPushConstantBytes, 0x5A);
     const size_t errorsBefore = sink.errors.size();
     cmd->pushConstants(0, kMaxPushConstantBytes, payload.data());
-    EXPECT_EQ(sink.errors.size(), errorsBefore) << "刚好写满上限不应报错";
+    EXPECT_EQ(sink.errors.size(), errorsBefore) << "Exactly filling the limit must not report an error";
 
     cmd->pushConstants(4, kMaxPushConstantBytes, payload.data());
-    EXPECT_GT(sink.errors.size(), errorsBefore) << "越界写入必须报错";
+    EXPECT_GT(sink.errors.size(), errorsBefore) << "Writing out of bounds must report an error";
 
     ASSERT_EQ(device->submitFrame(), RhiResult::Ok);
     device->destroySurface(surface);
@@ -456,7 +456,7 @@ TEST_F(NullDeviceFixture, ComputeDispatchMustBeOutsideRenderPass)
     ASSERT_EQ(cmd->beginRenderPass(pass), RhiResult::Ok);
     cmd->dispatchCompute(1, 1, 1);
     cmd->endRenderPass();
-    EXPECT_EQ(cmd->stats().computeDispatches, 1u) << "RenderPass 内的 dispatch 应被拒绝";
+    EXPECT_EQ(cmd->stats().computeDispatches, 1u) << "A dispatch inside a RenderPass must be rejected";
 
     ASSERT_EQ(device->submitFrame(), RhiResult::Ok);
     device->destroySurface(surface);

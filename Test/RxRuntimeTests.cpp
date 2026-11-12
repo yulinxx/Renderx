@@ -265,7 +265,7 @@ TEST(RxRuntime, AllDefaultPipelinesAreAvailable)
     for (uint8_t i = 0; i < static_cast<uint8_t>(DefaultPipeline::Count); ++i)
     {
         const auto kind = static_cast<DefaultPipeline>(i);
-        EXPECT_NE(rxPipelineGetDefault(runtime, kind), 0) << "内建管线 " << static_cast<int>(i) << " 创建失败";
+        EXPECT_NE(rxPipelineGetDefault(runtime, kind), 0) << "Built-in pipeline " << static_cast<int>(i) << " failed to create";
     }
     // WorldPinned 是本轮新增的第三档渲染空间，单列一条断言以防被顺带删掉
     EXPECT_NE(rxPipelineGetDefault(runtime, DefaultPipeline::WorldPinnedLine), 0);
@@ -353,7 +353,7 @@ TEST(RxRuntime, Lighting3DDescMatchesStd140Layout)
     // 而 shader 仍按旧偏移取值——表现为「高光颜色被当成光照方向」这类
     // 无从下手的画面错乱。这里逐字段锁住 rx_lighting_3d.glsl 注释里的偏移表。
     EXPECT_EQ(sizeof(Lighting3DDesc), 160u);
-    EXPECT_EQ(sizeof(DirectionalLight3D), 32u) << "std140 结构体尺寸向上取整到 16 的倍数";
+    EXPECT_EQ(sizeof(DirectionalLight3D), 32u) << "std140 struct size must round up to a multiple of 16";
 
     EXPECT_EQ(offsetof(Lighting3DDesc, ambientColor), 0u);
     EXPECT_EQ(offsetof(Lighting3DDesc, ambientEnabled), 12u);
@@ -437,18 +437,18 @@ TEST(RxRuntime, Default3DPipelinesAreDistinct)
 
     // 线框只有 fillMode 与实心不同。fillMode 必须进管线缓存键，
     // 否则两者命中同一条管线——先建的赢，另一条静默画错。
-    EXPECT_NE(mesh, wire) << "fillMode 未进管线键：线框与实心塌缩成同一条管线";
+    EXPECT_NE(mesh, wire) << "fillMode is not part of the pipeline key: wireframe and solid collapse into one pipeline";
 
     // 高亮走 P3C4 + 世界三角形，与 2D 覆盖层的 WorldTri4 同格式同空间同拓扑，
     // 只有深度状态与填充模式不同，因此必须是独立的一条。
     EXPECT_NE(highlight, rxPipelineGetDefault(runtime, DefaultPipeline::WorldTri4))
-        << "深度状态/填充模式未进管线键：3D 高亮与 2D 覆盖三角形塌缩成同一条管线";
+        << "Depth state/fill mode is not part of the pipeline key: 3D highlight and 2D overlay triangles collapse into one pipeline";
 
     // 手柄与高亮同格式同空间同拓扑，只有 fillMode 与深度偏移不同；
     // 手柄与 WorldTri4 则只差深度状态与偏移。两条都必须独立。
-    EXPECT_NE(gizmo, highlight) << "3D 手柄与高亮塌缩成同一条管线";
+    EXPECT_NE(gizmo, highlight) << "The 3D gizmo and highlight collapse into one pipeline";
     EXPECT_NE(gizmo, rxPipelineGetDefault(runtime, DefaultPipeline::WorldTri4))
-        << "深度偏移未进管线键：3D 手柄与 2D 覆盖三角形塌缩成同一条管线";
+        << "Depth bias is not part of the pipeline key: the 3D gizmo and 2D overlay triangles collapse into one pipeline";
 
     rxRuntimeDestroy(runtime);
 }
@@ -475,7 +475,7 @@ TEST(RxRuntime, DepthBiasEntersPipelineKey)
     const uint16_t biasedIndex = rxPipelineCreate(runtime, &biased);
     EXPECT_NE(plainIndex, 0);
     EXPECT_NE(biasedIndex, 0);
-    EXPECT_NE(plainIndex, biasedIndex) << "depthBias 未进管线键：有偏移与无偏移塌缩成一条";
+    EXPECT_NE(plainIndex, biasedIndex) << "depthBias is not part of the pipeline key: biased and unbiased collapse into one";
     // 同一组状态重复请求仍要命中缓存
     EXPECT_EQ(rxPipelineCreate(runtime, &biased), biasedIndex);
 
@@ -532,7 +532,7 @@ TEST(RxRuntime, BufferCreateUploadDestroy)
     // 世代式句柄：销毁后的句柄必须解不出资源，而不是命中被复用的槽位
     EXPECT_EQ(rxBufferUpload(runtime, buffer, 0, payload.size(), payload.data()), RxResult::ErrorInvalidArgument);
     rxBufferDestroy(runtime, buffer);
-    EXPECT_FALSE(sink.warnings.empty()) << "重复销毁必须留下告警";
+    EXPECT_FALSE(sink.warnings.empty()) << "Destroying twice must leave a warning";
 
     rxRuntimeDestroy(runtime);
 }
@@ -550,7 +550,7 @@ TEST(RxRuntime, MaterialIndexZeroIsReserved)
     material.color[3] = 1.0f;
 
     const uint16_t index = rxMaterialAdd(runtime, &material);
-    EXPECT_NE(index, 0) << "0 号材质保留为「无材质」，不能被分配出去";
+    EXPECT_NE(index, 0) << "Material 0 is reserved as \"no material\" and must not be allocated";
     EXPECT_EQ(rxMaterialUpdate(runtime, index, &material), RxResult::Ok);
     EXPECT_EQ(rxMaterialUpdate(runtime, 0, &material), RxResult::ErrorInvalidArgument);
     EXPECT_EQ(rxMaterialUpdate(runtime, 9999, &material), RxResult::ErrorInvalidArgument);
@@ -591,7 +591,7 @@ TEST(RxRuntime, FontGlyphRasterizesAndFillsMetrics)
     ASSERT_TRUE(rxValid(runtime));
 
     std::ifstream file(RENDERX_TEST_FONT_PATH, std::ios::binary);
-    ASSERT_TRUE(file.good()) << "缺少测试字体：" << RENDERX_TEST_FONT_PATH;
+    ASSERT_TRUE(file.good()) << "Missing test font: " << RENDERX_TEST_FONT_PATH;
     const std::vector<uint8_t> ttf((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
     ASSERT_FALSE(ttf.empty());
 
@@ -656,7 +656,7 @@ TEST(RxRuntime, FontSdfModeOutsetsGlyphByPadding)
     ASSERT_TRUE(rxValid(runtime));
 
     std::ifstream file(RENDERX_TEST_FONT_PATH, std::ios::binary);
-    ASSERT_TRUE(file.good()) << "缺少测试字体：" << RENDERX_TEST_FONT_PATH;
+    ASSERT_TRUE(file.good()) << "Missing test font: " << RENDERX_TEST_FONT_PATH;
     const std::vector<uint8_t> ttf((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
     ASSERT_FALSE(ttf.empty());
 
@@ -789,10 +789,10 @@ TEST_F(RxSessionFixture, SurfaceHandleFromAnotherRuntimeIsRejected)
 
 TEST_F(RxSessionFixture, FrameMustBePaired)
 {
-    EXPECT_EQ(rxSessionEndFrame(session), RxResult::ErrorUnknown) << "未 BeginFrame 就 EndFrame";
+    EXPECT_EQ(rxSessionEndFrame(session), RxResult::ErrorUnknown) << "EndFrame without BeginFrame";
     ASSERT_EQ(rxSessionBeginFrame(session), RxResult::Ok);
     sink.errors.clear();
-    EXPECT_NE(rxSessionBeginFrame(session), RxResult::Ok) << "同一帧内重复 BeginFrame";
+    EXPECT_NE(rxSessionBeginFrame(session), RxResult::Ok) << "BeginFrame repeated within the same frame";
     EXPECT_FALSE(sink.errors.empty());
     EXPECT_EQ(rxSessionEndFrame(session), RxResult::Ok);
 }
@@ -952,7 +952,7 @@ TEST_F(RxSessionFixture, WorldPinnedCommandUsesPinnedVertexFormat)
     command.vertexFormat = VertexFormat::P3C4;
     ASSERT_EQ(rxSessionSubmit(session, &packet), RxResult::Ok);
     ASSERT_EQ(rxSessionGetStats(session, &stats), RxResult::Ok);
-    EXPECT_EQ(stats.drawCallCount, 1u) << "P3C4 + WorldPinned 不应产生绘制";
+    EXPECT_EQ(stats.drawCallCount, 1u) << "P3C4 + WorldPinned must not produce a draw";
     EXPECT_FALSE(sink.warnings.empty());
 
     EXPECT_EQ(rxSessionEndFrame(session), RxResult::Ok);
@@ -1056,7 +1056,7 @@ TEST_F(RxIncrementalFixture, GeometryStoreAllocatesAlignedBlocks)
     GeometryBlock first{};
     ASSERT_EQ(rxGeometryAlloc(runtime, store, 100, &first), RxResult::Ok);
     EXPECT_EQ(first.offset, 0u);
-    EXPECT_EQ(first.sizeBytes, 100u) << "sizeBytes 应是请求值，不是对齐后的值";
+    EXPECT_EQ(first.sizeBytes, 100u) << "sizeBytes must be the requested value, not the aligned value";
     EXPECT_TRUE(rxValid(first.buffer));
 
     // 第二块必须落在按粒度对齐的位置：顶点属性最坏对齐是 16 字节，
@@ -1192,7 +1192,7 @@ TEST_F(RxIncrementalFixture, GeometryAllocReportsGrowthAndKeepsBufferHandleStabl
     GeometryStoreStats stats{};
     ASSERT_EQ(rxGeometryStoreGetStats(runtime, store, &stats), RxResult::Ok);
     EXPECT_EQ(stats.growCount, 1u);
-    EXPECT_EQ(stats.capacityBytes, 2048u) << "应翻倍增长，线性增长会退化成 O(n²) 次搬迁";
+    EXPECT_EQ(stats.capacityBytes, 2048u) << "Growth must double; linear growth degenerates into O(n^2) relocations";
 
     // 句柄数值保持稳定：槽位被原地改写，因此调用方已发出的所有
     // GeometryBlock::buffer 仍然指向新缓冲，不必逐块刷新。
@@ -1214,7 +1214,7 @@ TEST_F(RxIncrementalFixture, GeometryStoreRefusesToExceedMaxBytes)
 
     sink.errors.clear();
     EXPECT_EQ(rxGeometryAlloc(runtime, store, 256, &block), RxResult::ErrorOutOfMemory);
-    EXPECT_FALSE(sink.errors.empty()) << "达到上限必须留下可诊断记录";
+    EXPECT_FALSE(sink.errors.empty()) << "Hitting the limit must leave a diagnosable record";
 
     rxGeometryStoreDestroy(runtime, store);
 }
@@ -1255,7 +1255,7 @@ TEST_F(RxIncrementalFixture, GeometryDirtyRangesMergeAcrossSmallGaps)
 
     GeometryStoreStats stats{};
     ASSERT_EQ(rxGeometryStoreGetStats(runtime, store, &stats), RxResult::Ok);
-    EXPECT_EQ(stats.dirtyBytesThisFrame, 32u) << "flush 前脏区仍是两段各 16 字节";
+    EXPECT_EQ(stats.dirtyBytesThisFrame, 32u) << "Before flush the dirty region is still two 16-byte spans";
 
     ASSERT_EQ(rxGeometryFlush(runtime, store), RxResult::Ok);
     ASSERT_EQ(rxGeometryStoreGetStats(runtime, store, &stats), RxResult::Ok);
@@ -1679,7 +1679,7 @@ TEST_F(RxIncrementalFixture, DrawListMergesContiguousListTopologies)
     ASSERT_EQ(rxSessionGetStats(session, &frame), RxResult::Ok);
     EXPECT_EQ(frame.mergedDrawCount, 1u);
     EXPECT_EQ(frame.drawCallCount, 1u);
-    EXPECT_EQ(frame.triangleCount, 2u) << "合并后仍应画满两个三角形";
+    EXPECT_EQ(frame.triangleCount, 2u) << "Merging must still draw both triangles";
     EXPECT_EQ(rxSessionEndFrame(session), RxResult::Ok);
 
     rxDrawListDestroy(runtime, list);
@@ -1722,7 +1722,7 @@ TEST_F(RxIncrementalFixture, DrawListBatchesTightBlocksFromRealAllocator)
         GeometryBlock block{};
         ASSERT_EQ(rxGeometryAlloc(runtime, store, bytes, &block), RxResult::Ok);
         // 紧排：第 i 块必须紧接前一块，中间不能有粒度补白
-        EXPECT_EQ(block.offset, expectedOffset) << "粒度不能整除步长时块之间会出现空隙，合批必然一次都不发生";
+        EXPECT_EQ(block.offset, expectedOffset) << "When the granularity does not divide the stride, gaps appear between blocks and batching never happens";
         expectedOffset += bytes;
 
         const DrawCommand command = makeListCommand(buffer, block.offset, kVertexCount, 1, PrimitiveTopology::Triangles);
@@ -1734,7 +1734,7 @@ TEST_F(RxIncrementalFixture, DrawListBatchesTightBlocksFromRealAllocator)
 
     FrameStats frame{};
     ASSERT_EQ(rxSessionGetStats(session, &frame), RxResult::Ok);
-    EXPECT_EQ(frame.mergedDrawCount, kPieces - 1) << "紧密相邻的三段应合成一次 draw";
+    EXPECT_EQ(frame.mergedDrawCount, kPieces - 1) << "Three tightly adjacent spans must merge into a single draw";
     EXPECT_EQ(frame.drawCallCount, 1u);
     ASSERT_EQ(rxSessionEndFrame(session), RxResult::Ok);
 
@@ -1776,8 +1776,8 @@ TEST_F(RxIncrementalFixture, DrawListRefusesToFuseAcrossPrimitiveBoundary)
     FrameStats frame{};
     ASSERT_EQ(rxSessionGetStats(session, &frame), RxResult::Ok);
     // 5/2 + 3/2 = 2 + 1 = 3 条线。若被并成一个 8 顶点的区间就是 4 条。
-    EXPECT_EQ(frame.lineCount, 3u) << "奇数顶点的 LineList 不能与后续段并成一个区间";
-    EXPECT_EQ(frame.drawCallCount, 1u) << "两段仍应成批为一次提交";
+    EXPECT_EQ(frame.lineCount, 3u) << "A LineList with an odd vertex count must not merge with the following span into one range";
+    EXPECT_EQ(frame.drawCallCount, 1u) << "Both spans must still batch into one submission";
     ASSERT_EQ(rxSessionEndFrame(session), RxResult::Ok);
 
     // 对照：前一段 6 个顶点落在 3 的倍数上，边界合法，允许并成一个区间。
@@ -1792,7 +1792,7 @@ TEST_F(RxIncrementalFixture, DrawListRefusesToFuseAcrossPrimitiveBoundary)
     ASSERT_EQ(rxSessionBeginFrame(session), RxResult::Ok);
     ASSERT_EQ(rxSessionSubmitDrawList(session, list, nullptr), RxResult::Ok);
     ASSERT_EQ(rxSessionGetStats(session, &frame), RxResult::Ok);
-    EXPECT_EQ(frame.triangleCount, 3u) << "6 与 3 都落在 3 的倍数上，并段前后都是 3 个三角形";
+    EXPECT_EQ(frame.triangleCount, 3u) << "6 and 3 are both multiples of 3, so merging still yields 3 triangles";
     EXPECT_EQ(frame.drawCallCount, 1u);
     ASSERT_EQ(rxSessionEndFrame(session), RxResult::Ok);
 
@@ -1903,8 +1903,8 @@ TEST_F(RxIncrementalFixture, DrawListDoesNotMergeAcrossCulledEntries)
     EXPECT_EQ(frame.culledCommandCount, 1u);
     // 首尾两段的顶点区间被剔除的那条隔开，因此只能各成一段。
     // 若并成一个 9 顶点的区间，GPU 会把中间那条的顶点也画出来（3 个三角形）。
-    EXPECT_EQ(frame.triangleCount, 2u) << "中间条目被剔除，首尾不得并成一个区间";
-    EXPECT_EQ(frame.mergedDrawCount, 1u) << "两段仍应成批为一次提交";
+    EXPECT_EQ(frame.triangleCount, 2u) << "The middle entry was culled; the first and last spans must not merge into one range";
+    EXPECT_EQ(frame.mergedDrawCount, 1u) << "Both spans must still batch into one submission";
     EXPECT_EQ(frame.drawCallCount, 1u);
     EXPECT_EQ(rxSessionEndFrame(session), RxResult::Ok);
 
@@ -2237,8 +2237,8 @@ TEST(RxShaderLibrary, AnonymousUniformBlockMembersDoNotCollide)
             for (size_t b = a + 1; b < members.size(); ++b)
             {
                 EXPECT_NE(members[a], members[b])
-                    << name << " 的无实例名 uniform 块里有重名成员 \"" << members[a]
-                    << "\"，GLSL 会报 would shadow a previous declaration，整条管线建不出来";
+                    << name << ": duplicate member \"" << members[a]
+                    << "\" in an unnamed uniform block; GLSL reports 'would shadow a previous declaration' and the pipeline cannot be built";
             }
         }
         ++checked;
@@ -2298,7 +2298,7 @@ TEST_F(RxIncrementalFixture, BeginFrameUploadsLighting3DBeforeAnyMeshDraw)
     for (const std::string& warning : sink.warnings)
     {
         EXPECT_EQ(warning.find("lighting uniforms are unavailable"), std::string::npos)
-            << "光照 UBO 必须在 BeginFrame 里就绑好：" << warning;
+            << "The lighting UBO must already be bound in BeginFrame: " << warning;
     }
     EXPECT_TRUE(sink.errors.empty());
 
@@ -2322,7 +2322,7 @@ TEST_F(RxIncrementalFixture, ReadPixelsRequiresOpenFrameAndSufficientCapacity)
 
     sink.errors.clear();
     EXPECT_EQ(rxSessionReadPixels(session, 0, 0, 4, 4, pixels.data(), 16), RxResult::ErrorInvalidArgument);
-    EXPECT_FALSE(sink.errors.empty()) << "缓冲过小必须说明需要多少字节";
+    EXPECT_FALSE(sink.errors.empty()) << "An undersized buffer must report how many bytes are needed";
 
     EXPECT_EQ(rxSessionReadPixels(session, 0, 0, 4, 4, nullptr, pixels.size()), RxResult::ErrorInvalidArgument);
 
@@ -2660,17 +2660,17 @@ TEST_F(RxIncrementalFixture, DrawListMillionPrimitiveCullingBaseline)
     for (int s = 0; s < 2; ++s)
     {
         EXPECT_GT(results[s]->visible[0], 0u);
-        EXPECT_LT(results[s]->visible[0], kCount / 10) << "局部视图应只看到很小一部分图元";
-        EXPECT_EQ(results[s]->visible[2], kCount) << "全图视图必须一条都不剔";
+        EXPECT_LT(results[s]->visible[0], kCount / 10) << "The local view must see only a small fraction of primitives";
+        EXPECT_EQ(results[s]->visible[2], kCount) << "The full-map view must cull nothing";
     }
 
     // 核心结论：按空间聚集分配槽位后，部分可见也应显著合批
     EXPECT_LT(clustered.drawCalls[0] * 10u, clustered.visible[0])
-        << "clustered 场景的 draw call 数应远小于可见条目数（合批生效）";
+        << "A clustered scene's draw call count must be far below its visible entry count (batching works)";
 
     // 防灾难阈值：空间索引失效（退化 O(n^2) 或每帧全量重建）会远超此值
-    EXPECT_LT(scatter.avgMs[0], 500.0) << "局部视图每帧耗时异常";
-    EXPECT_LT(clustered.avgMs[2], 5000.0) << "全图视图每帧耗时异常";
+    EXPECT_LT(scatter.avgMs[0], 500.0) << "The local view's per-frame time is abnormal";
+    EXPECT_LT(clustered.avgMs[2], 5000.0) << "The full-map view's per-frame time is abnormal";
 }
 
 // ==================== zoom out 耗时分解（每个变体独立进程跑） ====================
@@ -2951,9 +2951,9 @@ TEST(RxRuntimePipelineKey, DepthFormatIsPartOfCacheKey)
     withDepth.depthFormat = Render::RHI::Format::D32Float;
 
     EXPECT_FALSE(noDepth == withDepth)
-        << "PipelineKey::operator== 漏掉 depthFormat：无深度管线会被带深度的 RenderPass 复用";
+        << "PipelineKey::operator== misses depthFormat: a no-depth pipeline would be reused by a RenderPass with depth";
     EXPECT_NE(PipelineKeyHash{}(noDepth), PipelineKeyHash{}(withDepth))
-        << "PipelineKeyHash 漏掉 depthFormat：pipelineCache 会静默命中错误的管线";
+        << "PipelineKeyHash misses depthFormat: pipelineCache would silently hit the wrong pipeline";
 
     // 对照组：完全相同的键必须相等、散列一致，防止把「一律判不等」当成修好。
     const PipelineKey same = withDepth;
