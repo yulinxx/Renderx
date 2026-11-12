@@ -448,6 +448,23 @@ endif()
 # （见 include/render/renderx.h）。src/res/default_screen_font.ttf 保留在
 # 仓库中供宿主取用，但不再由本目标复制或安装。
 
+# ==================== 宿主打包入口 ====================
+#
+# 载入器/宿主仍需要把「运行期资源」（shader 源与默认字体）放到可执行文件
+# 旁边，供外部工具与调试场景直接取用。具体目录布局是 Renderx 自己的知识：
+# 宿主不应拼 `Renderx/src/...` 这类路径，否则本仓库调整目录就会把宿主的
+# 构建一起弄坏。
+#
+# 用法：宿主直接使用下面导出的两个目录做复制，不再拼 `Renderx/src/...`。
+# 追加式导出：后续只新增变量，不改已有变量的含义。
+#
+# 用 CACHE INTERNAL 导出：普通变量只在当前目录及其子目录可见，宿主是
+# 兄弟目录，必须用 cache 变量才能读到。
+set(RENDERX_RUNTIME_SHADER_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/shader"
+    CACHE INTERNAL "Renderx runtime shader directory")
+set(RENDERX_RUNTIME_FONT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/res"
+    CACHE INTERNAL "Renderx runtime font directory")
+
 # ==================== 安装配置 ====================
 
 # 安装库文件
