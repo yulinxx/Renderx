@@ -963,6 +963,19 @@ namespace Render
             RENDER_API uint16_t rxPipelineCreate(RuntimeHandle runtime, const PipelineDesc* desc);
             RENDER_API uint16_t rxPipelineGetDefault(RuntimeHandle runtime, DefaultPipeline kind);
 
+            /**
+             * @brief 确保内建管线在给定附件组合下的变体存在，返回其管线索引（诊断用）
+             *
+             * 渲染路径内部本来就会按渲染目标的颜色/深度附件格式补建变体。这个入口
+             * 把同一语义暴露出来，便于确认「同格式复用、不同格式重建」，不改变绘制行为。
+             *
+             * @param offscreenColor 1 = RGBA8 离屏目标；0 = 窗口 BGRA8 目标
+             * @param depthAttached  1 = D32Float 深度附件；0 = 无深度（Unknown）
+             * @return 管线索引；0 表示失败
+             */
+            RENDER_API uint16_t rxPipelineEnsureVariant(RuntimeHandle runtime, uint16_t baseIndex,
+                uint32_t offscreenColor, uint32_t depthAttached);
+
             RENDER_API TextureHandle rxTextureCreate(RuntimeHandle runtime, const TextureDesc* desc);
             RENDER_API void rxTextureDestroy(RuntimeHandle runtime, TextureHandle texture);
             RENDER_API RxResult rxTextureUpdate(RuntimeHandle runtime, TextureHandle texture, const TextureDesc* desc);

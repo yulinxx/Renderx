@@ -22,6 +22,7 @@
 
 #include "render/renderx.h"
 #include "rhi/metal/metalDevice.h"
+#include "rt/rxInternal.h"
 
 #import <AppKit/AppKit.h>
 #import <Foundation/Foundation.h>
@@ -50,17 +51,11 @@ namespace
     {
         std::vector<std::string> errors;
         std::vector<std::string> warnings;
-        /// All log levels (including debug/info). Used by assertions that need log
-        /// evidence, such as the "pipeline key" checks: pipeline variants are created
-        /// on demand, so pixel results alone cannot distinguish "reused the old
-        /// pipeline" from "created a pipeline for the new format".
-        std::vector<std::string> lines;
 
         static void callback(LogLevel level, const char* message, void* userData)
         {
             auto* sink = static_cast<LogSink*>(userData);
             const std::string text = message ? message : "";
-            sink->lines.push_back(text);
             if (level == LogLevel::Error)
             {
                 sink->errors.push_back(text);
@@ -536,47 +531,6 @@ namespace
             EXPECT_TRUE(rxValid(depth)) << "offscreen depth target creation failed:\n"
                                         << sink.allErrors();
             return depth;
-        }
-
-        /// Depth formats of pipelines created after "from" (the depth dimension of the
-        /// pipeline key, see the debug log in createPipelineFromKey). Only compares
-        /// "are they different", not specific Format enum values.
-        ///
-        /// This evidence chain requires "one pipeline = one log line". rxRuntime.cpp used
-        /// to throttle this line at 200ms per process (a static shared across Runtime
-        /// instances), so if another fixture had just logged it, this test's entire
-        /// record was swallowed and the test failed randomly depending on run order.
-        /// That throttling has been removed on the production side; the cache itself
-        /// already bounds the log volume.
-        std::vector<int> depthFormatsCreatedSince(size_t from) const
-        {
-            return parseDepthFormats(from, sink.lines.size());
-        }
-
-        /// Depth format of the last pipeline-creation log before "to". Built-in pipelines
-        /// are prewarmed with Unknown depth during Runtime creation; use that as the
-        /// baseline instead of hard-coding Format enum values.
-        /// Returns -1 when the evidence log is missing; callers must fail explicitly
-        /// rather than continue comparing sizes.
-        int lastDepthFormatBefore(size_t to) const
-        {
-            const auto formats = parseDepthFormats(0, std::min(to, sink.lines.size()));
-            return formats.empty() ? -1 : formats.back();
-        }
-
-        std::vector<int> parseDepthFormats(size_t from, size_t to) const
-        {
-            std::vector<int> formats;
-            for (size_t i = from; i < to; ++i)
-            {
-                const std::string& line = sink.lines[i];
-                const size_t at = line.find("depthFmt=");
-                if (at != std::string::npos)
-                {
-                    formats.push_back(std::atoi(line.c_str() + at + 9));
-                }
-            }
-            return formats;
         }
 
         /// Draw a single P3N3 primitive on a quad covering (8,8)-(56,56).
@@ -1234,24 +1188,25 @@ TEST_F(MetalOffscreenFixture, Mesh3DDoubleSidedLightsBackFacingQuad)
 /**
  * The depth format must be part of the pipeline cache key (the core of Task 4).
  *
- * An earlier version asserted "first frame has no depth -> second frame D32Float, so one
- * variant must be created for each". After 5906c49, Session::beginFrame automatically
- * attaches a D32Float depth texture to **every** offscreen target (fixing offscreen
- * export clipping), so the depth format is already the same on both frames: the second
- * frame should hit the cache and create no new pipeline. The old assertion therefore
- * failed constantly, and that was not a product regression -- it could not be papered
- * over by loosening the assertion or skipping; it had to be rewritten for the new
- * semantics.
+ * Observation point: instead of matching a debug log line, this asserts the Runtime's own
+ * pipeline table (Runtime::pipelines / Runtime::pipelineKeys). That table is what the
+ * renderer actually uses, it cannot be silenced by log throttling, and its size directly
+ * answers "was a variant created or reused".
  *
- * The two evidence segments now:
- *   1. Built-in pipelines are prewarmed during Runtime creation with Unknown depth and
- *      the swapchain color format; the first offscreen frame uses RGBA8/D32Float and
- *      must create a variant whose **depth dimension has been rewritten**. If
- *      depthFormat were not in the key, the variant would keep Unknown depth and the
- *      Metal validation layer would report a depthAttachmentPixelFormat mismatch.
- *   2. After switching to an explicit D32Float depth attachment, the key is unchanged ->
- *      zero new pipelines (no variant leak), and the same variant must still draw blue
- *      correctly, proving it really works on a RenderPass with depth.
+ * Three assertions:
+ *   1. The first offscreen frame targets RGBA8 plus the D32Float depth attachment that
+ *      beginFrame attaches automatically. Prewarmed built-in keys use the swapchain color
+ *      format with Unknown depth, so exactly one variant must be appended and its key
+ *      must record D32Float (not the prewarmed Unknown).
+ *   2. Requesting the same (RGBA8, D32Float) pair again returns the existing variant and
+ *      appends nothing.
+ *   3. Requesting the same color format with a different depth format (Unknown) must
+ *      append a second variant with a distinct index; repeating that request returns the
+ *      same index and appends nothing.
+ *
+ * If the variant key ignored depthFormat, step 1 would keep the base index (no append)
+ * and step 3 would return the existing variant index -- both assertions fail. That is the
+ * required failure direction for this case.
  *
  * The pure-logic part "depthFormat participates in equality/hash" is separately guarded
  * by PipelineKeyDepthFormatIsPartOfCacheKey in RxRuntimeTests.cpp, which does not depend
@@ -1259,46 +1214,66 @@ TEST_F(MetalOffscreenFixture, Mesh3DDoubleSidedLightsBackFacingQuad)
  */
 TEST_F(MetalOffscreenFixture, Mesh3DPipelineVariantIsKeyedByDepthFormat)
 {
+    auto* rt = detail::asRuntime(runtime);
+    ASSERT_NE(rt, nullptr);
+
     const uint16_t redMaterial = addSolidMaterial(1.0f, 0.0f, 0.0f);
     const uint16_t blueMaterial = addSolidMaterial(0.0f, 0.0f, 1.0f);
     applyKeyLight3D();
 
     const uint16_t meshPipeline = rxPipelineGetDefault(runtime, DefaultPipeline::Mesh3D);
     ASSERT_NE(meshPipeline, 0u) << "Mesh3D pipeline was not created (missing mesh_3d_p3n3 metallib)";
+    ASSERT_LT(static_cast<size_t>(meshPipeline), rt->pipelineKeys.size());
 
-    // The depth format used by built-in pipeline prewarming during SetUp (Unknown), as
-    // the baseline; do not hard-code enum values.
-    const int prewarmDepthFormat = lastDepthFormatBefore(sink.lines.size());
-    ASSERT_GE(prewarmDepthFormat, 0)
-        << "No pipeline created log during prewarming; the evidence chain is broken (check whether rxRuntime.cpp logs are throttled)";
+    // Baseline: the prewarmed built-in variant. Runtime creation builds pipelines for the
+    // swapchain color format with Unknown depth; record the count instead of hard-coding.
+    const size_t baseCount = rt->pipelines.size();
+    EXPECT_EQ(rt->pipelineKeys[meshPipeline].depthFormat, Render::RHI::Format::Unknown)
+        << "The prewarmed Mesh3D pipeline should not have a depth attachment";
 
-    // ---- First frame: offscreen target, beginFrame attaches a D32Float depth attachment automatically ----
+    // ---- (1) First offscreen frame: RGBA8 + auto-attached D32Float must append one variant ----
     rxSessionSetClearColor(session, 0.0f, 0.0f, 0.0f, 1.0f);
-    const size_t logMarkAutoDepth = sink.lines.size();
     drawSingleQuad(redMaterial, meshPipeline, 0.5f, rxMakeSortKey(10, 0, 0, 0));
     expectPixel(readback(), 32, 32, 255, 0, 0, 255, "auto-depth target: quad is drawn");
-    const std::vector<int> autoDepthCreated = depthFormatsCreatedSince(logMarkAutoDepth);
-    ASSERT_EQ(autoDepthCreated.size(), 1u)
-        << "The first offscreen frame should create exactly one pipeline (the prewarm key does not match the RGBA8/D32Float target)";
-    // Core assertion (TR-4.1): the created variant must rewrite the key according to the
-    // target depth format, not keep the prewarmed Unknown.
-    EXPECT_NE(autoDepthCreated.front(), prewarmDepthFormat)
-        << "Depth format is not part of the pipeline key: the offscreen variant still uses the prewarmed Unknown depth";
 
-    // ---- Second frame: switch to an explicit D32Float depth attachment, same built-in pipeline ----
+    ASSERT_EQ(rt->pipelines.size(), baseCount + 1)
+        << "The first offscreen frame did not append a pipeline variant for RGBA8/D32Float";
+    const auto autoDepthVariant = static_cast<uint16_t>(baseCount);
+    EXPECT_EQ(rt->pipelineKeys[autoDepthVariant].colorFormat, Render::RHI::Format::RGBA8Unorm);
+    EXPECT_EQ(rt->pipelineKeys[autoDepthVariant].depthFormat, Render::RHI::Format::D32Float)
+        << "Depth format is not part of the pipeline key: the offscreen variant kept the prewarmed Unknown depth";
+
+    // ---- (2) Same formats again: reuse, no new pipeline ----
+    EXPECT_EQ(rxPipelineEnsureVariant(runtime, meshPipeline, /*offscreenColor*/ 1,
+                                      /*depthAttached*/ 1),
+              autoDepthVariant);
+    EXPECT_EQ(rt->pipelines.size(), baseCount + 1)
+        << "Requesting the same formats created a duplicate pipeline; the cache key is unstable";
+
+    // ---- (3) Same color, different depth: must append a distinct variant ----
+    const uint16_t noDepthVariant =
+        rxPipelineEnsureVariant(runtime, meshPipeline, /*offscreenColor*/ 1, /*depthAttached*/ 0);
+    ASSERT_NE(noDepthVariant, 0u);
+    EXPECT_NE(noDepthVariant, autoDepthVariant);
+    ASSERT_EQ(rt->pipelines.size(), baseCount + 2);
+    EXPECT_EQ(rt->pipelineKeys[noDepthVariant].colorFormat, Render::RHI::Format::RGBA8Unorm);
+    EXPECT_EQ(rt->pipelineKeys[noDepthVariant].depthFormat, Render::RHI::Format::Unknown);
+
+    // Repeating the second depth format also hits its own entry instead of appending.
+    EXPECT_EQ(rxPipelineEnsureVariant(runtime, meshPipeline, /*offscreenColor*/ 1,
+                                      /*depthAttached*/ 0),
+              noDepthVariant);
+    EXPECT_EQ(rt->pipelines.size(), baseCount + 2);
+
+    // ---- Explicit D32Float depth attachment reuses the first variant and still draws ----
     const TextureHandle depthTarget = createDepthTarget();
     ASSERT_TRUE(rxValid(depthTarget));
     ASSERT_EQ(rxSessionSetRenderTarget(session, colorTarget, depthTarget, kWidth, kHeight),
               RxResult::Ok);
-
-    const size_t logMarkExplicitDepth = sink.lines.size();
     drawSingleQuad(blueMaterial, meshPipeline, 0.5f, rxMakeSortKey(10, 0, 0, 0));
     expectPixel(readback(), 32, 32, 0, 0, 255, 255, "explicit depth target: quad is drawn");
-    // Automatic depth and explicit depth are both D32Float: the key is unchanged, so the
-    // same variant should be hit instead of creating another one.
-    const std::vector<int> explicitDepthCreated = depthFormatsCreatedSince(logMarkExplicitDepth);
-    EXPECT_TRUE(explicitDepthCreated.empty())
-        << "Created " << explicitDepthCreated.size() << " duplicate pipeline(s) for the same depth format; the cache key is unstable";
+    EXPECT_EQ(rt->pipelines.size(), baseCount + 2)
+        << "An explicit D32Float depth target created another variant; the key is not stable";
 
     EXPECT_EQ(rxSessionSetRenderTarget(session, colorTarget, TextureHandle::Invalid, kWidth,
                                        kHeight),

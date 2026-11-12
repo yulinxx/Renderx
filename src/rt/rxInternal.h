@@ -610,6 +610,13 @@ namespace Render::RT::detail
          */
         uint16_t pipelineWithFormats(uint16_t index, RHI::Format colorFormat,
                                      RHI::Format depthFormat);
+        /// 诊断入口：按「离屏/窗口颜色 + 深度有无」确保变体存在（对应 rxPipelineEnsureVariant）
+        uint16_t ensurePipelineVariant(uint16_t baseIndex, bool offscreenColor, bool depthAttached)
+        {
+            const RHI::Format colorFormat = offscreenColor ? RHI::Format::RGBA8Unorm : defaultColorFormat();
+            const RHI::Format depthFormat = depthAttached ? RHI::Format::D32Float : RHI::Format::Unknown;
+            return pipelineWithFormats(baseIndex, colorFormat, depthFormat);
+        }
         /// 该管线是否声明了 FrameUniforms 块（即需要绑定光照绑定组）
         bool pipelineNeedsLighting3D(uint16_t index) const;
 

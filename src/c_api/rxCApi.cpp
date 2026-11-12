@@ -465,6 +465,21 @@ namespace Render
                 });
             }
 
+            uint16_t rxPipelineEnsureVariant(RuntimeHandle handle, uint16_t baseIndex,
+                uint32_t offscreenColor, uint32_t depthAttached)
+            {
+                return rxAbiGuard<uint16_t>(
+                    [handle, baseIndex, offscreenColor, depthAttached]() -> uint16_t {
+                        Runtime* runtime = checkedRuntime(handle);
+                        if (!runtime)
+                        {
+                            return 0;
+                        }
+                        return runtime->ensurePipelineVariant(
+                            baseIndex, offscreenColor != 0, depthAttached != 0);
+                    });
+            }
+
             // ==================== 纹理与材质 ====================
 
             TextureHandle rxTextureCreate(RuntimeHandle handle, const TextureDesc* desc)
