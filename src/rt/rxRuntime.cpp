@@ -1339,10 +1339,10 @@ namespace Render::RT::detail
         //   - 同一帧里连续补建两条不同键的管线也会被吞掉一条。
         // 结果就是测试按运行顺序随机失败，而这行日志本身就是为了给
         // 「深度格式是否进了缓存键」留证据的，丢一条等于证据链断了。
-        log.debug("[rt] pipeline created idx=%u colorFmt=%d depthFmt=%d",
-            index,
-            static_cast<int>(key.colorFormat),
-            static_cast<int>(key.depthFormat));
+        // log.debug("[rt] pipeline created idx=%u colorFmt=%d depthFmt=%d",
+        //     index,
+        //     static_cast<int>(key.colorFormat),
+        //     static_cast<int>(key.depthFormat));
         return index;
     }
 
