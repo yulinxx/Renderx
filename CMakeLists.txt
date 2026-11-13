@@ -408,10 +408,10 @@ elseif(DEFINED VCPKG_DIR)
     if(_vcpkg_stb_incs)
         target_include_directories(${PROJECT_NAME} PRIVATE ${_vcpkg_stb_incs})
     else()
-        message(FATAL_ERROR "未找到 stb_truetype.h（字形光栅化必需）。请执行 vcpkg install stb")
+        message(FATAL_ERROR "stb_truetype.h not found (required for glyph rasterization). Run: vcpkg install stb")
     endif()
 else()
-    message(FATAL_ERROR "未找到 stb_truetype.h（字形光栅化必需）。请执行 vcpkg install stb")
+    message(FATAL_ERROR "stb_truetype.h not found (required for glyph rasterization). Run: vcpkg install stb")
 endif()
 
 # Linux平台下GCC编译器需要链接stdc++fs（用于std::filesystem）
